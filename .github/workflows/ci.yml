@@ -78,13 +78,20 @@ jobs:
             sleep 1
           done
 
+          curl --fail --silent --show-error \
+            --dump-header /tmp/health-headers.txt \
+            -H 'x-request-id: smoke-request-001' \
+            http://127.0.0.1:4173/api/health > /tmp/health.json
           grep -q '"status":"ok"' /tmp/health.json
+          grep -qi '^x-request-id: smoke-request-001' /tmp/health-headers.txt
+
           curl --fail --silent --show-error http://127.0.0.1:4173/api/health/database > /tmp/database-health.json
           grep -q '"status":"ok"' /tmp/database-health.json
 
-          AUTH_STATUS=$(curl --silent --output /tmp/auth-me.json --write-out '%{http_code}' http://127.0.0.1:4173/api/auth/me)
+          AUTH_STATUS=$(curl --silent --output /tmp/auth-me.json --dump-header /tmp/auth-me-headers.txt --write-out '%{http_code}' -H 'x-request-id: smoke-auth-001' http://127.0.0.1:4173/api/auth/me)
           test "$AUTH_STATUS" = "401"
           grep -q '"authenticated":false' /tmp/auth-me.json
+          grep -qi '^x-request-id: smoke-auth-001' /tmp/auth-me-headers.txt
 
           LOGOUT_STATUS=$(curl --silent --output /dev/null --dump-header /tmp/logout-headers.txt --write-out '%{http_code}' -X POST http://127.0.0.1:4173/api/auth/logout)
           test "$LOGOUT_STATUS" = "204"
@@ -92,9 +99,11 @@ jobs:
           grep -qi 'HttpOnly' /tmp/logout-headers.txt
           grep -qi 'Secure' /tmp/logout-headers.txt
           grep -qi 'SameSite=Lax' /tmp/logout-headers.txt
+          grep -qi '^x-request-id:' /tmp/logout-headers.txt
 
           curl --fail --silent --show-error http://127.0.0.1:4173/ > /dev/null
 
-          API_STATUS=$(curl --silent --output /tmp/api-not-found.json --write-out '%{http_code}' http://127.0.0.1:4173/api/not-found)
+          API_STATUS=$(curl --silent --output /tmp/api-not-found.json --dump-header /tmp/api-not-found-headers.txt --write-out '%{http_code}' -H 'x-request-id: smoke-not-found-001' http://127.0.0.1:4173/api/not-found)
           test "$API_STATUS" = "404"
           grep -q '"code":"not_found"' /tmp/api-not-found.json
+          grep -qi '^x-request-id: smoke-not-found-001' /tmp/api-not-found-headers.txt

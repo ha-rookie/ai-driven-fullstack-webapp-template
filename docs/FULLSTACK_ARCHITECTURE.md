@@ -220,8 +220,55 @@ Runtime Integrity responsibilities:
 
 Detailed rules are defined in `docs/RUNTIME_INTEGRITY.md`.
 
+## Audit & Correlation
+
+Issue #15 adds API request correlation and a structured accountability event contract.
+
+```text
+/api/* Request
+    ↓
+Request Context
+  ├─ requestId
+  ├─ method
+  └─ path
+    ↓
+Boundary decision / important operation
+    ↓
+AuditEvent
+    ↓
+Explicit field projection
+    ↓
+Worker console JSON
+```
+
+Runtime structure:
+
+```text
+src/worker/audit/
+  ├─ request-context.ts
+  ├─ audit-logger.ts
+  ├─ types.ts
+  └─ index.ts
+```
+
+Audit & Correlation responsibilities:
+
+- request ID priority is `CF-Ray` → validated `x-request-id` → UUID
+- client-provided request IDs are length/character validated before reuse
+- API responses return the resolved `x-request-id`
+- Request Context stores pathname, not query parameters
+- Audit uses generic actor/scope/resource identifiers
+- the serializer only emits an explicit bounded field set
+- token, Cookie, request body, secrets, and unnecessary PII are outside the Audit contract
+- Audit sink failure is isolated from Core request behavior
+- authentication failures and logout are connected to the current Worker boundary
+- authorization and mutation events use the same contract when concrete protected endpoints are added
+- traffic analytics and general application diagnostics remain separate concerns
+
+Detailed rules are defined in `docs/AUDIT_OBSERVABILITY.md`.
+
 ## Planned layers
 
-Later Issues add application orchestration, audit/correlation logging, recovery, concrete protected boundaries, and boundary tests.
+Later Issues add application orchestration, recovery, concrete protected boundaries, and boundary tests.
 
-Those layers may depend on the Shared, Data, Authentication, Authorization, and Runtime Integrity Foundations, but lower-level foundations must not depend on product-specific application behavior.
+Those layers may depend on the Shared, Data, Authentication, Authorization, Runtime Integrity, and Audit/Correlation Foundations, but lower-level foundations must not depend on product-specific application behavior.
