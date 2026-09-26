@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the D1-specific persistence baseline added by this Full-stack Template. Product-domain schema and production data operations remain explicit later decisions. Authentication persistence is introduced by Issue #9, authorization persistence by Issue #11, and runtime-integrity persistence by Issue #13.
+Define the D1-specific persistence baseline added by this Full-stack Template. Product-domain schema and production data operations remain explicit later decisions. Authentication persistence is introduced by Issue #9, authorization persistence by Issue #11, runtime-integrity persistence by Issue #13, and protected-boundary scope binding by Issue #17.
 
 ## D1 binding
 
@@ -119,12 +119,37 @@ Application code still performs explicit optimistic-concurrency and transition c
 
 Detailed behavior is defined in `docs/RUNTIME_INTEGRITY.md`.
 
+## Protected boundary scope binding
+
+`migrations/0005_protected_boundary.sql` connects the neutral resource to generic authorization scopes without rewriting earlier migration history:
+
+```text
+example_resources
+       ↓ 1:1
+example_resource_scope_bindings
+       ↓
+resource_scopes
+```
+
+Rules:
+
+- each example resource may bind to at most one scope
+- a binding must reference an existing example resource and scope
+- deleting the resource or scope cascades the binding
+- an unbound resource is not exposed through the protected Example API
+- the sample binding exists to demonstrate boundary composition, not to prescribe every project's schema
+
+A project whose resource is inherently scoped may put `scope_id` directly on that domain table instead of retaining the bridge table.
+
+Detailed protected-boundary behavior is defined in `docs/BOUNDARY_TESTING.md`.
+
 ## Schema verification
 
-`db:verify:local` verifies that Local D1 contains the baseline tables:
+Local validation verifies these baseline tables:
 
 - `example_resources`
 - `example_resource_changes`
+- `example_resource_scope_bindings`
 - `users`
 - `external_identities`
 - `application_sessions`

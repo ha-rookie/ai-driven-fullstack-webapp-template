@@ -17,6 +17,7 @@
     "src/shared/**/*.ts",
     "src/domain/**/*.ts",
     "src/infrastructure/**/*.ts",
+    "src/worker/*.ts",
     "src/worker/auth/**/*.ts",
     "src/worker/authorization/**/*.ts",
     "src/worker/audit/**/*.ts",

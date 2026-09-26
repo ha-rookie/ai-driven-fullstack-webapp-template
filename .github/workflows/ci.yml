@@ -46,6 +46,9 @@ jobs:
           grep -q 'resource_scopes' /tmp/d1-schema.txt
           grep -q 'scope_memberships' /tmp/d1-schema.txt
 
+          npx wrangler d1 execute DB --local --command "SELECT name FROM sqlite_master WHERE type='table' AND name='example_resource_scope_bindings'" | tee /tmp/boundary-schema.txt
+          grep -q 'example_resource_scope_bindings' /tmp/boundary-schema.txt
+
           npx wrangler d1 execute DB --local --command "PRAGMA table_info(example_resources)" | tee /tmp/example-resource-columns.txt
           grep -q 'status' /tmp/example-resource-columns.txt
           grep -q 'version' /tmp/example-resource-columns.txt
@@ -59,7 +62,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Runtime smoke test
+      - name: Seed protected boundary fixture
+        run: npx wrangler d1 execute DB --local --file tests/fixtures/protected-boundary.sql
+
+      - name: Runtime and protected boundary test
         shell: bash
         run: |
           set -euo pipefail
@@ -107,3 +113,140 @@ jobs:
           test "$API_STATUS" = "404"
           grep -q '"code":"not_found"' /tmp/api-not-found.json
           grep -qi '^x-request-id: smoke-not-found-001' /tmp/api-not-found-headers.txt
+
+          RESOURCE_A='http://127.0.0.1:4173/api/scopes/scope-a/example-resources/resource-a'
+          RESOURCE_B='http://127.0.0.1:4173/api/scopes/scope-b/example-resources/resource-a'
+          STATUS_A="$RESOURCE_A/status"
+          EDITOR_COOKIE='app_session=boundary-editor-token'
+          VIEWER_COOKIE='app_session=boundary-viewer-token'
+          SCOPE_B_COOKIE='app_session=boundary-scope-b-token'
+
+          assert_resource_state() {
+            local expected_name="$1"
+            local expected_status="$2"
+            local expected_version="$3"
+            curl --fail --silent --show-error \
+              --cookie "$EDITOR_COOKIE" \
+              "$RESOURCE_A" > /tmp/boundary-resource-state.json
+            grep -q "\"name\":\"$expected_name\"" /tmp/boundary-resource-state.json
+            grep -q "\"status\":\"$expected_status\"" /tmp/boundary-resource-state.json
+            grep -q "\"version\":$expected_version" /tmp/boundary-resource-state.json
+          }
+
+          curl --fail --silent --show-error \
+            --cookie "$VIEWER_COOKIE" \
+            --dump-header /tmp/boundary-read-headers.txt \
+            -H 'x-request-id: boundary-read-001' \
+            "$RESOURCE_A" > /tmp/boundary-read.json
+          grep -q '"name":"Original Resource"' /tmp/boundary-read.json
+          grep -qi '^x-request-id: boundary-read-001' /tmp/boundary-read-headers.txt
+
+          UNAUTH_STATUS=$(curl --silent --output /tmp/boundary-unauth.json --write-out '%{http_code}' \
+            -X PATCH -H 'content-type: application/json' \
+            --data '{"name":"Unauthorized Change","expectedVersion":1}' \
+            "$RESOURCE_A")
+          test "$UNAUTH_STATUS" = "401"
+          grep -q '"code":"authentication_required"' /tmp/boundary-unauth.json
+          assert_resource_state 'Original Resource' 'draft' 1
+
+          VIEWER_WRITE_STATUS=$(curl --silent --output /tmp/boundary-viewer-write.json --write-out '%{http_code}' \
+            --cookie "$VIEWER_COOKIE" \
+            -X PATCH -H 'content-type: application/json' \
+            --data '{"name":"Viewer Change","expectedVersion":1}' \
+            "$RESOURCE_A")
+          test "$VIEWER_WRITE_STATUS" = "403"
+          grep -q '"code":"forbidden"' /tmp/boundary-viewer-write.json
+          assert_resource_state 'Original Resource' 'draft' 1
+
+          WRONG_SCOPE_STATUS=$(curl --silent --output /tmp/boundary-wrong-scope.json --write-out '%{http_code}' \
+            --cookie "$SCOPE_B_COOKIE" \
+            -X PATCH -H 'content-type: application/json' \
+            --data '{"name":"Wrong Scope Change","expectedVersion":1}' \
+            "$RESOURCE_B")
+          test "$WRONG_SCOPE_STATUS" = "403"
+          grep -q '"code":"forbidden"' /tmp/boundary-wrong-scope.json
+          assert_resource_state 'Original Resource' 'draft' 1
+
+          INVALID_STATUS=$(curl --silent --output /tmp/boundary-invalid.json --write-out '%{http_code}' \
+            --cookie "$EDITOR_COOKIE" \
+            -X PATCH -H 'content-type: application/json' \
+            --data '{"name":"","expectedVersion":1}' \
+            "$RESOURCE_A")
+          test "$INVALID_STATUS" = "400"
+          grep -q '"code":"invalid_request"' /tmp/boundary-invalid.json
+          assert_resource_state 'Original Resource' 'draft' 1
+
+          RENAME_STATUS=$(curl --silent --output /tmp/boundary-rename.json --write-out '%{http_code}' \
+            --cookie "$EDITOR_COOKIE" \
+            -X PATCH -H 'content-type: application/json' \
+            --data '{"name":"Renamed Resource","expectedVersion":1}' \
+            "$RESOURCE_A")
+          test "$RENAME_STATUS" = "200"
+          grep -q '"name":"Renamed Resource"' /tmp/boundary-rename.json
+          grep -q '"version":2' /tmp/boundary-rename.json
+          assert_resource_state 'Renamed Resource' 'draft' 2
+
+          STALE_STATUS=$(curl --silent --output /tmp/boundary-stale.json --write-out '%{http_code}' \
+            --cookie "$EDITOR_COOKIE" \
+            -X PATCH -H 'content-type: application/json' \
+            --data '{"name":"Stale Overwrite","expectedVersion":1}' \
+            "$RESOURCE_A")
+          test "$STALE_STATUS" = "409"
+          grep -q '"code":"stale_update"' /tmp/boundary-stale.json
+          assert_resource_state 'Renamed Resource' 'draft' 2
+
+          INVALID_TRANSITION_STATUS=$(curl --silent --output /tmp/boundary-invalid-transition.json --write-out '%{http_code}' \
+            --cookie "$EDITOR_COOKIE" \
+            -X POST -H 'content-type: application/json' \
+            --data '{"fromStatus":"draft","toStatus":"finalized","expectedVersion":2}' \
+            "$STATUS_A")
+          test "$INVALID_TRANSITION_STATUS" = "409"
+          grep -q '"code":"invalid_transition"' /tmp/boundary-invalid-transition.json
+          assert_resource_state 'Renamed Resource' 'draft' 2
+
+          ACTIVE_STATUS=$(curl --silent --output /tmp/boundary-active.json --write-out '%{http_code}' \
+            --cookie "$EDITOR_COOKIE" \
+            -X POST -H 'content-type: application/json' \
+            --data '{"fromStatus":"draft","toStatus":"active","expectedVersion":2}' \
+            "$STATUS_A")
+          test "$ACTIVE_STATUS" = "200"
+          grep -q '"status":"active"' /tmp/boundary-active.json
+          grep -q '"version":3' /tmp/boundary-active.json
+          assert_resource_state 'Renamed Resource' 'active' 3
+
+          FINALIZE_STATUS=$(curl --silent --output /tmp/boundary-finalize.json --write-out '%{http_code}' \
+            --cookie "$EDITOR_COOKIE" \
+            -X POST -H 'content-type: application/json' \
+            --data '{"fromStatus":"active","toStatus":"finalized","expectedVersion":3}' \
+            "$STATUS_A")
+          test "$FINALIZE_STATUS" = "200"
+          grep -q '"status":"finalized"' /tmp/boundary-finalize.json
+          grep -q '"version":4' /tmp/boundary-finalize.json
+          assert_resource_state 'Renamed Resource' 'finalized' 4
+
+          IMMUTABLE_STATUS=$(curl --silent --output /tmp/boundary-immutable.json --write-out '%{http_code}' \
+            --cookie "$EDITOR_COOKIE" \
+            -X PATCH -H 'content-type: application/json' \
+            --data '{"name":"After Finalize","expectedVersion":4}' \
+            "$RESOURCE_A")
+          test "$IMMUTABLE_STATUS" = "409"
+          grep -q '"code":"resource_immutable"' /tmp/boundary-immutable.json
+          assert_resource_state 'Renamed Resource' 'finalized' 4
+
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
+          trap - EXIT
+
+          npx wrangler d1 execute DB --local --command "SELECT COUNT(*) AS changeCount FROM example_resource_changes WHERE resource_id='resource-a'" > /tmp/boundary-change-count.json
+          grep -q '"changeCount": 3' /tmp/boundary-change-count.json
+
+          grep -q '"category":"authorization"' /tmp/fullstack-template-vite.log
+          grep -q '"reason":"role_required"' /tmp/fullstack-template-vite.log
+          grep -q '"reason":"resource_scope_mismatch"' /tmp/fullstack-template-vite.log
+          grep -q '"category":"mutation"' /tmp/fullstack-template-vite.log
+          grep -q '"reason":"invalid_request"' /tmp/fullstack-template-vite.log
+          grep -q '"reason":"stale"' /tmp/fullstack-template-vite.log
+          grep -q '"reason":"invalid_transition"' /tmp/fullstack-template-vite.log
+          grep -q '"reason":"immutable"' /tmp/fullstack-template-vite.log
+          grep -q '"action":"example_resource.rename","outcome":"success"' /tmp/fullstack-template-vite.log
+          grep -q '"action":"example_resource.transition","outcome":"success"' /tmp/fullstack-template-vite.log
