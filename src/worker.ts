@@ -10,6 +10,7 @@ import {
   writeAuditSafely,
   type AuditEvent,
 } from "./worker/audit";
+import { handleExampleResourceApi } from "./worker/example-resource-api";
 
 interface Env {
   DB: D1Database;
@@ -131,6 +132,15 @@ export default {
           ),
         );
       }
+    }
+
+    const exampleResourceResponse = await handleExampleResourceApi(
+      request,
+      env.DB,
+      audit,
+    );
+    if (exampleResourceResponse) {
+      return api(exampleResourceResponse);
     }
 
     return api(

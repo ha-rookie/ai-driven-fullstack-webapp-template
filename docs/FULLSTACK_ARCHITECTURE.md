@@ -177,7 +177,7 @@ Authorization responsibilities:
 - membership in one scope never authorizes a resource in another scope
 - policy code is independent of D1 and HTTP
 - Authentication remains responsible for establishing the internal user before Authorization runs
-- missing authentication maps to HTTP 401 at the boundary; authorization denial maps to 403 when a protected endpoint is added
+- missing authentication maps to HTTP 401 at the boundary; authorization denial maps to 403
 
 Detailed rules are defined in `docs/AUTHORIZATION_DESIGN.md`.
 
@@ -241,16 +241,6 @@ Explicit field projection
 Worker console JSON
 ```
 
-Runtime structure:
-
-```text
-src/worker/audit/
-  ├─ request-context.ts
-  ├─ audit-logger.ts
-  ├─ types.ts
-  └─ index.ts
-```
-
 Audit & Correlation responsibilities:
 
 - request ID priority is `CF-Ray` → validated `x-request-id` → UUID
@@ -261,14 +251,67 @@ Audit & Correlation responsibilities:
 - the serializer only emits an explicit bounded field set
 - token, Cookie, request body, secrets, and unnecessary PII are outside the Audit contract
 - Audit sink failure is isolated from Core request behavior
-- authentication failures and logout are connected to the current Worker boundary
-- authorization and mutation events use the same contract when concrete protected endpoints are added
 - traffic analytics and general application diagnostics remain separate concerns
 
 Detailed rules are defined in `docs/AUDIT_OBSERVABILITY.md`.
 
+## Protected Boundary Composition
+
+Issue #17 connects the previously independent foundations through a concrete protected Example API.
+
+```text
+HTTP Request
+   ↓
+resolveApplicationSession
+   ↓
+findExampleResourceScopeId
+   ↓
+findScopeMembership
+   ↓
+authorizeScopedAction
+   ↓
+validate request body
+   ↓
+D1 Example Resource Store
+   ↓
+Audit + HTTP response mapping
+```
+
+Protected routes:
+
+```text
+GET   /api/scopes/:scopeId/example-resources/:resourceId
+PATCH /api/scopes/:scopeId/example-resources/:resourceId
+POST  /api/scopes/:scopeId/example-resources/:resourceId/status
+```
+
+Persistence gains a one-to-one scope bridge:
+
+```text
+example_resources
+       ↓
+example_resource_scope_bindings
+       ↓
+resource_scopes
+```
+
+Boundary responsibilities:
+
+- unauthenticated requests fail before protected behavior runs
+- authorization checks membership, role, requested scope, and actual resource scope
+- Example-only roles are `viewer` for read and `editor` for read/write
+- invalid input never reaches a successful mutation
+- Runtime Integrity failures map to explicit HTTP conflicts
+- authorization and mutation decisions emit structured Audit events
+- rejected operations are followed by persisted-state assertions
+- Local D1 fixture tests positive and negative paths without remote quota use
+
+The example roles and routes are replaceable project examples, not fixed product requirements.
+
+Detailed behavior and the negative-path matrix are defined in `docs/BOUNDARY_TESTING.md`.
+
 ## Planned layers
 
-Later Issues add application orchestration, recovery, concrete protected boundaries, and boundary tests.
+Later Issues may add recovery/backup rehearsal, production operations, concrete identity-provider adapters, and optional performance patterns.
 
-Those layers may depend on the Shared, Data, Authentication, Authorization, Runtime Integrity, and Audit/Correlation Foundations, but lower-level foundations must not depend on product-specific application behavior.
+Those layers may depend on the Shared, Data, Authentication, Authorization, Runtime Integrity, Audit/Correlation, and Protected Boundary Foundations. Lower-level foundations must not depend on product-specific application behavior.
