@@ -52,6 +52,12 @@ export interface IssuedApplicationSession {
   expiresAt: string;
 }
 
+interface SessionLookupRow {
+  id: string;
+  displayName: string | null;
+  expiresAt: string;
+}
+
 export const issueApplicationSession = async (
   db: D1Database,
   userId: string,
@@ -84,13 +90,19 @@ export const resolveSessionToken = async (
   now = new Date(),
 ): Promise<ResolvedApplicationSession | null> => {
   const tokenHash = await hashSessionToken(token);
-
-  return db
+  const row = await db
     .prepare(
       "SELECT u.id,u.display_name AS displayName,s.expires_at AS expiresAt FROM application_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>?",
     )
     .bind(tokenHash, now.toISOString())
-    .first<ResolvedApplicationSession>();
+    .first<SessionLookupRow>();
+
+  return row
+    ? {
+        user: { id: row.id, displayName: row.displayName },
+        expiresAt: row.expiresAt,
+      }
+    : null;
 };
 
 export const resolveApplicationSession = async (

@@ -76,10 +76,8 @@ class FakeD1 {
             if (!user) return null;
 
             return {
-              user: {
-                id: user.id,
-                displayName: user.displayName,
-              },
+              id: user.id,
+              displayName: user.displayName,
               expiresAt: session.expiresAt,
             } as T;
           }
