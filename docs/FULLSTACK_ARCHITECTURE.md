@@ -181,8 +181,47 @@ Authorization responsibilities:
 
 Detailed rules are defined in `docs/AUTHORIZATION_DESIGN.md`.
 
+## Runtime Integrity
+
+Issue #13 adds concrete shared-state integrity patterns around the neutral example resource.
+
+```text
+src/domain/example-resource.ts
+        ↓ transition rules
+src/infrastructure/d1-example-resource-store.ts
+        ↓
+D1 optimistic mutation
+  ├─ expected version
+  ├─ mutable-state predicate
+  ├─ version increment
+  └─ change record in the same batch
+```
+
+Persistence is extended with:
+
+```text
+example_resources
+  ├─ status
+  └─ version
+
+example_resource_changes
+```
+
+Runtime Integrity responsibilities:
+
+- stale callers cannot overwrite a newer version silently
+- `draft -> active -> finalized` is the explicit example state machine
+- `finalized` is terminal and immutable
+- successful multi-write mutations use one D1 `batch()`
+- zero-row updates are classified rather than reported as success
+- SQL constraints provide a second integrity boundary behind application checks
+- Domain transition logic is independent of D1 and HTTP
+- the D1 adapter does not decide Authentication or Authorization
+
+Detailed rules are defined in `docs/RUNTIME_INTEGRITY.md`.
+
 ## Planned layers
 
-Later Issues add `application`, `domain`, persistence ports/adapters, concurrency/invariant enforcement, audit, recovery, concrete protected boundaries, and boundary tests.
+Later Issues add application orchestration, audit/correlation logging, recovery, concrete protected boundaries, and boundary tests.
 
-Those layers may depend on the Shared, Data, Authentication, and Authorization Foundations, but lower-level foundations must not depend on product-specific application behavior.
+Those layers may depend on the Shared, Data, Authentication, Authorization, and Runtime Integrity Foundations, but lower-level foundations must not depend on product-specific application behavior.
