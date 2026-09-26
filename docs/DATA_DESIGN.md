@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the D1-specific persistence baseline added by this Full-stack Template. Product-domain schema, authentication data, authorization rules, concurrency control, and production data operations are introduced only by later dedicated Issues.
+Define the D1-specific persistence baseline added by this Full-stack Template. Product-domain schema, authorization rules, concurrency control, and production data operations remain explicit later decisions. Authentication persistence is introduced separately by Issue #9.
 
 ## D1 binding
 
@@ -32,7 +32,7 @@ Schema changes are represented by ordered SQL files under `migrations/`.
 - do not rely on manual schema edits as the repository source of truth
 - validate migrations locally before any deliberate remote application
 
-## Example resource
+## Core example resource
 
 `migrations/0001_core.sql` creates a deliberately neutral `example_resources` table:
 
@@ -46,16 +46,48 @@ example_resources
 
 Its purpose is to prove the migration path and provide a later target for repository, API, authorization, and concurrency examples.
 
-This first migration intentionally does **not** include:
+The core resource intentionally has no authentication, authorization, or optimistic-concurrency semantics.
 
-- users or external identities
+## Authentication data
+
+`migrations/0002_auth_foundation.sql` adds only the data required for provider-independent identity and application sessions:
+
+```text
+users
+external_identities
+application_sessions
+```
+
+Rules:
+
+- external provider subjects map to internal `users.id`
+- provider subjects are unique within a provider
+- application sessions reference internal users
+- only a SHA-256 session token hash is stored in D1
+- raw session tokens are never persisted
+- session rows carry explicit expiry and optional revocation timestamps
+- foreign keys cascade identity/session cleanup when an internal user is deleted
+
+This migration intentionally does **not** add:
+
 - roles or memberships
-- application sessions
+- permissions
 - optimistic-concurrency `version`
-- status/state-transition rules
+- state-transition rules
 - product-specific fields
 
-Those concepts belong to later Issues so their design decisions remain explicit.
+Those concepts remain dedicated later Issues.
+
+## Schema verification
+
+`db:verify:local` verifies that Local D1 contains the baseline tables:
+
+- `example_resources`
+- `users`
+- `external_identities`
+- `application_sessions`
+
+CI checks those names after applying all numbered migrations locally.
 
 ## Health checks
 
@@ -76,4 +108,4 @@ Production
   └─ dedicated Production D1 resource
 ```
 
-Remote migration, performance benchmark, backup/recovery rehearsal, and quota-sensitive operations are intentionally outside this baseline Issue and must be deliberate operations.
+Remote migration, performance benchmark, backup/recovery rehearsal, and quota-sensitive operations are intentionally outside the baseline and must be deliberate operations.
