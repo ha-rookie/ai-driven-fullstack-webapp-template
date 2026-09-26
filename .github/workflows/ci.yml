@@ -30,6 +30,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Migrate local D1
+        run: npm run db:migrate:local
+
+      - name: Verify local D1 schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run db:verify:local | tee /tmp/d1-schema.txt
+          grep -q 'example_resources' /tmp/d1-schema.txt
+
       - name: Test
         run: npm test
 
@@ -59,6 +69,8 @@ jobs:
           done
 
           grep -q '"status":"ok"' /tmp/health.json
+          curl --fail --silent --show-error http://127.0.0.1:4173/api/health/database > /tmp/database-health.json
+          grep -q '"status":"ok"' /tmp/database-health.json
           curl --fail --silent --show-error http://127.0.0.1:4173/ > /dev/null
 
           API_STATUS=$(curl --silent --output /tmp/api-not-found.json --write-out '%{http_code}' http://127.0.0.1:4173/api/not-found)

@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:verify:local": "wrangler d1 execute DB --local --command \"SELECT name FROM sqlite_master WHERE type='table' AND name='example_resources'\"",
     "preview": "vite preview"
   },
   "dependencies": {
