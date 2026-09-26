@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node", "@cloudflare/workers-types"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "verbatimModuleSyntax": false,
+    "noEmitOnError": true,
+    "rootDir": ".",
+    "outDir": ".test-dist"
+  },
+  "include": [
+    "src/shared/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}
