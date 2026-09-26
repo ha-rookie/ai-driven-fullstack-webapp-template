@@ -132,12 +132,57 @@ Authentication responsibilities:
 - expired or revoked sessions are rejected
 - logout performs server-side revoke before clearing the browser cookie
 - `/api/auth/me` exposes only authenticated internal user identity
-- roles, memberships, permissions, and product scope are deliberately absent
+- roles, memberships, permissions, and product scope are deliberately absent from Authentication
 
 Detailed rules are defined in `docs/AUTH_DESIGN.md`.
 
+## Authorization Foundation
+
+Issue #11 adds generic scope membership and role-based authorization without choosing product-specific role names.
+
+```text
+Authenticated User
+        ↓
+Scope Membership (D1)
+        ↓
+Pure Role Policy
+        ↓
+Resource Scope Guard
+        ↓
+Authorization Decision
+```
+
+Runtime structure:
+
+```text
+src/worker/authorization/
+  ├─ membership.ts
+  ├─ policy.ts
+  ├─ types.ts
+  └─ index.ts
+```
+
+Persistence:
+
+```text
+resource_scopes
+scope_memberships
+```
+
+Authorization responsibilities:
+
+- D1 adapter loads membership but does not decide role semantics
+- Project code supplies Action → allowed role mapping
+- unconfigured actions fail closed
+- membership in one scope never authorizes a resource in another scope
+- policy code is independent of D1 and HTTP
+- Authentication remains responsible for establishing the internal user before Authorization runs
+- missing authentication maps to HTTP 401 at the boundary; authorization denial maps to 403 when a protected endpoint is added
+
+Detailed rules are defined in `docs/AUTHORIZATION_DESIGN.md`.
+
 ## Planned layers
 
-Later Issues add `application`, `domain`, persistence ports/adapters, authorization, concurrency/invariant enforcement, audit, recovery, and boundary tests.
+Later Issues add `application`, `domain`, persistence ports/adapters, concurrency/invariant enforcement, audit, recovery, concrete protected boundaries, and boundary tests.
 
-Those layers may depend on the Shared, Data, and Authentication Foundations, but lower-level foundations must not depend on product-specific application behavior.
+Those layers may depend on the Shared, Data, Authentication, and Authorization Foundations, but lower-level foundations must not depend on product-specific application behavior.

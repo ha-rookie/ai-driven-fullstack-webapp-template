@@ -16,6 +16,7 @@
   "include": [
     "src/shared/**/*.ts",
     "src/worker/auth/**/*.ts",
+    "src/worker/authorization/**/*.ts",
     "tests/**/*.ts"
   ]
 }

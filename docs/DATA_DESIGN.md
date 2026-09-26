@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the D1-specific persistence baseline added by this Full-stack Template. Product-domain schema, authorization rules, concurrency control, and production data operations remain explicit later decisions. Authentication persistence is introduced separately by Issue #9.
+Define the D1-specific persistence baseline added by this Full-stack Template. Product-domain schema, concurrency control, and production data operations remain explicit later decisions. Authentication persistence is introduced by Issue #9 and authorization persistence by Issue #11.
 
 ## D1 binding
 
@@ -68,15 +68,25 @@ Rules:
 - session rows carry explicit expiry and optional revocation timestamps
 - foreign keys cascade identity/session cleanup when an internal user is deleted
 
-This migration intentionally does **not** add:
+## Authorization data
 
-- roles or memberships
-- permissions
-- optimistic-concurrency `version`
-- state-transition rules
-- product-specific fields
+`migrations/0003_authorization_foundation.sql` adds generic resource scopes and memberships:
 
-Those concepts remain dedicated later Issues.
+```text
+resource_scopes
+scope_memberships
+```
+
+Rules:
+
+- a user may have at most one membership row per resource scope
+- membership role must be a non-empty string
+- role vocabulary is not fixed by the database
+- memberships reference both an internal user and a resource scope
+- deleting a user or scope cascades its memberships
+- indexes support lookup by user/scope and scope/role
+
+The authorization migration intentionally does **not** add a global administrator role, permission table, ABAC attributes, or product-specific scope names.
 
 ## Schema verification
 
@@ -86,6 +96,8 @@ Those concepts remain dedicated later Issues.
 - `users`
 - `external_identities`
 - `application_sessions`
+- `resource_scopes`
+- `scope_memberships`
 
 CI checks those names after applying all numbered migrations locally.
 
