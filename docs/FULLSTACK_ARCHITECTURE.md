@@ -89,8 +89,55 @@ Worker Env
 
 Detailed D1 rules are defined in `docs/DATA_DESIGN.md`.
 
+## Authentication Foundation
+
+Issue #9 adds provider-independent identity and application-session infrastructure.
+
+```text
+External Identity Provider
+        ↓ provider adapter
+Verified External Identity
+        ↓
+Internal User
+        ↓
+DB-backed Application Session
+        ↓
+Authenticated Worker Request
+```
+
+Runtime structure:
+
+```text
+src/worker/auth/
+  ├─ auth-provider.ts
+  ├─ application-session.ts
+  ├─ types.ts
+  └─ index.ts
+```
+
+Persistence:
+
+```text
+users
+external_identities
+application_sessions
+```
+
+Authentication responsibilities:
+
+- concrete identity providers remain adapters outside the baseline
+- external provider subjects map to internal user IDs
+- session tokens are opaque cryptographically random values
+- only session-token hashes are stored in D1
+- expired or revoked sessions are rejected
+- logout performs server-side revoke before clearing the browser cookie
+- `/api/auth/me` exposes only authenticated internal user identity
+- roles, memberships, permissions, and product scope are deliberately absent
+
+Detailed rules are defined in `docs/AUTH_DESIGN.md`.
+
 ## Planned layers
 
-Later Issues add `application`, `domain`, persistence ports/adapters, authentication, authorization, concurrency, audit, and boundary tests.
+Later Issues add `application`, `domain`, persistence ports/adapters, authorization, concurrency/invariant enforcement, audit, recovery, and boundary tests.
 
-Those layers may depend on the Shared Foundation and Data Foundation, but lower-level foundations must not depend on product-specific application behavior.
+Those layers may depend on the Shared, Data, and Authentication Foundations, but lower-level foundations must not depend on product-specific application behavior.

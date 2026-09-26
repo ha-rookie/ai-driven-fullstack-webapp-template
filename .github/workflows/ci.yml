@@ -39,6 +39,9 @@ jobs:
           set -euo pipefail
           npm run db:verify:local | tee /tmp/d1-schema.txt
           grep -q 'example_resources' /tmp/d1-schema.txt
+          grep -q 'users' /tmp/d1-schema.txt
+          grep -q 'external_identities' /tmp/d1-schema.txt
+          grep -q 'application_sessions' /tmp/d1-schema.txt
 
       - name: Test
         run: npm test
@@ -71,6 +74,18 @@ jobs:
           grep -q '"status":"ok"' /tmp/health.json
           curl --fail --silent --show-error http://127.0.0.1:4173/api/health/database > /tmp/database-health.json
           grep -q '"status":"ok"' /tmp/database-health.json
+
+          AUTH_STATUS=$(curl --silent --output /tmp/auth-me.json --write-out '%{http_code}' http://127.0.0.1:4173/api/auth/me)
+          test "$AUTH_STATUS" = "401"
+          grep -q '"authenticated":false' /tmp/auth-me.json
+
+          LOGOUT_STATUS=$(curl --silent --output /dev/null --dump-header /tmp/logout-headers.txt --write-out '%{http_code}' -X POST http://127.0.0.1:4173/api/auth/logout)
+          test "$LOGOUT_STATUS" = "204"
+          grep -qi '^set-cookie: app_session=;' /tmp/logout-headers.txt
+          grep -qi 'HttpOnly' /tmp/logout-headers.txt
+          grep -qi 'Secure' /tmp/logout-headers.txt
+          grep -qi 'SameSite=Lax' /tmp/logout-headers.txt
+
           curl --fail --silent --show-error http://127.0.0.1:4173/ > /dev/null
 
           API_STATUS=$(curl --silent --output /tmp/api-not-found.json --write-out '%{http_code}' http://127.0.0.1:4173/api/not-found)
