@@ -1,0 +1,45 @@
+name: Fork monitor
+
+on:
+  fork:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create fork notification issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fork = context.payload.fork;
+            const source = context.payload.repository;
+            const forkName = fork?.full_name ?? "(unknown)";
+            const forkUrl = fork?.html_url ?? "(unknown)";
+            const forkOwner = fork?.owner?.login ?? "(unknown)";
+            const createdAt = fork?.created_at ?? new Date().toISOString();
+
+            const title = `Fork detected: ${forkName}`;
+            const body = [
+              "@ha-rookie",
+              "",
+              "Public repository の Fork を検知しました。",
+              "",
+              `- Source: \`${source.full_name}\``,
+              `- Fork: ${forkUrl}`,
+              `- Fork owner: \`${forkOwner}\``,
+              `- Created at: \`${createdAt}\``,
+              "",
+              "このIssueは `.github/workflows/fork-monitor.yml` により自動作成されました。"
+            ].join("\n");
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body
+            });
