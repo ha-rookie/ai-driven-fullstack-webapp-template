@@ -93,6 +93,9 @@ test("ConsoleAuditLogger emits a bounded structured JSON record", () => {
 
   assert.equal(lines.length, 1);
   const record = JSON.parse(lines[0]) as Record<string, unknown>;
+  assert.equal(Object.prototype.hasOwnProperty.call(record, "token"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(record, "cookie"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(record, "requestBody"), false);
   assert.deepEqual(record, {
     kind: "audit",
     timestamp: "2026-09-26T00:00:00.000Z",
@@ -108,9 +111,6 @@ test("ConsoleAuditLogger emits a bounded structured JSON record", () => {
     resourceId: "resource-1",
     reason: "role_required",
   });
-  assert.equal(record.token, undefined);
-  assert.equal(record.cookie, undefined);
-  assert.equal(record.requestBody, undefined);
 });
 
 test("the same audit contract represents authentication and mutation outcomes", () => {
