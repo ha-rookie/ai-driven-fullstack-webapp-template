@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the D1-specific persistence baseline added by this Full-stack Template. Product-domain schema, concurrency control, and production data operations remain explicit later decisions. Authentication persistence is introduced by Issue #9 and authorization persistence by Issue #11.
+Define the D1-specific persistence baseline added by this Full-stack Template. Product-domain schema and production data operations remain explicit later decisions. Authentication persistence is introduced by Issue #9, authorization persistence by Issue #11, and runtime-integrity persistence by Issue #13.
 
 ## D1 binding
 
@@ -44,9 +44,7 @@ example_resources
   updated_at
 ```
 
-Its purpose is to prove the migration path and provide a later target for repository, API, authorization, and concurrency examples.
-
-The core resource intentionally has no authentication, authorization, or optimistic-concurrency semantics.
+Its purpose is to prove the migration path and provide a target for later persistence, API, authorization, and concurrency examples without introducing product-specific domain language.
 
 ## Authentication data
 
@@ -88,18 +86,52 @@ Rules:
 
 The authorization migration intentionally does **not** add a global administrator role, permission table, ABAC attributes, or product-specific scope names.
 
+## Runtime Integrity data
+
+`migrations/0004_runtime_integrity.sql` upgrades the neutral example resource into an executable concurrency/state-integrity example:
+
+```text
+example_resources
+  ...
+  status   draft | active | finalized
+  version  >= 1
+
+example_resource_changes
+  resource_id
+  version
+  change_kind
+  from_status
+  to_status
+  created_at
+```
+
+Rules:
+
+- existing rows start in `draft` at version `1`
+- each successful mutation increments the resource version
+- status is constrained to the example state machine vocabulary
+- change rows reference the resource and are unique per resource/version
+- rename changes do not carry status fields
+- status-transition changes must carry valid from/to states
+- deleting a resource cascades its example change history
+
+Application code still performs explicit optimistic-concurrency and transition checks. Database constraints are complementary and must not be replaced by UI-only validation.
+
+Detailed behavior is defined in `docs/RUNTIME_INTEGRITY.md`.
+
 ## Schema verification
 
 `db:verify:local` verifies that Local D1 contains the baseline tables:
 
 - `example_resources`
+- `example_resource_changes`
 - `users`
 - `external_identities`
 - `application_sessions`
 - `resource_scopes`
 - `scope_memberships`
 
-CI checks those names after applying all numbered migrations locally.
+CI also verifies that `example_resources` contains the `status` and `version` columns after all numbered migrations are applied.
 
 ## Health checks
 

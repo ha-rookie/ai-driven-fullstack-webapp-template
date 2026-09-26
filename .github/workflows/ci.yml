@@ -39,11 +39,16 @@ jobs:
           set -euo pipefail
           npm run db:verify:local | tee /tmp/d1-schema.txt
           grep -q 'example_resources' /tmp/d1-schema.txt
+          grep -q 'example_resource_changes' /tmp/d1-schema.txt
           grep -q 'users' /tmp/d1-schema.txt
           grep -q 'external_identities' /tmp/d1-schema.txt
           grep -q 'application_sessions' /tmp/d1-schema.txt
           grep -q 'resource_scopes' /tmp/d1-schema.txt
           grep -q 'scope_memberships' /tmp/d1-schema.txt
+
+          npx wrangler d1 execute DB --local --command "PRAGMA table_info(example_resources)" | tee /tmp/example-resource-columns.txt
+          grep -q 'status' /tmp/example-resource-columns.txt
+          grep -q 'version' /tmp/example-resource-columns.txt
 
       - name: Test
         run: npm test
