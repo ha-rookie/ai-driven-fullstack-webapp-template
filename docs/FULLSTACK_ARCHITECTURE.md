@@ -66,8 +66,31 @@ Responsibilities:
 
 Unit tests are compiled with TypeScript and executed with Node's standard test runner. This keeps the baseline small while providing executable contracts for the shared primitives.
 
+## Data Foundation
+
+Issue #7 connects the Worker to Cloudflare D1 without introducing authentication, authorization, or concurrency semantics.
+
+```text
+Worker Env
+  ├─ ASSETS
+  └─ DB: D1Database
+        ↓
+     numbered migrations
+        ↓
+     example_resources
+```
+
+- `GET /api/health` remains database-independent
+- `GET /api/health/database` verifies only that the D1 binding can execute a minimal query
+- Local D1 is used for CI migration and schema verification
+- Preview and Production are modeled as separate D1 resources and use placeholder identifiers until a project deliberately provisions them
+- remote migrations are not part of baseline CI
+- `example_resources` is intentionally neutral and exists to make later persistence patterns executable without introducing product-specific domain language
+
+Detailed D1 rules are defined in `docs/DATA_DESIGN.md`.
+
 ## Planned layers
 
-Later Issues add `application`, `domain`, `infrastructure`, authentication, authorization, D1 persistence, concurrency, audit, and boundary tests.
+Later Issues add `application`, `domain`, persistence ports/adapters, authentication, authorization, concurrency, audit, and boundary tests.
 
-Those layers may depend on the Shared Foundation, but the Shared Foundation must not depend on them.
+Those layers may depend on the Shared Foundation and Data Foundation, but lower-level foundations must not depend on product-specific application behavior.

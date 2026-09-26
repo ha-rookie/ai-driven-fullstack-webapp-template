@@ -1,4 +1,5 @@
 interface Env {
+  DB: D1Database;
   ASSETS: Fetcher;
 }
 
@@ -17,6 +18,20 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/health") {
       return json({ status: "ok" });
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname === "/api/health/database"
+    ) {
+      try {
+        const row = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
+        return row?.ok === 1
+          ? json({ status: "ok" })
+          : json({ status: "unavailable" }, { status: 503 });
+      } catch {
+        return json({ status: "unavailable" }, { status: 503 });
+      }
     }
 
     if (url.pathname.startsWith("/api/")) {
