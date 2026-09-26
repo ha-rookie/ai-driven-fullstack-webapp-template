@@ -32,3 +32,29 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Runtime smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev -- --host 127.0.0.1 --port 4173 > /tmp/fullstack-template-vite.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/api/health > /tmp/health.json; then
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              cat /tmp/fullstack-template-vite.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          grep -q '"status":"ok"' /tmp/health.json
+          curl --fail --silent --show-error http://127.0.0.1:4173/ > /dev/null
+
+          API_STATUS=$(curl --silent --output /tmp/api-not-found.json --write-out '%{http_code}' http://127.0.0.1:4173/api/not-found)
+          test "$API_STATUS" = "404"
+          grep -q '"code":"not_found"' /tmp/api-not-found.json
