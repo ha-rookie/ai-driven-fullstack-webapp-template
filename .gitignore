@@ -2,6 +2,7 @@ node_modules/
 dist/
 .test-dist/
 .wrangler/
+artifacts/
 .dev.vars
 .dev.vars.*
 *.local

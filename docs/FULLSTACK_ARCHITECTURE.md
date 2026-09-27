@@ -350,8 +350,51 @@ Recovery responsibilities:
 
 Detailed procedures are defined in `docs/RECOVERY_OPERATIONS.md`.
 
+## Performance / Capacity Foundation
+
+Issue #21 adds a Local-first D1 benchmark plus a separate quota-aware Preview benchmark.
+
+```text
+Required PR CI
+  └─ Local D1 smoke
+       ├─ 1k neutral resources
+       ├─ query-plan assertions
+       ├─ result assertions
+       ├─ SQL-duration / CLI-wall separation
+       └─ rows-read/write evidence when available
+
+Human-triggered Preview benchmark
+  └─ BENCHMARK_PREVIEW confirmation
+       ↓
+     config / environment guard
+       ↓
+     Preview fixture
+       ↓
+     representative workload
+       ↓
+     timing + resource-cost report
+       ↓
+     cleanup
+```
+
+Performance responsibilities:
+
+- Local CI verifies the workload shape and expected indexed access paths without hard-coding a universal millisecond threshold
+- `idx_example_resources_status_updated` demonstrates an index tied to a known list-screen access pattern
+- D1 `sql_duration_ms` and Wrangler CLI wall time are recorded as different metrics
+- rows read/written are captured beside timing when metadata is available
+- benchmark reports always label time units explicitly
+- an optional `PERF_SERVER_TARGET_MS` may be supplied by a Project whose NFR defines a target
+- the remote benchmark has only a Preview mode and refuses placeholder or Preview=Production configuration
+- Preview benchmark is `workflow_dispatch` only and requires `BENCHMARK_PREVIEW`
+- benchmark fixtures use a reserved prefix and are cleaned before/after execution
+- remote performance work is an External Resource Budget decision and is not run on every PR or schedule
+- actual remote benchmark success is only considered verified when a provisioned Project records manual Preview evidence
+
+Detailed workload, safety, and interpretation rules are defined in `docs/PERFORMANCE_CAPACITY.md`.
+
 ## Planned layers
 
-Later Issues may add production deployment controls, maintenance/read-only mode, concrete identity-provider adapters, long-term private backup storage, alerting, and optional performance patterns.
+Later Issues may add production deployment controls, maintenance/read-only mode, concrete identity-provider adapters, long-term private backup storage, alerting, browser performance, and load/stress testing.
 
-Those layers may depend on the Shared, Data, Authentication, Authorization, Runtime Integrity, Audit/Correlation, Protected Boundary, and Recovery/Operations Foundations. Lower-level foundations must not depend on product-specific application behavior.
+Those layers may depend on the Shared, Data, Authentication, Authorization, Runtime Integrity, Audit/Correlation, Protected Boundary, Recovery/Operations, and Performance/Capacity Foundations. Lower-level foundations must not depend on product-specific application behavior.

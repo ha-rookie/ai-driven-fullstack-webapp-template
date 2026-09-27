@@ -143,6 +143,21 @@ A project whose resource is inherently scoped may put `scope_id` directly on tha
 
 Detailed protected-boundary behavior is defined in `docs/BOUNDARY_TESTING.md`.
 
+## Performance access-path example
+
+`migrations/0006_performance_capacity.sql` adds one example index that corresponds to a representative business-list workload:
+
+```text
+idx_example_resources_status_updated
+  (status, updated_at DESC, id DESC)
+```
+
+The Local performance smoke verifies this index is actually selected for the status-page query with `EXPLAIN QUERY PLAN`.
+
+This migration demonstrates the rule that an index should have a known access pattern behind it. Product projects should not accumulate indexes by copying the Template mechanically; they should replace or extend them according to real query shapes and data distribution.
+
+Detailed workload and measurement rules are defined in `docs/PERFORMANCE_CAPACITY.md`.
+
 ## Schema verification
 
 Local validation verifies these baseline tables:
@@ -157,6 +172,8 @@ Local validation verifies these baseline tables:
 - `scope_memberships`
 
 CI also verifies that `example_resources` contains the `status` and `version` columns after all numbered migrations are applied.
+
+Performance CI additionally verifies indexed access paths by executing the representative workload against Local D1. It does not use a fixed Local-runner latency as a schema-quality criterion.
 
 ## Health checks
 
@@ -193,3 +210,19 @@ Issue #19 adds operational recovery guardrails without changing the application 
 - project RPO/RTO targets are operational requirements, not constants embedded in this Template
 
 Detailed procedures are defined in `docs/RECOVERY_OPERATIONS.md`.
+
+## Performance / capacity boundary
+
+Issue #21 adds a Local-first benchmark harness and a separate manual Preview capacity workflow.
+
+- required PR CI benchmarks Local D1 only
+- the Local fixture uses a reserved `__perf_template_` prefix and is cleaned before/after execution
+- required CI gates expected indexed query plans, not an arbitrary absolute millisecond threshold
+- SQL execution milliseconds and Wrangler CLI wall milliseconds are reported separately
+- D1 rows read/written are recorded when metadata exposes them
+- remote Preview benchmark requires explicit `BENCHMARK_PREVIEW` confirmation
+- placeholder IDs and Preview=Production configurations fail closed
+- no Production target mode is provided
+- remote performance testing is an External Resource Budget decision and is not scheduled or run for every PR
+
+Detailed procedures are defined in `docs/PERFORMANCE_CAPACITY.md`.
