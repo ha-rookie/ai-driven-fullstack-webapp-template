@@ -6,21 +6,48 @@ Define only the technology-specific runtime structure added by this Full-stack T
 
 ## Target architecture
 
+The baseline reflects the runtime structure that actually exists in this repository.
+
 ```text
 Browser
   ↓
 React SPA
   ↓ /api/*
-Cloudflare Worker
-  ↓
-Application
-  ↓
-Domain
-  ↓
-Infrastructure
-  ↓
-D1 / External Services
+Cloudflare Worker HTTP Boundary / Composition
+  ├─ Authentication / Authorization
+  ├─ Validation / HTTP mapping
+  ├─ Audit / Correlation
+  ├─ Domain rules
+  └─ Infrastructure adapters
+         ↓
+      D1 / External Services
 ```
+
+The baseline does **not** require a separate `src/application/` or Use Case layer.
+
+That is intentional. The upstream Generic Template describes `Presentation -> Application -> Domain -> Infrastructure` as a common logical model, but explicitly does not require all four layers. This Full-stack Template therefore documents the responsibility split that its executable example actually uses rather than adding an empty abstraction only to satisfy a diagram.
+
+### Baseline dependency rules
+
+- React/UI calls `/api/*`; it does not import Worker, D1, or server-only implementation modules
+- the Worker HTTP boundary owns protocol concerns and composes Authentication, Authorization, validation, Audit, Domain rules, and Infrastructure adapters
+- Domain logic must not depend on HTTP, Cloudflare Worker types, D1, Cookies, or concrete logging sinks
+- Infrastructure owns external I/O such as D1 access and may use Domain types/rules where needed to preserve invariants
+- Shared primitives must not depend on product Domain, Worker routing, D1, or concrete identity providers
+- Authorization policy remains independent of HTTP response mapping even though its baseline module lives under `src/worker/authorization/`
+- lower-level modules must not import the Worker HTTP boundary
+
+### When to add an Application / Use Case layer
+
+A Project may add an explicit Application / Use Case layer when it solves a real orchestration problem, for example when:
+
+- one business operation coordinates multiple repositories or external services
+- the same use case must be reused from HTTP and another entry point such as a queue, scheduled job, or CLI
+- Worker route handlers begin to contain product business decisions instead of protocol mapping and composition
+- transaction, authorization, workflow, or retry orchestration should be testable independently of HTTP
+- several routes repeat the same multi-step business operation
+
+When introduced, the Application layer should contain reusable use-case orchestration, not duplicate HTTP parsing or D1 adapter details.
 
 ## Bootstrap implementation
 
@@ -257,24 +284,19 @@ Detailed rules are defined in `docs/AUDIT_OBSERVABILITY.md`.
 
 ## Protected Boundary Composition
 
-Issue #17 connects the previously independent foundations through a concrete protected Example API.
+Issue #17 connects the previously independent foundations through a concrete protected Example API. The Worker HTTP boundary is the baseline composition point; this sequence is not represented as a separate mandatory Application layer.
 
 ```text
 HTTP Request
    ↓
-resolveApplicationSession
-   ↓
-findExampleResourceScopeId
-   ↓
-findScopeMembership
-   ↓
-authorizeScopedAction
-   ↓
-validate request body
-   ↓
-D1 Example Resource Store
-   ↓
-Audit + HTTP response mapping
+Worker HTTP Boundary / Example API
+   ├─ resolveApplicationSession
+   ├─ findExampleResourceScopeId
+   ├─ findScopeMembership
+   ├─ authorizeScopedAction
+   ├─ validate request body
+   ├─ call Domain / D1 Example Resource Store
+   └─ emit Audit + map HTTP response
 ```
 
 Protected routes:
@@ -395,6 +417,6 @@ Detailed workload, safety, and interpretation rules are defined in `docs/PERFORM
 
 ## Planned layers
 
-Later Issues may add production deployment controls, maintenance/read-only mode, concrete identity-provider adapters, long-term private backup storage, alerting, browser performance, and load/stress testing.
+Later Issues or Projects may add an explicit Application / Use Case layer when the orchestration criteria above are met, as well as production deployment controls, maintenance/read-only mode, concrete identity-provider adapters, long-term private backup storage, alerting, browser performance, and load/stress testing.
 
 Those layers may depend on the Shared, Data, Authentication, Authorization, Runtime Integrity, Audit/Correlation, Protected Boundary, Recovery/Operations, and Performance/Capacity Foundations. Lower-level foundations must not depend on product-specific application behavior.

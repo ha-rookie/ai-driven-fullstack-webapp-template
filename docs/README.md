@@ -19,12 +19,33 @@ Project docs
 
 このdirectoryへGeneric TemplateのCore Design文書を複製しません。また、Example実装をProject要件として固定しません。
 
+## Baseline layer model
+
+このFull-stack TemplateのBaselineは、存在しない層を形式上追加せず、現在の実装責務に合わせます。
+
+```text
+React SPA
+   ↓
+Worker HTTP Boundary / Composition
+   ├─ Authentication / Authorization
+   ├─ Validation / HTTP mapping
+   ├─ Audit / Correlation
+   ├─ Domain rules
+   └─ Infrastructure adapters
+          ↓
+         D1
+```
+
+`Application / Use Case` layerはBaseline必須ではありません。複数Repositoryや外部Serviceを跨ぐ業務オーケストレーション、HTTP以外のentrypointからの再利用、route handlerの肥大化など、Project側で明確な必要性が出た場合に追加します。
+
+詳細なDependency Ruleと導入条件は `FULLSTACK_ARCHITECTURE.md` を正本とします。
+
 ## Recommended reading order
 
 | Document | Responsibility |
 | --- | --- |
 | `UPSTREAM_TEMPLATE.md` | Generic Templateとの責務境界、reviewed baseline、重複禁止ルール |
-| `FULLSTACK_ARCHITECTURE.md` | Full-stack runtime全体像と各Foundationの配置 |
+| `FULLSTACK_ARCHITECTURE.md` | Full-stack runtime全体像、baseline layer model、各Foundationの配置 |
 | `DATA_DESIGN.md` | D1 binding、migration、schema、Local / Preview / Production境界 |
 | `AUTH_DESIGN.md` | Provider-independent identityとapplication session |
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
