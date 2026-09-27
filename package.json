@@ -7,12 +7,16 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs && npm run recovery:validate",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs && npm run recovery:validate && npm run performance:validate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:verify:local": "wrangler d1 execute DB --local --command \"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('example_resources','example_resource_changes','users','external_identities','application_sessions','resource_scopes','scope_memberships') ORDER BY name\"",
     "db:recovery:validate-config": "node scripts/validate-d1-recovery-config.mjs",
     "db:recovery:preview": "bash scripts/d1-recovery-rehearsal.sh",
     "recovery:validate": "bash -n scripts/d1-recovery-rehearsal.sh && node scripts/validate-recovery-safety.mjs",
+    "db:performance:validate-config": "node scripts/d1-performance-benchmark.mjs --mode=preview --validate-config-only",
+    "db:performance:preview": "node scripts/d1-performance-benchmark.mjs --mode=preview",
+    "performance:local": "node scripts/d1-performance-benchmark.mjs --mode=local --profile=smoke",
+    "performance:validate": "node scripts/validate-performance-safety.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
