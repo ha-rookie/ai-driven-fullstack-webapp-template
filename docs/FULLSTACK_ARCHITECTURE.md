@@ -80,8 +80,8 @@ Worker Env
      example_resources
 ```
 
-- `GET /api/health` remains database-independent
-- `GET /api/health/database` verifies only that the D1 binding can execute a minimal query
+- `/api/health` remains database-independent
+- `/api/health/database` verifies only that the D1 binding can execute a minimal query
 - Local D1 is used for CI migration and schema verification
 - Preview and Production are modeled as separate D1 resources and use placeholder identifiers until a project deliberately provisions them
 - remote migrations are not part of baseline CI
@@ -310,8 +310,48 @@ The example roles and routes are replaceable project examples, not fixed product
 
 Detailed behavior and the negative-path matrix are defined in `docs/BOUNDARY_TESTING.md`.
 
+## Recovery / Operations Foundation
+
+Issue #19 adds a recovery control plane around D1 without putting destructive Production restore into normal automation.
+
+```text
+Normal PR CI
+  └─ Local D1 + static recovery-safety validation only
+
+Human-triggered Preview rehearsal
+  └─ confirmation
+       ↓
+     config guard
+       ↓
+     baseline bookmark
+       ↓
+     temporary probe
+       ↓
+     Preview Time Travel restore
+       ↓
+     post-restore verification
+
+Production incident
+  └─ runbook + explicit Human restore approval
+```
+
+Recovery responsibilities:
+
+- Preview and Production resources must be distinct
+- placeholder resources fail closed before remote recovery work
+- Preview rehearsal is `workflow_dispatch` only and requires `REHEARSE_PREVIEW`
+- an interrupted rehearsal attempts best-effort return to the captured Preview baseline
+- Production restore is not exposed as an automated workflow
+- Production recovery requires a pre-restore undo bookmark, confirmed restore target, Human approval, integrity checks, and post-restore smoke
+- code rollback and persistent-data restore remain separate decisions
+- RPO/RTO are Project operational requirements, not universal Template constants
+- PR CI never uses remote D1 merely to prove that recovery automation exists
+- actual Time Travel operability is only considered verified after a provisioned Project records a successful manual Preview rehearsal
+
+Detailed procedures are defined in `docs/RECOVERY_OPERATIONS.md`.
+
 ## Planned layers
 
-Later Issues may add recovery/backup rehearsal, production operations, concrete identity-provider adapters, and optional performance patterns.
+Later Issues may add production deployment controls, maintenance/read-only mode, concrete identity-provider adapters, long-term private backup storage, alerting, and optional performance patterns.
 
-Those layers may depend on the Shared, Data, Authentication, Authorization, Runtime Integrity, Audit/Correlation, and Protected Boundary Foundations. Lower-level foundations must not depend on product-specific application behavior.
+Those layers may depend on the Shared, Data, Authentication, Authorization, Runtime Integrity, Audit/Correlation, Protected Boundary, and Recovery/Operations Foundations. Lower-level foundations must not depend on product-specific application behavior.
