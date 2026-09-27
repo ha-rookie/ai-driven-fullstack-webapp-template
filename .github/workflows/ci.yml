@@ -38,23 +38,19 @@ jobs:
         run: |
           set -euo pipefail
           npm run db:verify:local | tee /tmp/d1-schema.txt
-          grep -q 'example_resources' /tmp/d1-schema.txt
-          grep -q 'example_resource_changes' /tmp/d1-schema.txt
-          grep -q 'users' /tmp/d1-schema.txt
-          grep -q 'external_identities' /tmp/d1-schema.txt
-          grep -q 'application_sessions' /tmp/d1-schema.txt
-          grep -q 'resource_scopes' /tmp/d1-schema.txt
-          grep -q 'scope_memberships' /tmp/d1-schema.txt
+          grep -q 'table:example_resources' /tmp/d1-schema.txt
+          grep -q 'table:example_resource_changes' /tmp/d1-schema.txt
+          grep -q 'table:example_resource_scope_bindings' /tmp/d1-schema.txt
+          grep -q 'table:users' /tmp/d1-schema.txt
+          grep -q 'table:external_identities' /tmp/d1-schema.txt
+          grep -q 'table:application_sessions' /tmp/d1-schema.txt
+          grep -q 'table:resource_scopes' /tmp/d1-schema.txt
+          grep -q 'table:scope_memberships' /tmp/d1-schema.txt
+          grep -q 'column:example_resources:status' /tmp/d1-schema.txt
+          grep -q 'column:example_resources:version' /tmp/d1-schema.txt
 
-          npx wrangler d1 execute DB --local --command "SELECT name FROM sqlite_master WHERE type='table' AND name='example_resource_scope_bindings'" | tee /tmp/boundary-schema.txt
-          grep -q 'example_resource_scope_bindings' /tmp/boundary-schema.txt
-
-          npx wrangler d1 execute DB --local --command "PRAGMA table_info(example_resources)" | tee /tmp/example-resource-columns.txt
-          grep -q 'status' /tmp/example-resource-columns.txt
-          grep -q 'version' /tmp/example-resource-columns.txt
-
-      - name: Test
-        run: npm test
+      - name: Full local validation
+        run: npm run validate:local
 
       - name: Lint
         run: npm run lint
