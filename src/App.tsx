@@ -33,12 +33,17 @@ export default function App() {
       }}
     >
       <p style={{ fontSize: 14, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-        Bootstrap
+        Full-stack baseline
       </p>
       <h1>AI-driven Full-stack Web App Template</h1>
       <p>
-        React SPA and Cloudflare Worker are connected. D1, authentication,
-        authorization, concurrency, and audit are added by later issues.
+        React, Cloudflare Worker, D1, authentication, authorization, runtime
+        integrity, audit, protected boundary tests, recovery, and performance
+        examples are wired as a reusable implementation baseline.
+      </p>
+      <p>
+        Product-specific identity providers, roles, domain models, UI, NFRs,
+        and Production release design remain Project decisions.
       </p>
       <p>
         API health: <strong>{health}</strong>
