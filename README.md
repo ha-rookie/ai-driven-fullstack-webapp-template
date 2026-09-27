@@ -105,3 +105,7 @@ Generic Templateの文書をこのRepositoryへ丸ごとコピーして、二つ
 Full-stack固有の設計書と推奨読順は `docs/README.md` を参照してください。
 
 Upstreamとの責務境界と確認済みbaselineは `docs/UPSTREAM_TEMPLATE.md` を参照してください。
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE` for details.
