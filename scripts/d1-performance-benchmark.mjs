@@ -40,7 +40,7 @@ if (!Number.isInteger(configuredCount) || configuredCount < 100 || configuredCou
   throw new Error(`PERF_RESOURCE_COUNT must be an integer between 100 and ${MAX_RESOURCES}`);
 }
 const resourceCount = configuredCount;
-const iterations = 3;
+const iterations = mode === "local" ? 1 : 3;
 const targetMs = process.env.PERF_SERVER_TARGET_MS
   ? Number(process.env.PERF_SERVER_TARGET_MS)
   : null;
@@ -94,6 +94,10 @@ mkdirSync(reportDir, { recursive: true });
 const targetArgs = mode === "preview" ? ["--remote", "--preview"] : ["--local"];
 const round = (value) => Math.round(value * 100) / 100;
 const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+const maxNullable = (values) => {
+  const numeric = values.filter((value) => value !== null && Number.isFinite(value));
+  return numeric.length > 0 ? Math.max(...numeric) : null;
+};
 const sqlText = (value) => `'${String(value).replaceAll("'", "''")}'`;
 
 function parseJsonOutput(stdout) {
@@ -156,7 +160,7 @@ function executeFile(path) {
   });
 }
 
-const cleanupSql = `DELETE FROM example_resources WHERE id LIKE '${PREFIX}%';`;
+const cleanupSql = `PRAGMA foreign_keys = ON; DELETE FROM example_resource_changes WHERE resource_id GLOB '${PREFIX}*'; DELETE FROM example_resources WHERE id GLOB '${PREFIX}*';`;
 
 function buildFixture() {
   const lines = ["PRAGMA foreign_keys = ON;"];
@@ -183,7 +187,7 @@ const queries = [
   },
   {
     name: "status-page",
-    sql: `SELECT id,name,status,version,updated_at FROM example_resources WHERE status='active' AND id LIKE '${PREFIX}%' ORDER BY updated_at DESC,id DESC LIMIT 50`,
+    sql: `SELECT id,name,status,version,updated_at FROM example_resources WHERE status='active' AND id GLOB '${PREFIX}*' ORDER BY updated_at DESC,id DESC LIMIT 50`,
     expectedPlan: /idx_example_resources_status_updated/i,
   },
   {
@@ -193,7 +197,7 @@ const queries = [
   },
   {
     name: "status-aggregate",
-    sql: `SELECT status,COUNT(*) AS resourceCount FROM example_resources WHERE id LIKE '${PREFIX}%' GROUP BY status ORDER BY status`,
+    sql: `SELECT status,COUNT(*) AS resourceCount FROM example_resources WHERE id GLOB '${PREFIX}*' GROUP BY status ORDER BY status`,
     expectedPlan: null,
   },
 ];
@@ -255,8 +259,8 @@ try {
         cliWallMaxMs: round(Math.max(...cliWall)),
         sqlDurationAvgMs: sqlDurations.length ? round(average(sqlDurations)) : null,
         sqlDurationMaxMs: sqlDurations.length ? round(Math.max(...sqlDurations)) : null,
-        rowsReadMax: Math.max(...runs.map((run) => run.rowsRead ?? 0)),
-        rowsWrittenMax: Math.max(...runs.map((run) => run.rowsWritten ?? 0)),
+        rowsReadMax: maxNullable(runs.map((run) => run.rowsRead)),
+        rowsWrittenMax: maxNullable(runs.map((run) => run.rowsWritten)),
         statementsMax: Math.max(...runs.map((run) => run.statements ?? 0)),
       },
     });
@@ -297,6 +301,8 @@ const report = {
   },
   threshold: targetMs === null ? null : { serverTargetMs: targetMs, failures: thresholdFailures },
   fixture: {
+    logicalRowsInserted: resourceCount * 2,
+    logicalRowsRemovedOnCleanup: resourceCount * 2,
     loadCliWallMs: fixtureLoad?.cliWallMs ?? null,
     cleanupCliWallMs: cleanup?.cliWallMs ?? null,
   },
@@ -314,20 +320,22 @@ const jsonPath = join(reportDir, `d1-performance-${mode}-${profile}.json`);
 const markdownPath = join(reportDir, `d1-performance-${mode}-${profile}.md`);
 writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
 
+const displayMetric = (value) => (value === null ? "n/a" : value);
 const markdown = [
-  `# D1 Performance / Capacity Report`,
+  "# D1 Performance / Capacity Report",
   "",
   `- Mode: \`${mode}\``,
   `- Profile: \`${profile}\``,
   `- Resources: ${resourceCount.toLocaleString("en-US")}`,
   `- Change rows: ${resourceCount.toLocaleString("en-US")}`,
   `- Iterations/query: ${iterations}`,
+  `- Logical fixture rows inserted: ${(resourceCount * 2).toLocaleString("en-US")}`,
   `- Absolute threshold: ${targetMs === null ? "not configured" : `${targetMs} ms`}`,
   "",
   "| Query | SQL avg ms | SQL max ms | CLI avg ms | CLI max ms | Rows read max | Rows written max | Statements max |",
   "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   ...results.map((result) =>
-    `| ${result.name} | ${result.summary.sqlDurationAvgMs ?? "n/a"} | ${result.summary.sqlDurationMaxMs ?? "n/a"} | ${result.summary.cliWallAvgMs} | ${result.summary.cliWallMaxMs} | ${result.summary.rowsReadMax} | ${result.summary.rowsWrittenMax} | ${result.summary.statementsMax} |`,
+    `| ${result.name} | ${displayMetric(result.summary.sqlDurationAvgMs)} | ${displayMetric(result.summary.sqlDurationMaxMs)} | ${result.summary.cliWallAvgMs} | ${result.summary.cliWallMaxMs} | ${displayMetric(result.summary.rowsReadMax)} | ${displayMetric(result.summary.rowsWrittenMax)} | ${result.summary.statementsMax} |`,
   ),
   "",
   "## Query plans",
@@ -353,7 +361,7 @@ writeFileSync(markdownPath, markdown);
 console.log(`Performance report: ${markdownPath}`);
 for (const result of results) {
   console.log(
-    `${result.name}: SQL max ${result.summary.sqlDurationMaxMs ?? "n/a"} ms; CLI wall avg ${result.summary.cliWallAvgMs} ms; rows read max ${result.summary.rowsReadMax}`,
+    `${result.name}: SQL max ${displayMetric(result.summary.sqlDurationMaxMs)} ms; CLI wall avg ${result.summary.cliWallAvgMs} ms; rows read max ${displayMetric(result.summary.rowsReadMax)}`,
   );
 }
 
