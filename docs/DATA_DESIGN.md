@@ -178,3 +178,18 @@ Production
 ```
 
 Remote migration, performance benchmark, backup/recovery rehearsal, and quota-sensitive operations are intentionally outside the baseline and must be deliberate operations.
+
+## Recovery boundary
+
+Issue #19 adds operational recovery guardrails without changing the application schema.
+
+- PR CI remains Local D1 only and performs no Time Travel API call
+- Preview recovery rehearsal is a separate Human-triggered workflow
+- Preview and Production database IDs must be configured, non-placeholder, and different before the rehearsal can run
+- the rehearsal may mutate and restore Preview only
+- Production restore is documented as an incident Human Gate and is not implemented as a workflow
+- application-code rollback and persistent-data restore are separate decisions
+- a successful migration followed by a logical schema/data defect may require a confirmed pre-migration restore point rather than code rollback alone
+- project RPO/RTO targets are operational requirements, not constants embedded in this Template
+
+Detailed procedures are defined in `docs/RECOVERY_OPERATIONS.md`.

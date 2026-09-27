@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs && npm run recovery:validate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:verify:local": "wrangler d1 execute DB --local --command \"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('example_resources','example_resource_changes','users','external_identities','application_sessions','resource_scopes','scope_memberships') ORDER BY name\"",
+    "db:recovery:validate-config": "node scripts/validate-d1-recovery-config.mjs",
+    "db:recovery:preview": "bash scripts/d1-recovery-rehearsal.sh",
+    "recovery:validate": "bash -n scripts/d1-recovery-rehearsal.sh && node scripts/validate-recovery-safety.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
