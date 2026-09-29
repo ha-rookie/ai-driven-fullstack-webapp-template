@@ -19,6 +19,8 @@ Scoped Authorization Guard
    ├─ membership lookup
    └─ pure role/scope policy
    ↓
+Request Body Guard
+   ↓
 Input Validation
    ↓
 Concurrency Precondition
@@ -57,7 +59,8 @@ Projects should replace those role names and actions with their own vocabulary. 
 
 | Boundary result | HTTP | Error code |
 | --- | ---: | --- |
-| invalid request body | 400 | `invalid_request` |
+| malformed JSON | 400 | `malformed_json` |
+| invalid request body / Domain input | 400 | `invalid_request` |
 | malformed / conflicting concurrency precondition | 400 | `invalid_precondition` |
 | no valid session | 401 | `authentication_required` |
 | membership / role / scope denied | 403 | `forbidden` |
@@ -67,12 +70,54 @@ Projects should replace those role names and actions with their own vocabulary. 
 | trusted state changed | 409 | `state_changed` |
 | disallowed state transition | 409 | `invalid_transition` |
 | `If-Match` stale | 412 | `precondition_failed` |
+| JSON payload exceeds endpoint limit | 413 | `payload_too_large` |
+| missing / unsupported JSON Content-Type | 415 | `unsupported_media_type` |
 | missing concurrency precondition | 428 | `precondition_required` |
 | dependency failure | 503 | `*_unavailable` |
 
 Authorization denial details remain in the Audit record. The API response stays generic instead of exposing policy internals.
 
 A D1/dependency failure is not treated as missing authentication or denied authorization. The guard lets those failures propagate so the endpoint can return `503` rather than an incorrect `401` or `403`.
+
+## Request body guard
+
+Issue #69 separates transport/body safety from Domain validation. Mutation endpoints use the shared `readJsonBody(...)` guard only after authentication and authorization have succeeded. GET and other bodyless endpoints do not acquire unnecessary Content-Type requirements.
+
+The Reference JSON boundary accepts:
+
+```http
+Content-Type: application/json
+```
+
+Media-type parameters such as `application/json; charset=utf-8` are accepted. Missing or unsupported Content-Type fails with `415 unsupported_media_type`.
+
+The default JSON body limit is 64 KiB and can be overridden by the endpoint when its contract requires another bound. The guard does not trust `Content-Length` as the only size control:
+
+1. a declared length above the limit is rejected before body read
+2. the actual stream is also byte-counted
+3. reading stops as soon as the configured limit is exceeded
+
+This prevents an unbounded `request.json()` from becoming the Template default. An oversized body returns `413 payload_too_large`.
+
+After a bounded read, UTF-8 decoding and JSON parsing happen inside the same guard. Invalid encoding, empty content, or malformed JSON returns `400 malformed_json`.
+
+A successfully parsed JSON value is returned as `unknown`. The Request Body Guard deliberately does **not** decide whether the value is an object, whether required fields exist, whether a string is too long, or whether a business state transition is valid. Those checks remain endpoint/Domain validation and continue to use the existing `invalid_request` or Domain-specific contract.
+
+The Example Resource API therefore has this order for mutations:
+
+```text
+Authentication / Authorization
+        ↓
+readJsonBody (type / size / JSON syntax)
+        ↓
+Endpoint input shape and Domain fields
+        ↓
+Concurrency precondition
+        ↓
+Runtime Integrity mutation
+```
+
+File uploads, multipart bodies, compressed-payload policy, and large endpoint-specific payloads remain separate Project concerns rather than exceptions hidden inside the JSON guard.
 
 ## HTTP concurrency precondition
 
@@ -120,7 +165,7 @@ The same `requestId` is also returned in the `x-request-id` response header. Thi
 
 Validation failures may add bounded field-level issues inside `error.issues`. Conflict and precondition responses may preserve endpoint-safe state such as the current public version outside the `error` object. Neither extension may replace the standard `error` or `requestId` fields.
 
-`AppError` is mapped centrally from application error code to HTTP status, including `412 precondition_failed` and `428 precondition_required`. Its internal `message`, `cause`, and stack are not client output. Server-side/unknown failures fail safe to a generic `500 internal_error` response.
+`AppError` is mapped centrally from application error code to HTTP status, including Request Body Guard mappings `413 payload_too_large` / `415 unsupported_media_type` and concurrency mappings `412 precondition_failed` / `428 precondition_required`. Its internal `message`, `cause`, and stack are not client output. Server-side/unknown failures fail safe to a generic `500 internal_error` response.
 
 Not every non-2xx response is forced into this envelope. Purpose-specific probe contracts such as health status and `/api/auth/me` unauthenticated-state discovery keep their explicit response semantics unless their own contract is changed separately.
 
@@ -182,9 +227,18 @@ Guard unit tests additionally verify that:
 - internal authorization reasons are not exposed in the HTTP body
 - dependency failures are not converted into 401/403
 
+Request-body guard unit tests additionally verify that:
+
+- `application/json` and media-type parameters are accepted
+- missing / unsupported Content-Type returns 415
+- malformed or empty JSON returns 400
+- declared and actual oversized bodies return 413
+- actual stream size is bounded even when Content-Length is absent or not trusted
+- successfully parsed JSON shape remains an endpoint concern
+
 API error mapper unit tests additionally verify that:
 
-- representative 400 / 401 / 403 / 404 / 409 / 412 / 422 / 428 / 429 / 500 statuses use one envelope
+- representative 400 / 401 / 403 / 404 / 409 / 412 / 413 / 415 / 422 / 428 / 429 / 500 statuses use one envelope
 - request correlation is present in the response body and header
 - validation issues retain only bounded client-safe context
 - AppError internal detail is not exposed
@@ -227,6 +281,7 @@ When replacing `example_resources`, preserve the test shape rather than the samp
 - unauthenticated reject
 - authorization reject
 - cross-scope reject
+- request Content-Type / size / JSON syntax guard
 - invalid-input reject
 - explicit concurrency precondition
 - stale/concurrent reject
@@ -235,4 +290,4 @@ When replacing `example_resources`, preserve the test shape rather than the samp
 - multi-write completeness after success
 - Audit evidence for important failures and mutations
 
-The exact HTTP routes, roles, resource model, ETag representation, and state machine remain project decisions.
+The exact HTTP routes, roles, resource model, JSON body limits, ETag representation, and state machine remain project decisions.
