@@ -11,11 +11,13 @@ The goal is not only to check response codes. Rejected requests must also prove 
 ```text
 HTTP Request
    ↓
-Authentication
+Authentication Guard
    ↓
 Resource Scope lookup
    ↓
-Authorization
+Scoped Authorization Guard
+   ├─ membership lookup
+   └─ pure role/scope policy
    ↓
 Input Validation
    ↓
@@ -27,6 +29,8 @@ HTTP Response
 ```
 
 Each layer owns a different decision. UI validation is never treated as a substitute for this trusted boundary.
+
+The HTTP guards introduced by Issue #62 centralize the 401/403 contract, but they do not replace the pure authorization policy. Membership, role, and scope decisions still come from `authorizeScopedAction(...)`.
 
 ## Example protected API
 
@@ -62,6 +66,8 @@ Projects should replace those role names and actions with their own vocabulary. 
 | dependency failure | 503 | `*_unavailable` |
 
 Authorization denial details remain in the Audit record. The API response stays generic instead of exposing policy internals.
+
+A D1/dependency failure is not treated as missing authentication or denied authorization. The guard lets those failures propagate so the endpoint can return `503` rather than an incorrect `401` or `403`.
 
 ## Scope binding
 
@@ -112,6 +118,14 @@ The same runtime smoke verifies structured events for:
 - successful state transition
 
 Audit records contain identifiers and bounded reasons, not raw Cookie/token/request-body data.
+
+Guard unit tests additionally verify that:
+
+- missing authentication maps to the shared 401 contract
+- membership / role / scope denials map to the shared 403 contract
+- unconfigured actions fail closed
+- internal authorization reasons are not exposed in the HTTP body
+- dependency failures are not converted into 401/403
 
 ## Local-first execution
 
