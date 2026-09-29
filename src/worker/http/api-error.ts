@@ -22,6 +22,7 @@ const appErrorStatusByCode: Readonly<Record<string, number>> = {
   bad_request: 400,
   invalid_request: 400,
   invalid_path: 400,
+  invalid_precondition: 400,
   authentication_required: 401,
   forbidden: 403,
   not_found: 404,
@@ -32,7 +33,9 @@ const appErrorStatusByCode: Readonly<Record<string, number>> = {
   resource_immutable: 409,
   state_changed: 409,
   invalid_transition: 409,
+  precondition_failed: 412,
   validation_failed: 422,
+  precondition_required: 428,
   rate_limited: 429,
   authentication_unavailable: 503,
   resource_unavailable: 503,
@@ -53,8 +56,12 @@ const publicMessageForStatus = (status: number): string => {
       return "Method not allowed";
     case 409:
       return "Conflict";
+    case 412:
+      return "Precondition failed";
     case 422:
       return "Validation failed";
+    case 428:
+      return "Precondition required";
     case 429:
       return "Too many requests";
     case 503:
