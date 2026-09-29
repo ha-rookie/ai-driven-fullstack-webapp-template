@@ -23,6 +23,7 @@ const appErrorStatusByCode: Readonly<Record<string, number>> = {
   invalid_request: 400,
   invalid_path: 400,
   invalid_precondition: 400,
+  malformed_json: 400,
   authentication_required: 401,
   forbidden: 403,
   not_found: 404,
@@ -34,6 +35,8 @@ const appErrorStatusByCode: Readonly<Record<string, number>> = {
   state_changed: 409,
   invalid_transition: 409,
   precondition_failed: 412,
+  payload_too_large: 413,
+  unsupported_media_type: 415,
   validation_failed: 422,
   precondition_required: 428,
   rate_limited: 429,
@@ -58,6 +61,10 @@ const publicMessageForStatus = (status: number): string => {
       return "Conflict";
     case 412:
       return "Precondition failed";
+    case 413:
+      return "Payload too large";
+    case 415:
+      return "Unsupported media type";
     case 422:
       return "Validation failed";
     case 428:
