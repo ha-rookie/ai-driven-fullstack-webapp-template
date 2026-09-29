@@ -84,15 +84,21 @@ export const requireScopedAuthorization = async ({
     membership,
   });
 
-  return decision.allowed
-    ? { allowed: true, membership: membership!, role: decision.role }
-    : {
-        allowed: false,
-        status: 403,
-        code: "forbidden",
-        message: "Access denied",
-        reason: decision.reason,
-      };
+  if (!decision.allowed) {
+    return {
+      allowed: false,
+      status: 403,
+      code: "forbidden",
+      message: "Access denied",
+      reason: decision.reason,
+    };
+  }
+
+  if (!membership) {
+    throw new Error("Authorization invariant violated: allowed without membership");
+  }
+
+  return { allowed: true, membership, role: decision.role };
 };
 
 export const authorizationGuardFailureResponse = (
