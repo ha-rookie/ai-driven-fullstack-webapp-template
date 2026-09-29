@@ -7,12 +7,12 @@ import {
   type IntegrityMutationResult,
 } from "../infrastructure/d1-example-resource-store";
 import {
-  authorizationGuardFailureResponse,
   requireAuthenticatedUser,
   requireScopedAuthorization,
   type RolePolicy,
 } from "./authorization";
 import type { AuditEvent } from "./audit";
+import { apiErrorResponse } from "./http";
 
 type RequestAuditFields = Omit<AuditEvent, "requestId" | "method" | "path">;
 type Audit = (event: RequestAuditFields) => void;
@@ -32,18 +32,12 @@ const json = (body: unknown, init: ResponseInit = {}) =>
   });
 
 const error = (
+  requestId: string,
   code: string,
   message: string,
   status: number,
   extra?: Readonly<Record<string, unknown>>,
-) =>
-  json(
-    {
-      error: { code, message },
-      ...extra,
-    },
-    { status },
-  );
+) => apiErrorResponse({ code, message, status, extra }, requestId);
 
 const parseJsonObject = async (
   request: Request,
@@ -74,6 +68,7 @@ const decodePathPart = (value: string): string | null => {
 
 const integrityFailureResponse = (
   result: Exclude<IntegrityMutationResult, { ok: true }>,
+  requestId: string,
 ): Response => {
   const current = result.current
     ? {
@@ -86,9 +81,10 @@ const integrityFailureResponse = (
 
   switch (result.reason) {
     case "not_found":
-      return error("resource_not_found", "Resource not found", 404);
+      return error(requestId, "resource_not_found", "Resource not found", 404);
     case "stale":
       return error(
+        requestId,
         "stale_update",
         "The resource changed after it was read",
         409,
@@ -96,6 +92,7 @@ const integrityFailureResponse = (
       );
     case "immutable":
       return error(
+        requestId,
         "resource_immutable",
         "The resource can no longer be changed",
         409,
@@ -103,6 +100,7 @@ const integrityFailureResponse = (
       );
     case "state_changed":
       return error(
+        requestId,
         "state_changed",
         "The resource state no longer matches the request",
         409,
@@ -110,6 +108,7 @@ const integrityFailureResponse = (
       );
     case "invalid_transition":
       return error(
+        requestId,
         "invalid_transition",
         "The requested state transition is not allowed",
         409,
@@ -140,6 +139,7 @@ export const handleExampleResourceApi = async (
   request: Request,
   db: D1Database,
   audit: Audit,
+  requestId: string,
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   const statusMatch = url.pathname.match(
@@ -155,7 +155,7 @@ export const handleExampleResourceApi = async (
   const scopeId = decodePathPart(match[1]);
   const resourceId = decodePathPart(match[2]);
   if (!scopeId || !resourceId) {
-    return error("invalid_path", "Resource path is invalid", 400);
+    return error(requestId, "invalid_path", "Resource path is invalid", 400);
   }
 
   const isStatusRoute = Boolean(statusMatch);
@@ -163,7 +163,7 @@ export const handleExampleResourceApi = async (
     ? request.method === "POST"
     : request.method === "GET" || request.method === "PATCH";
   if (!allowedMethod) {
-    return error("method_not_allowed", "Method not allowed", 405);
+    return error(requestId, "method_not_allowed", "Method not allowed", 405);
   }
 
   let authentication;
@@ -180,6 +180,7 @@ export const handleExampleResourceApi = async (
       reason: "dependency_error",
     });
     return error(
+      requestId,
       "authentication_unavailable",
       "Authentication is unavailable",
       503,
@@ -196,7 +197,14 @@ export const handleExampleResourceApi = async (
       resourceId,
       reason: authentication.reason,
     });
-    return authorizationGuardFailureResponse(authentication);
+    return apiErrorResponse(
+      {
+        status: authentication.status,
+        code: authentication.code,
+        message: authentication.message,
+      },
+      requestId,
+    );
   }
 
   const actorId = authentication.user.id;
@@ -217,11 +225,11 @@ export const handleExampleResourceApi = async (
       resourceId,
       reason: "dependency_error",
     });
-    return error("resource_unavailable", "Resource is unavailable", 503);
+    return error(requestId, "resource_unavailable", "Resource is unavailable", 503);
   }
 
   if (!resource || !resourceScopeId) {
-    return error("resource_not_found", "Resource not found", 404);
+    return error(requestId, "resource_not_found", "Resource not found", 404);
   }
 
   const authorizationAction =
@@ -250,7 +258,7 @@ export const handleExampleResourceApi = async (
       resourceId,
       reason: "dependency_error",
     });
-    return error("resource_unavailable", "Resource is unavailable", 503);
+    return error(requestId, "resource_unavailable", "Resource is unavailable", 503);
   }
 
   if (!authorization.allowed) {
@@ -264,7 +272,14 @@ export const handleExampleResourceApi = async (
       resourceId,
       reason: authorization.reason,
     });
-    return authorizationGuardFailureResponse(authorization);
+    return apiErrorResponse(
+      {
+        status: authorization.status,
+        code: authorization.code,
+        message: authorization.message,
+      },
+      requestId,
+    );
   }
 
   if (request.method === "GET") {
@@ -290,6 +305,7 @@ export const handleExampleResourceApi = async (
         "invalid_request",
       );
       return error(
+        requestId,
         "invalid_request",
         "name and a positive expectedVersion are required",
         400,
@@ -313,7 +329,7 @@ export const handleExampleResourceApi = async (
           "example_resource.rename",
           result.reason,
         );
-        return integrityFailureResponse(result);
+        return integrityFailureResponse(result, requestId);
       }
 
       audit({
@@ -335,7 +351,7 @@ export const handleExampleResourceApi = async (
         "example_resource.rename",
         "dependency_error",
       );
-      return error("mutation_unavailable", "Mutation is unavailable", 503);
+      return error(requestId, "mutation_unavailable", "Mutation is unavailable", 503);
     }
   }
 
@@ -358,6 +374,7 @@ export const handleExampleResourceApi = async (
       "invalid_request",
     );
     return error(
+      requestId,
       "invalid_request",
       "fromStatus, toStatus, and a positive expectedVersion are required",
       400,
@@ -382,7 +399,7 @@ export const handleExampleResourceApi = async (
         "example_resource.transition",
         result.reason,
       );
-      return integrityFailureResponse(result);
+      return integrityFailureResponse(result, requestId);
     }
 
     audit({
@@ -404,6 +421,6 @@ export const handleExampleResourceApi = async (
       "example_resource.transition",
       "dependency_error",
     );
-    return error("mutation_unavailable", "Mutation is unavailable", 503);
+    return error(requestId, "mutation_unavailable", "Mutation is unavailable", 503);
   }
 };
