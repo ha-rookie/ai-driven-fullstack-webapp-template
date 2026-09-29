@@ -46,6 +46,7 @@ Worker HTTP Boundary / Composition
 | --- | --- |
 | `UPSTREAM_TEMPLATE.md` | Generic Templateとの責務境界、reviewed baseline、重複禁止ルール |
 | `FULLSTACK_ARCHITECTURE.md` | Full-stack runtime全体像、baseline layer model、各Foundationの配置 |
+| `instructions/README.md` | Full-stack固有Scoped Instructionsの選択方法と責務境界 |
 | `DATA_DESIGN.md` | D1 binding、migration、schema、Local / Preview / Production境界 |
 | `AUTH_DESIGN.md` | Provider-independent identityとapplication session |
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
@@ -54,6 +55,17 @@ Worker HTTP Boundary / Composition
 | `BOUNDARY_TESTING.md` | Authn → Authz → Validation → Integrity → Auditの統合境界とnegative paths |
 | `RECOVERY_OPERATIONS.md` | Preview recovery rehearsal、Production restore Human Gate、RPO/RTO境界 |
 | `PERFORMANCE_CAPACITY.md` | Local / Preview benchmark、query plan、resource budget、計測単位 |
+
+## Scoped Instructions
+
+`docs/instructions/` は、IssueのPlanned Files / Impact Flags /作業意図に応じて必要なFull-stack固有制約だけを追加で読むための層です。
+
+- Design文書の新しい正本を作らない
+- Common TemplateのScoped Instructionsをコピーしない
+- DB / Auth / Authz / Integrity / Audit / Recovery / Performanceの具体実装境界だけを追加する
+- 複数領域に跨る作業だけ必要なInstructionを併用する
+
+選択方法と一覧は `instructions/README.md` を参照してください。
 
 ## What belongs here
 
