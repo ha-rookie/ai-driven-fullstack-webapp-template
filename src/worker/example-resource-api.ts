@@ -12,7 +12,13 @@ import {
   type RolePolicy,
 } from "./authorization";
 import type { AuditEvent } from "./audit";
-import { apiErrorResponse } from "./http";
+import {
+  apiErrorResponse,
+  formatVersionEtag,
+  resolveConcurrencyPrecondition,
+  stalePreconditionHttpMapping,
+  type ConcurrencyPrecondition,
+} from "./http";
 
 type RequestAuditFields = Omit<AuditEvent, "requestId" | "method" | "path">;
 type Audit = (event: RequestAuditFields) => void;
@@ -22,13 +28,21 @@ const exampleResourcePolicy: RolePolicy = {
   "example_resource:write": ["editor"],
 };
 
-const json = (body: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(body), {
+const json = (body: unknown, init: ResponseInit = {}) => {
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json; charset=utf-8");
+  }
+
+  return new Response(JSON.stringify(body), {
     ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...init.headers,
-    },
+    headers,
+  });
+};
+
+const versionedJson = (body: unknown, version: number): Response =>
+  json(body, {
+    headers: { etag: formatVersionEtag(version) },
   });
 
 const error = (
@@ -52,9 +66,6 @@ const parseJsonObject = async (
   }
 };
 
-const isPositiveVersion = (value: unknown): value is number =>
-  Number.isInteger(value) && Number(value) >= 1;
-
 const isExampleStatus = (value: unknown): value is ExampleResourceStatus =>
   value === "draft" || value === "active" || value === "finalized";
 
@@ -69,6 +80,7 @@ const decodePathPart = (value: string): string | null => {
 const integrityFailureResponse = (
   result: Exclude<IntegrityMutationResult, { ok: true }>,
   requestId: string,
+  precondition: ConcurrencyPrecondition,
 ): Response => {
   const current = result.current
     ? {
@@ -82,14 +94,16 @@ const integrityFailureResponse = (
   switch (result.reason) {
     case "not_found":
       return error(requestId, "resource_not_found", "Resource not found", 404);
-    case "stale":
+    case "stale": {
+      const mapping = stalePreconditionHttpMapping(precondition);
       return error(
         requestId,
-        "stale_update",
-        "The resource changed after it was read",
-        409,
+        mapping.code,
+        mapping.message,
+        mapping.status,
         current,
       );
+    }
     case "immutable":
       return error(
         requestId,
@@ -134,6 +148,19 @@ const auditMutationFailure = (
     resourceId,
     reason,
   });
+
+const preconditionFailureResponse = (
+  result: Exclude<ReturnType<typeof resolveConcurrencyPrecondition>, { ok: true }>,
+  requestId: string,
+): Response =>
+  apiErrorResponse(
+    {
+      status: result.status,
+      code: result.code,
+      message: result.message,
+    },
+    requestId,
+  );
 
 export const handleExampleResourceApi = async (
   request: Request,
@@ -283,19 +310,14 @@ export const handleExampleResourceApi = async (
   }
 
   if (request.method === "GET") {
-    return json({ resource });
+    return versionedJson({ resource }, resource.version);
   }
 
   if (request.method === "PATCH" && !isStatusRoute) {
     const body = await parseJsonObject(request);
     const name = typeof body?.name === "string" ? body.name.trim() : "";
-    const expectedVersion = body?.expectedVersion;
 
-    if (
-      !name ||
-      name.length > 120 ||
-      !isPositiveVersion(expectedVersion)
-    ) {
+    if (!name || name.length > 120) {
       auditMutationFailure(
         audit,
         actorId,
@@ -307,16 +329,34 @@ export const handleExampleResourceApi = async (
       return error(
         requestId,
         "invalid_request",
-        "name and a positive expectedVersion are required",
+        "name is required and must be at most 120 characters",
         400,
       );
     }
+
+    const preconditionResult = resolveConcurrencyPrecondition(
+      request,
+      body?.expectedVersion,
+    );
+    if (!preconditionResult.ok) {
+      auditMutationFailure(
+        audit,
+        actorId,
+        scopeId,
+        resourceId,
+        "example_resource.rename",
+        preconditionResult.reason,
+      );
+      return preconditionFailureResponse(preconditionResult, requestId);
+    }
+
+    const precondition = preconditionResult.precondition;
 
     try {
       const result = await renameExampleResource(db, {
         id: resourceId,
         name,
-        expectedVersion,
+        expectedVersion: precondition.expectedVersion,
         changedAt: new Date().toISOString(),
       });
 
@@ -329,7 +369,7 @@ export const handleExampleResourceApi = async (
           "example_resource.rename",
           result.reason,
         );
-        return integrityFailureResponse(result, requestId);
+        return integrityFailureResponse(result, requestId, precondition);
       }
 
       audit({
@@ -341,7 +381,7 @@ export const handleExampleResourceApi = async (
         resourceType: "example_resource",
         resourceId,
       });
-      return json({ resource: result.resource });
+      return versionedJson({ resource: result.resource }, result.resource.version);
     } catch {
       auditMutationFailure(
         audit,
@@ -358,13 +398,8 @@ export const handleExampleResourceApi = async (
   const body = await parseJsonObject(request);
   const fromStatus = body?.fromStatus;
   const toStatus = body?.toStatus;
-  const expectedVersion = body?.expectedVersion;
 
-  if (
-    !isExampleStatus(fromStatus) ||
-    !isExampleStatus(toStatus) ||
-    !isPositiveVersion(expectedVersion)
-  ) {
+  if (!isExampleStatus(fromStatus) || !isExampleStatus(toStatus)) {
     auditMutationFailure(
       audit,
       actorId,
@@ -376,17 +411,35 @@ export const handleExampleResourceApi = async (
     return error(
       requestId,
       "invalid_request",
-      "fromStatus, toStatus, and a positive expectedVersion are required",
+      "fromStatus and toStatus are required",
       400,
     );
   }
+
+  const preconditionResult = resolveConcurrencyPrecondition(
+    request,
+    body?.expectedVersion,
+  );
+  if (!preconditionResult.ok) {
+    auditMutationFailure(
+      audit,
+      actorId,
+      scopeId,
+      resourceId,
+      "example_resource.transition",
+      preconditionResult.reason,
+    );
+    return preconditionFailureResponse(preconditionResult, requestId);
+  }
+
+  const precondition = preconditionResult.precondition;
 
   try {
     const result = await transitionExampleResourceStatus(db, {
       id: resourceId,
       fromStatus,
       toStatus,
-      expectedVersion,
+      expectedVersion: precondition.expectedVersion,
       changedAt: new Date().toISOString(),
     });
 
@@ -399,7 +452,7 @@ export const handleExampleResourceApi = async (
         "example_resource.transition",
         result.reason,
       );
-      return integrityFailureResponse(result, requestId);
+      return integrityFailureResponse(result, requestId, precondition);
     }
 
     audit({
@@ -411,7 +464,7 @@ export const handleExampleResourceApi = async (
       resourceType: "example_resource",
       resourceId,
     });
-    return json({ resource: result.resource });
+    return versionedJson({ resource: result.resource }, result.resource.version);
   } catch {
     auditMutationFailure(
       audit,

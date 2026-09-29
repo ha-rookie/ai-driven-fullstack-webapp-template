@@ -22,6 +22,8 @@ test("representative client error statuses use the standard envelope", async () 
     [403, "forbidden"],
     [404, "not_found"],
     [409, "conflict"],
+    [412, "precondition_failed"],
+    [428, "precondition_required"],
     [429, "rate_limited"],
   ] as const;
 
@@ -78,6 +80,30 @@ test("AppError uses centralized status mapping and only exposes a public message
     requestId,
   });
   assert.doesNotMatch(JSON.stringify(body), /SELECT failed/);
+});
+
+test("precondition AppErrors use centralized 412 and 428 mappings", async () => {
+  const failed = appErrorResponse(
+    new AppError({
+      code: "precondition_failed",
+      message: "internal version detail",
+      userMessage: "The resource changed after it was read",
+    }),
+    requestId,
+  );
+  const required = appErrorResponse(
+    new AppError({
+      code: "precondition_required",
+      message: "internal request detail",
+      userMessage: "A concurrency precondition is required",
+    }),
+    requestId,
+  );
+
+  assert.equal(failed.status, 412);
+  assert.equal(required.status, 428);
+  assert.match(JSON.stringify(await readBody(failed)), /resource changed/);
+  assert.match(JSON.stringify(await readBody(required)), /precondition is required/);
 });
 
 test("server-side AppError does not expose internal message even when userMessage exists", async () => {
