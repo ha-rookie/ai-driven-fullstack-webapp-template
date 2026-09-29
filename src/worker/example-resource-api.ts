@@ -15,9 +15,11 @@ import type { AuditEvent } from "./audit";
 import {
   apiErrorResponse,
   formatVersionEtag,
+  readJsonBody,
   resolveConcurrencyPrecondition,
   stalePreconditionHttpMapping,
   type ConcurrencyPrecondition,
+  type RequestBodyFailure,
 } from "./http";
 
 type RequestAuditFields = Omit<AuditEvent, "requestId" | "method" | "path">;
@@ -53,18 +55,23 @@ const error = (
   extra?: Readonly<Record<string, unknown>>,
 ) => apiErrorResponse({ code, message, status, extra }, requestId);
 
-const parseJsonObject = async (
-  request: Request,
-): Promise<Record<string, unknown> | null> => {
-  try {
-    const value: unknown = await request.json();
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-};
+const asJsonObject = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const requestBodyFailureResponse = (
+  result: RequestBodyFailure,
+  requestId: string,
+): Response =>
+  apiErrorResponse(
+    {
+      status: result.status,
+      code: result.code,
+      message: result.message,
+    },
+    requestId,
+  );
 
 const isExampleStatus = (value: unknown): value is ExampleResourceStatus =>
   value === "draft" || value === "active" || value === "finalized";
@@ -314,7 +321,20 @@ export const handleExampleResourceApi = async (
   }
 
   if (request.method === "PATCH" && !isStatusRoute) {
-    const body = await parseJsonObject(request);
+    const bodyResult = await readJsonBody(request);
+    if (!bodyResult.ok) {
+      auditMutationFailure(
+        audit,
+        actorId,
+        scopeId,
+        resourceId,
+        "example_resource.rename",
+        bodyResult.code,
+      );
+      return requestBodyFailureResponse(bodyResult, requestId);
+    }
+
+    const body = asJsonObject(bodyResult.value);
     const name = typeof body?.name === "string" ? body.name.trim() : "";
 
     if (!name || name.length > 120) {
@@ -395,7 +415,20 @@ export const handleExampleResourceApi = async (
     }
   }
 
-  const body = await parseJsonObject(request);
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) {
+    auditMutationFailure(
+      audit,
+      actorId,
+      scopeId,
+      resourceId,
+      "example_resource.transition",
+      bodyResult.code,
+    );
+    return requestBodyFailureResponse(bodyResult, requestId);
+  }
+
+  const body = asJsonObject(bodyResult.value);
   const fromStatus = body?.fromStatus;
   const toStatus = body?.toStatus;
 
