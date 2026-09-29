@@ -93,16 +93,47 @@ role
 
 It contains no role semantics. The pure policy decides whether that role is sufficient for the requested action.
 
+## Reusable HTTP guard
+
+Issue #62 adds a reusable HTTP-boundary composition layer without moving authorization semantics out of the pure policy.
+
+```text
+requireAuthenticatedUser(request, db)
+        ↓
+Authenticated application user
+        ↓
+trusted resource-scope lookup by the endpoint
+        ↓
+requireScopedAuthorization(...)
+        ├─ findScopeMembership(...)
+        └─ authorizeScopedAction(...)
+                 ↓
+        allow or generic 403
+```
+
+The guard responsibilities are intentionally narrow:
+
+- `requireAuthenticatedUser(...)` resolves the application session and returns a unified `401 authentication_required` result when no valid session exists
+- `requireScopedAuthorization(...)` loads membership for the requested scope and delegates membership / role / requested-scope / resource-scope decisions to `authorizeScopedAction(...)`
+- denied authorization returns a generic `403 forbidden` response contract while the detailed deny reason remains available for Audit
+- an unconfigured action remains deny-by-default
+- D1 or other dependency failures are not converted into authentication/authorization denials; they propagate to the endpoint and remain `503` operational failures
+
+The HTTP guard must not trust a role, membership, or resource-scope value supplied by the client. `resourceScopeId` must come from a trusted server-side lookup or equivalent protected persistence boundary.
+
 ## HTTP boundary
 
-This Issue does not add a concrete protected CRUD endpoint.
+The Example Resource API uses the reusable guard for its protected endpoints.
 
-When HTTP integration is added later:
+HTTP mapping remains:
 
 - missing or invalid application session → `401 Unauthorized`
 - authenticated caller denied by authorization policy → `403 Forbidden`
+- authentication or authorization dependency failure → `503 Service Unavailable`
 
-The authorization core itself returns structured decisions rather than creating `Response` objects.
+The API response does not expose internal policy reasons such as `role_required` or `resource_scope_mismatch`. Those bounded reasons are retained for Audit and tests.
+
+The authorization core itself continues to return structured decisions rather than creating `Response` objects. HTTP response generation belongs to the HTTP guard/boundary layer.
 
 ## Deliberate exclusions
 
@@ -114,7 +145,6 @@ The baseline does not include:
 - an RBAC administration UI
 - ABAC or a policy engine
 - invitation flows
-- audit events
 - product-specific resource types
 
 Those capabilities should be added only when a real application requires them.
