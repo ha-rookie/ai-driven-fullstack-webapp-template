@@ -6,10 +6,10 @@ import {
   transitionExampleResourceStatus,
   type IntegrityMutationResult,
 } from "../infrastructure/d1-example-resource-store";
-import { resolveApplicationSession } from "./auth";
 import {
-  authorizeScopedAction,
-  findScopeMembership,
+  authorizationGuardFailureResponse,
+  requireAuthenticatedUser,
+  requireScopedAuthorization,
   type RolePolicy,
 } from "./authorization";
 import type { AuditEvent } from "./audit";
@@ -166,9 +166,9 @@ export const handleExampleResourceApi = async (
     return error("method_not_allowed", "Method not allowed", 405);
   }
 
-  let session;
+  let authentication;
   try {
-    session = await resolveApplicationSession(request, db);
+    authentication = await requireAuthenticatedUser(request, db);
   } catch {
     audit({
       category: "authentication",
@@ -186,7 +186,7 @@ export const handleExampleResourceApi = async (
     );
   }
 
-  if (!session) {
+  if (!authentication.allowed) {
     audit({
       category: "authentication",
       action: "protected_resource_session_resolve",
@@ -194,20 +194,18 @@ export const handleExampleResourceApi = async (
       scopeId,
       resourceType: "example_resource",
       resourceId,
-      reason: "session_missing_or_invalid",
+      reason: authentication.reason,
     });
-    return error("authentication_required", "Authentication required", 401);
+    return authorizationGuardFailureResponse(authentication);
   }
 
-  const actorId = session.user.id;
+  const actorId = authentication.user.id;
 
   let resource;
   let resourceScopeId;
-  let membership;
   try {
     resource = await loadExampleResource(db, resourceId);
     resourceScopeId = await findExampleResourceScopeId(db, resourceId);
-    membership = await findScopeMembership(db, actorId, scopeId);
   } catch {
     audit({
       category: "system",
@@ -230,14 +228,32 @@ export const handleExampleResourceApi = async (
     request.method === "GET"
       ? "example_resource:read"
       : "example_resource:write";
-  const decision = authorizeScopedAction(exampleResourcePolicy, {
-    action: authorizationAction,
-    requestedScopeId: scopeId,
-    resourceScopeId,
-    membership,
-  });
 
-  if (!decision.allowed) {
+  let authorization;
+  try {
+    authorization = await requireScopedAuthorization({
+      db,
+      userId: actorId,
+      policy: exampleResourcePolicy,
+      action: authorizationAction,
+      requestedScopeId: scopeId,
+      resourceScopeId,
+    });
+  } catch {
+    audit({
+      category: "system",
+      action: "protected_resource_dependency",
+      outcome: "failure",
+      actorId,
+      scopeId,
+      resourceType: "example_resource",
+      resourceId,
+      reason: "dependency_error",
+    });
+    return error("resource_unavailable", "Resource is unavailable", 503);
+  }
+
+  if (!authorization.allowed) {
     audit({
       category: "authorization",
       action: authorizationAction,
@@ -246,9 +262,9 @@ export const handleExampleResourceApi = async (
       scopeId,
       resourceType: "example_resource",
       resourceId,
-      reason: decision.reason,
+      reason: authorization.reason,
     });
-    return error("forbidden", "Access denied", 403);
+    return authorizationGuardFailureResponse(authorization);
   }
 
   if (request.method === "GET") {
