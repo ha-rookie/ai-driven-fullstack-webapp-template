@@ -23,6 +23,8 @@ test("representative client error statuses use the standard envelope", async () 
     [404, "not_found"],
     [409, "conflict"],
     [412, "precondition_failed"],
+    [413, "payload_too_large"],
+    [415, "unsupported_media_type"],
     [428, "precondition_required"],
     [429, "rate_limited"],
   ] as const;
@@ -104,6 +106,30 @@ test("precondition AppErrors use centralized 412 and 428 mappings", async () => 
   assert.equal(required.status, 428);
   assert.match(JSON.stringify(await readBody(failed)), /resource changed/);
   assert.match(JSON.stringify(await readBody(required)), /precondition is required/);
+});
+
+test("request body AppErrors use centralized 413 and 415 mappings", async () => {
+  const tooLarge = appErrorResponse(
+    new AppError({
+      code: "payload_too_large",
+      message: "internal byte count",
+      userMessage: "Request body exceeds the allowed size",
+    }),
+    requestId,
+  );
+  const unsupported = appErrorResponse(
+    new AppError({
+      code: "unsupported_media_type",
+      message: "internal content type detail",
+      userMessage: "Content-Type must be application/json",
+    }),
+    requestId,
+  );
+
+  assert.equal(tooLarge.status, 413);
+  assert.equal(unsupported.status, 415);
+  assert.match(JSON.stringify(await readBody(tooLarge)), /allowed size/);
+  assert.match(JSON.stringify(await readBody(unsupported)), /application\/json/);
 });
 
 test("server-side AppError does not expose internal message even when userMessage exists", async () => {
