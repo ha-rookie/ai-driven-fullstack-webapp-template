@@ -69,6 +69,28 @@ Authorization denial details remain in the Audit record. The API response stays 
 
 A D1/dependency failure is not treated as missing authentication or denied authorization. The guard lets those failures propagate so the endpoint can return `503` rather than an incorrect `401` or `403`.
 
+## Standard error envelope
+
+Issue #63 routes ordinary API errors through one HTTP mapper. The baseline error shape is:
+
+```json
+{
+  "error": {
+    "code": "resource_not_found",
+    "message": "Resource not found"
+  },
+  "requestId": "request-correlation-id"
+}
+```
+
+The same `requestId` is also returned in the `x-request-id` response header. This lets a client-visible error be correlated with Audit/runtime evidence without exposing stack traces, database details, provider claims, or other internal diagnostics.
+
+Validation failures may add bounded field-level issues inside `error.issues`. Conflict responses may preserve endpoint-safe state such as the current public version outside the `error` object. Neither extension may replace the standard `error` or `requestId` fields.
+
+`AppError` is mapped centrally from application error code to HTTP status. Its internal `message`, `cause`, and stack are not client output. Server-side/unknown failures fail safe to a generic `500 internal_error` response.
+
+Not every non-2xx response is forced into this envelope. Purpose-specific probe contracts such as health status and `/api/auth/me` unauthenticated-state discovery keep their explicit response semantics unless their own contract is changed separately.
+
 ## Scope binding
 
 Issue #17 adds a one-to-one bridge:
@@ -126,6 +148,15 @@ Guard unit tests additionally verify that:
 - unconfigured actions fail closed
 - internal authorization reasons are not exposed in the HTTP body
 - dependency failures are not converted into 401/403
+
+API error mapper unit tests additionally verify that:
+
+- representative 400 / 401 / 403 / 404 / 409 / 422 / 429 / 500 statuses use one envelope
+- request correlation is present in the response body and header
+- validation issues retain only bounded client-safe context
+- AppError internal detail is not exposed
+- unknown failures return a generic 500
+- endpoint-safe conflict context cannot override `error` or `requestId`
 
 ## Local-first execution
 

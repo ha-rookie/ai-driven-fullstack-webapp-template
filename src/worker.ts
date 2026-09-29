@@ -11,6 +11,7 @@ import {
   type AuditEvent,
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
+import { apiErrorResponse } from "./worker/http";
 
 interface Env {
   DB: D1Database;
@@ -84,14 +85,13 @@ export default {
           reason: "dependency_error",
         });
         return api(
-          json(
+          apiErrorResponse(
             {
-              error: {
-                code: "authentication_unavailable",
-                message: "Authentication is unavailable",
-              },
+              status: 503,
+              code: "authentication_unavailable",
+              message: "Authentication is unavailable",
             },
-            { status: 503 },
+            requestContext.requestId,
           ),
         );
       }
@@ -121,14 +121,13 @@ export default {
           reason: "dependency_error",
         });
         return api(
-          json(
+          apiErrorResponse(
             {
-              error: {
-                code: "authentication_unavailable",
-                message: "Authentication is unavailable",
-              },
+              status: 503,
+              code: "authentication_unavailable",
+              message: "Authentication is unavailable",
             },
-            { status: 503 },
+            requestContext.requestId,
           ),
         );
       }
@@ -138,15 +137,20 @@ export default {
       request,
       env.DB,
       audit,
+      requestContext.requestId,
     );
     if (exampleResourceResponse) {
       return api(exampleResourceResponse);
     }
 
     return api(
-      json(
-        { error: { code: "not_found", message: "API route not found" } },
-        { status: 404 },
+      apiErrorResponse(
+        {
+          status: 404,
+          code: "not_found",
+          message: "API route not found",
+        },
+        requestContext.requestId,
       ),
     );
   },
