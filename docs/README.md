@@ -53,6 +53,7 @@ Worker HTTP Boundary / Composition
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
 | `RUNTIME_INTEGRITY.md` | optimistic concurrency、state transition、atomicity、DB constraints |
 | `AUDIT_OBSERVABILITY.md` | Correlation ID、structured Audit、安全なfield境界 |
+| `APPLICATION_LOGGING.md` | Application LogのJSON契約、request scope、安全なcontextとAuditとの差分 |
 | `ORIGIN_CORS.md` | same-origin / cross-origin / preflight / environment-specific allowlist境界 |
 | `CSRF_PROTECTION.md` | Cookie Sessionのsession-bound CSRF proof、token取得、Mutation Guard境界 |
 | `BOUNDARY_TESTING.md` | Origin/CORS → Authn → CSRF → Authz → Validation → Integrity → Auditの統合境界とnegative paths |
@@ -77,6 +78,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 
 例:
 - shared Clock / IdGenerator / Runtime Config / Environment boundary
+- request-scoped structured Application Log
 - D1 session persistence
 - Resource ScopeのD1 schema
 - optimistic lockingのSQL条件

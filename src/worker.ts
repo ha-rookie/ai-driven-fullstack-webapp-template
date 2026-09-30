@@ -1,3 +1,4 @@
+import { StructuredApplicationLogger } from "./shared/logging";
 import {
   clearSessionCookie,
   createSessionPolicy,
@@ -52,6 +53,9 @@ export default {
     }
 
     const requestContext = createRequestContext(request);
+    const appLogger = new StructuredApplicationLogger("worker.http").withContext({
+      requestId: requestContext.requestId,
+    });
     const secure = (response: Response) =>
       applySecurityHeaders(
         attachRequestId(response, requestContext.requestId),
@@ -114,12 +118,16 @@ export default {
     ) {
       try {
         const row = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
+        if (row?.ok !== 1) {
+          appLogger.warn("database_health_check_unavailable");
+        }
         return api(
           row?.ok === 1
             ? json({ status: "ok" })
             : json({ status: "unavailable" }, { status: 503 }),
         );
-      } catch {
+      } catch (error) {
+        appLogger.error("database_health_check_failed", { error });
         return api(json({ status: "unavailable" }, { status: 503 }));
       }
     }
