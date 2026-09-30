@@ -14,8 +14,10 @@ import {
 import type { AuditEvent } from "./audit";
 import {
   apiErrorResponse,
+  csrfGuardFailureResponse,
   formatVersionEtag,
   readJsonBody,
+  requireCsrfProtection,
   resolveConcurrencyPrecondition,
   stalePreconditionHttpMapping,
   type ConcurrencyPrecondition,
@@ -242,6 +244,23 @@ export const handleExampleResourceApi = async (
   }
 
   const actorId = authentication.user.id;
+
+  if (request.method !== "GET") {
+    const csrf = await requireCsrfProtection(request);
+    if (!csrf.allowed) {
+      audit({
+        category: "authentication",
+        action: "csrf_guard",
+        outcome: "failure",
+        actorId,
+        scopeId,
+        resourceType: "example_resource",
+        resourceId,
+        reason: csrf.reason,
+      });
+      return csrfGuardFailureResponse(csrf, requestId);
+    }
+  }
 
   let resource;
   let resourceScopeId;
