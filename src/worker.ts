@@ -17,7 +17,10 @@ import {
   applySecurityHeaders,
   buildCorsPreflightResponse,
   createCorsPolicy,
+  csrfGuardFailureResponse,
   evaluateCorsRequest,
+  issueCsrfTokenForRequest,
+  requireCsrfProtection,
 } from "./worker/http";
 
 interface Env {
@@ -147,7 +150,67 @@ export default {
       }
     }
 
+    if (request.method === "GET" && url.pathname === "/api/auth/csrf") {
+      try {
+        const session = await resolveApplicationSession(request, env.DB);
+        if (!session) {
+          audit({
+            category: "authentication",
+            action: "csrf_token_issue",
+            outcome: "failure",
+            reason: "session_missing_or_invalid",
+          });
+          return api(
+            apiErrorResponse(
+              {
+                status: 401,
+                code: "authentication_required",
+                message: "Authentication required",
+              },
+              requestContext.requestId,
+            ),
+          );
+        }
+
+        const csrfToken = await issueCsrfTokenForRequest(request);
+        if (!csrfToken) {
+          throw new Error("CSRF token invariant violated");
+        }
+
+        return api(json({ csrfToken }));
+      } catch {
+        audit({
+          category: "authentication",
+          action: "csrf_token_issue",
+          outcome: "failure",
+          reason: "dependency_error",
+        });
+        return api(
+          apiErrorResponse(
+            {
+              status: 503,
+              code: "authentication_unavailable",
+              message: "Authentication is unavailable",
+            },
+            requestContext.requestId,
+          ),
+        );
+      }
+    }
+
     if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+      const csrf = await requireCsrfProtection(request);
+      if (!csrf.allowed) {
+        audit({
+          category: "authentication",
+          action: "csrf_guard",
+          outcome: "failure",
+          resourceType: "application_session",
+          reason: csrf.reason,
+        });
+        return api(csrfGuardFailureResponse(csrf, requestContext.requestId));
+      }
+
       try {
         await revokeApplicationSession(request, env.DB);
         audit({

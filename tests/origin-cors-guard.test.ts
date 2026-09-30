@@ -93,14 +93,15 @@ test("only exact configured cross-origin values are allowed", () => {
   assert.deepEqual(nullOrigin, { kind: "reject", reason: "invalid_origin" });
 });
 
-test("allowed preflight is handled without authentication", async () => {
+test("allowed preflight is handled without authentication and accepts CSRF proof header", async () => {
   const decision = evaluateCorsRequest(
     new Request("https://api.example.com/api/resource", {
       method: "OPTIONS",
       headers: {
         Origin: "https://app.example.com",
         "Access-Control-Request-Method": "PATCH",
-        "Access-Control-Request-Headers": "Content-Type, If-Match, X-Request-Id",
+        "Access-Control-Request-Headers":
+          "Content-Type, If-Match, X-CSRF-Token, X-Request-Id",
       },
     }),
     policy,
@@ -126,7 +127,7 @@ test("allowed preflight is handled without authentication", async () => {
   );
   assert.equal(
     response.headers.get("access-control-allow-headers"),
-    "content-type, if-match, x-request-id",
+    "content-type, if-match, x-csrf-token, x-request-id",
   );
   assert.equal(response.headers.get("access-control-max-age"), "600");
   assert.equal(
