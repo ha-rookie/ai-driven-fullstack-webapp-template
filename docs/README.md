@@ -52,7 +52,8 @@ Worker HTTP Boundary / Composition
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
 | `RUNTIME_INTEGRITY.md` | optimistic concurrency、state transition、atomicity、DB constraints |
 | `AUDIT_OBSERVABILITY.md` | Correlation ID、structured Audit、安全なfield境界 |
-| `BOUNDARY_TESTING.md` | Authn → Authz → Validation → Integrity → Auditの統合境界とnegative paths |
+| `ORIGIN_CORS.md` | same-origin / cross-origin / preflight / environment-specific allowlist境界 |
+| `BOUNDARY_TESTING.md` | Origin/CORS → Authn → Authz → Validation → Integrity → Auditの統合境界とnegative paths |
 | `SECURITY_HEADERS.md` | Worker API / Static AssetsのSecurity Headers baselineとCSP/HSTS境界 |
 | `RECOVERY_OPERATIONS.md` | Preview recovery rehearsal、Production restore Human Gate、RPO/RTO境界 |
 | `PERFORMANCE_CAPACITY.md` | Local / Preview benchmark、query plan、resource budget、計測単位 |
@@ -78,6 +79,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - optimistic lockingのSQL条件
 - Worker request correlation
 - protected APIのHTTP mapping
+- Origin / CORS allowlistとpreflight boundary
 - Worker / Static AssetsのSecurity Headers
 - Preview D1 Time Travel rehearsal
 - D1 query-plan benchmark
