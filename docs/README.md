@@ -56,6 +56,7 @@ Worker HTTP Boundary / Composition
 | `APPLICATION_LOGGING.md` | Application LogのJSON契約、request scope、安全なcontextとAuditとの差分 |
 | `ORIGIN_CORS.md` | same-origin / cross-origin / preflight / environment-specific allowlist境界 |
 | `CSRF_PROTECTION.md` | Cookie Sessionのsession-bound CSRF proof、token取得、Mutation Guard境界 |
+| `RATE_LIMITING.md` | sensitive endpoint向けRate Limit Guard、Store抽象、429/Retry-After、Audit境界 |
 | `BOUNDARY_TESTING.md` | Origin/CORS → Authn → CSRF → Authz → Validation → Integrity → Auditの統合境界とnegative paths |
 | `SECURITY_HEADERS.md` | Worker API / Static AssetsのSecurity Headers baselineとCSP/HSTS境界 |
 | `RECOVERY_OPERATIONS.md` | Preview recovery rehearsal、Production restore Human Gate、RPO/RTO境界 |
@@ -86,6 +87,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - protected APIのHTTP mapping
 - Origin / CORS allowlistとpreflight boundary
 - Cookie Session mutationのCSRF proof boundary
+- sensitive endpointのRate Limit Guard / shared Store boundary
 - Worker / Static AssetsのSecurity Headers
 - Preview D1 Time Travel rehearsal
 - D1 query-plan benchmark
