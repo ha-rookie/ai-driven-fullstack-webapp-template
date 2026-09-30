@@ -1,3 +1,4 @@
+import { redactLogValue } from "../../shared/logging/redaction";
 import { systemClock } from "../../shared/runtime";
 import type {
   AuditEvent,
@@ -50,7 +51,9 @@ export class ConsoleAuditLogger implements AuditLogger {
 
   write(event: AuditEvent): void {
     const record = toStructuredAuditRecord(event, this.now().toISOString());
-    this.writeLine(JSON.stringify(record));
+    // Explicit Audit field projection remains in force before shared redaction.
+    // Never pass the caller's AuditEvent directly to JSON.stringify.
+    this.writeLine(JSON.stringify(redactLogValue(record)));
   }
 }
 

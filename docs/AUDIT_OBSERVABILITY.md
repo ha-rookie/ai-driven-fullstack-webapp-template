@@ -60,7 +60,7 @@ outcome
 requestId
 method
 path
-actorId? 
+actorId?
 scopeId?
 resourceType?
 resourceId?
@@ -106,9 +106,17 @@ The baseline sink writes one JSON record per event through Worker `console.info`
 AuditEvent
    ↓ explicit field projection
 StructuredAuditRecord
+   ↓ shared redactLogValue (key masking and size limits)
+Detached JSON-safe record
    ↓ JSON.stringify
 console.info
 ```
+
+Issue #65 shares the same pure `src/shared/logging/redaction.ts` utility with the Application Logger. It masks known secret/cookie/token and PII-candidate **keys**, recursively handles nested plain data and applies fixed limits (depth 4; string length 256; key length 64; collection entries 20; visited nodes 128). Excess or cyclic data uses `[TRUNCATED]`; known sensitive keys use `[REDACTED]`.
+
+The Audit contract stays explicitly allowlisted, and `toStructuredAuditRecord` still returns the original bounded **unredacted** projection for internal composition. **Only the `ConsoleAuditLogger.write` sink is the documented redacted output boundary.** Do not serialize intermediate records or pass an arbitrary AuditEvent to an alternative sink without applying the same redactor. `writeAuditSafely` continues isolating sink failures.
+
+Key-based redaction is not complete PII/DLP detection. Use controlled `action`, `reason`, `resourceId` and `path` values. Do not put tokens, email addresses or user-generated text inside permitted string fields. For Application Logger guidance, see `APPLICATION_LOGGING.md`.
 
 This keeps the template deployable without provisioning another service or D1 table.
 
@@ -161,6 +169,7 @@ Unit tests verify:
 - query data excluded from Request Context
 - response request-ID propagation
 - explicit Audit field projection
+- shared key-based redaction and size limits at the Audit sink
 - generic authentication / authorization / mutation categories
 - Audit sink failure isolation
 

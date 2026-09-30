@@ -1,4 +1,5 @@
 import { systemClock, type Clock } from "../runtime";
+import { redactLogValue } from "./redaction";
 import type { LogContext, Logger } from "./logger";
 
 export type ApplicationLogLevel = "debug" | "info" | "warn" | "error";
@@ -32,8 +33,7 @@ type SafeContext = Readonly<{
   scopeId?: string;
 }>;
 
-// Context is deliberately allowlisted until the shared redactor in #65 exists.
-// Never serialize caller-supplied objects, arbitrary metadata, or Error messages.
+// Context remains allowlisted even after #65: free-form metadata is not permitted.
 const safeIdentifier = (value: unknown): string | undefined =>
   typeof value === "string" &&
   value.length > 0 &&
@@ -77,7 +77,7 @@ const projectSafeError = (value: unknown): SafeApplicationLogError | undefined =
 
 /**
  * Application diagnostics, intentionally separate from AuditEvent and its sink.
- * All unrecognized context fields are dropped rather than stringified.
+ * Context allowlisting is enforced before shared output redaction.
  */
 export class StructuredApplicationLogger implements Logger {
   constructor(
@@ -133,7 +133,8 @@ export class StructuredApplicationLogger implements Logger {
             })()
           : {}),
       };
-      this.sink(level, JSON.stringify(record));
+      // The original record never reaches JSON.stringify or the sink.
+      this.sink(level, JSON.stringify(redactLogValue(record)));
     } catch {
       // Application logging is best-effort; failed sinks never change HTTP results.
     }
