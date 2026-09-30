@@ -17,6 +17,8 @@ Origin / CORS Guard
    ↓
 Authentication Guard
    ↓
+CSRF Protection Guard (mutation only)
+   ↓
 Resource Scope lookup
    ↓
 Scoped Authorization Guard
@@ -38,7 +40,7 @@ HTTP Response
 
 Each layer owns a different decision. UI validation is never treated as a substitute for this trusted boundary.
 
-Issue #67 puts Origin / CORS evaluation before session resolution so a disallowed browser Origin does not reach the D1-backed authentication or Domain boundary. CORS remains separate from CSRF; Issue #89 owns the explicit CSRF proof contract.
+Issue #67 puts Origin / CORS evaluation before session resolution so a disallowed browser Origin does not reach the D1-backed authentication or Domain boundary. CORS remains separate from CSRF; Issue #89 adds an explicit session-bound proof after Authentication for cookie-authenticated mutations.
 
 The HTTP guards introduced by Issue #62 centralize the 401/403 contract, but they do not replace the pure authorization policy. Membership, role, and scope decisions still come from `authorizeScopedAction(...)`.
 
@@ -70,6 +72,7 @@ Projects should replace those role names and actions with their own vocabulary. 
 | malformed / conflicting concurrency precondition | 400 | `invalid_precondition` |
 | no valid session | 401 | `authentication_required` |
 | disallowed Origin / preflight method / preflight header | 403 | `origin_forbidden` |
+| missing / malformed / mismatched CSRF proof | 403 | `csrf_failed` |
 | membership / role / scope denied | 403 | `forbidden` |
 | resource missing / unscoped | 404 | `resource_not_found` |
 | body `expectedVersion` stale | 409 | `stale_update` |
@@ -83,7 +86,7 @@ Projects should replace those role names and actions with their own vocabulary. 
 | invalid CORS runtime configuration | 500 | `security_configuration_invalid` |
 | dependency failure | 503 | `*_unavailable` |
 
-Authorization denial details remain in the Audit record. The API response stays generic instead of exposing policy internals.
+Authorization and CSRF denial details remain in Audit metadata. Client responses stay generic instead of exposing policy internals or token values.
 
 A D1/dependency failure is not treated as missing authentication or denied authorization. The guard lets those failures propagate so the endpoint can return `503` rather than an incorrect `401` or `403`.
 
@@ -121,7 +124,7 @@ Vary: Origin
 
 The Guard never combines `Access-Control-Allow-Origin: *` with credentials.
 
-Cross-origin preflight is handled before Authentication. The baseline validates requested method/header against the configured policy and returns `204` only when both are allowed. Preflight does not require a session cookie.
+Cross-origin preflight is handled before Authentication. The baseline validates requested method/header against the configured policy and returns `204` only when both are allowed. Preflight does not require a session cookie or CSRF proof. `X-CSRF-Token` is included in the baseline allowed request headers for explicitly allowed cross-origin frontends.
 
 Preview and Production use the same config key but bind different environment-specific values. Concrete Project origins are never fixed in Template source.
 
@@ -129,9 +132,39 @@ The current application session remains `Secure; SameSite=Lax`. CORS does not we
 
 See `ORIGIN_CORS.md` for the complete responsibility and configuration contract.
 
+## CSRF protection guard
+
+Issue #89 adds a Reference session-bound proof for Cookie Session mutations.
+
+The server derives:
+
+```text
+v1.<base64url SHA-256("csrf:v1:" + sessionToken)>
+```
+
+The raw `app_session` token remains `HttpOnly`; only the derived proof is returned through authenticated `GET /api/auth/csrf`.
+
+Mutation requests send:
+
+```http
+X-CSRF-Token: v1....
+```
+
+`GET`, `HEAD`, and `OPTIONS` are safe methods and do not require CSRF proof. They must not mutate trusted state.
+
+If a non-safe request has no Application Session cookie, CSRF does not convert it into a new error. Authentication remains responsible for deciding whether the endpoint requires a session. Once Authentication succeeds, a missing, malformed, or mismatched proof fails closed as `403 csrf_failed` before resource lookup, Authorization, request-body parsing, or mutation.
+
+The public response intentionally does not distinguish missing from invalid proof. Audit may keep only a bounded reason such as `csrf_proof_missing_or_invalid`; raw Cookie and CSRF header values are forbidden from logs/Audit.
+
+`POST /api/auth/logout` uses the same rule when a session cookie is present. A cookie-less logout remains an idempotent `204` because there is no authenticated browser state to forge.
+
+The proof is not stored in D1. Session rotation will naturally invalidate the previous proof because the derivation input changes.
+
+See `CSRF_PROTECTION.md` for the complete contract.
+
 ## Request body guard
 
-Issue #69 separates transport/body safety from Domain validation. Mutation endpoints use the shared `readJsonBody(...)` guard only after authentication and authorization have succeeded. GET and other bodyless endpoints do not acquire unnecessary Content-Type requirements.
+Issue #69 separates transport/body safety from Domain validation. Mutation endpoints use the shared `readJsonBody(...)` guard only after authentication, CSRF, and authorization have succeeded. GET and other bodyless endpoints do not acquire unnecessary Content-Type requirements.
 
 The Reference JSON boundary accepts:
 
@@ -158,7 +191,11 @@ The Example Resource API therefore has this order for mutations:
 ```text
 Origin / CORS
         ↓
-Authentication / Authorization
+Authentication
+        ↓
+CSRF proof
+        ↓
+Authorization
         ↓
 readJsonBody (type / size / JSON syntax)
         ↓
@@ -213,11 +250,11 @@ Issue #63 routes ordinary API errors through one HTTP mapper. The baseline error
 }
 ```
 
-The same `requestId` is also returned in the `x-request-id` response header. This lets a client-visible error be correlated with Audit/runtime evidence without exposing stack traces, database details, provider claims, or other internal diagnostics.
+The same `requestId` is also returned in the `x-request-id` response header. This lets a client-visible error be correlated with Audit/runtime evidence without exposing stack traces, database details, provider claims, CSRF proofs, or other internal diagnostics.
 
 Validation failures may add bounded field-level issues inside `error.issues`. Conflict and precondition responses may preserve endpoint-safe state such as the current public version outside the `error` object. Neither extension may replace the standard `error` or `requestId` fields.
 
-`AppError` is mapped centrally from application error code to HTTP status, including Request Body Guard mappings `413 payload_too_large` / `415 unsupported_media_type` and concurrency mappings `412 precondition_failed` / `428 precondition_required`. Its internal `message`, `cause`, and stack are not client output. Server-side/unknown failures fail safe to a generic `500 internal_error` response.
+`AppError` is mapped centrally from application error code to HTTP status, including Request Body Guard mappings `413 payload_too_large` / `415 unsupported_media_type` and concurrency mappings `412 precondition_failed` / `428 precondition_required`. CSRF Guard uses the same standard error envelope directly for `403 csrf_failed`. Internal diagnostics remain out of client output. Server-side/unknown failures fail safe to a generic `500 internal_error` response.
 
 Not every non-2xx response is forced into this envelope. Purpose-specific probe contracts such as health status and `/api/auth/me` unauthenticated-state discovery keep their explicit response semantics unless their own contract is changed separately.
 
@@ -242,15 +279,16 @@ A real project may choose to put `scope_id` directly on its domain resource when
 The Local D1 boundary fixture verifies these cases in order:
 
 1. unauthenticated write -> reject
-2. viewer write -> reject
-3. editor in another scope -> reject
-4. invalid input -> reject
-5. editor rename -> success
-6. stale body-version rename -> reject with the backward-compatible 409 contract
-7. invalid state transition -> reject
-8. `draft -> active` -> success
-9. `active -> finalized` -> success
-10. mutation after finalized -> reject
+2. authenticated write with missing CSRF proof -> reject
+3. viewer write with valid CSRF proof -> reject by Authorization
+4. editor in another scope with valid CSRF proof -> reject by Authorization
+5. invalid input with valid CSRF proof -> reject
+6. editor rename -> success
+7. stale body-version rename -> reject with the backward-compatible 409 contract
+8. invalid state transition -> reject
+9. `draft -> active` -> success
+10. `active -> finalized` -> success
+11. mutation after finalized -> reject
 
 After every rejection, a permitted GET reloads the resource from D1 and asserts the expected name, status, and version.
 
@@ -260,6 +298,7 @@ At the end, CI directly checks `example_resource_changes` and requires exactly t
 
 The same runtime smoke verifies structured events for:
 
+- CSRF `csrf_proof_missing_or_invalid`
 - authorization `role_required`
 - authorization `resource_scope_mismatch`
 - mutation `invalid_request`
@@ -280,9 +319,20 @@ Origin/CORS guard unit tests additionally verify that:
 - `null` Origin fails
 - invalid configured Origins fail closed
 - allowed preflight returns 204 before Authentication
+- `X-CSRF-Token` is accepted by the baseline preflight policy
 - disallowed requested methods/headers fail
 - exact ACAO / credentials / Vary are added only to allowed cross-origin responses
 - existing response headers remain intact
+
+CSRF guard unit tests additionally verify that:
+
+- GET / HEAD / OPTIONS are safe without proof
+- mutation without an Application Session cookie remains an Authentication concern
+- missing / malformed / mismatched proof shares one 403 public contract
+- valid session-bound proof permits the request to continue
+- token derivation is stable for one session and changes when the session token changes
+- token issue helper derives only from the Application Session cookie
+- failure response uses the standard error envelope without token/reason leakage
 
 Guard unit tests additionally verify that:
 
@@ -347,6 +397,8 @@ When replacing `example_resources`, preserve the test shape rather than the samp
 - CORS preflight before Authentication
 - disallowed Origin reject before D1/session access
 - unauthenticated reject
+- authenticated Cookie mutation requires explicit CSRF proof
+- missing/invalid CSRF reject before resource lookup/Authorization/body parsing
 - authorization reject
 - cross-scope reject
 - request Content-Type / size / JSON syntax guard
@@ -356,6 +408,6 @@ When replacing `example_resources`, preserve the test shape rather than the samp
 - terminal/state-transition reject where applicable
 - data unchanged after reject
 - multi-write completeness after success
-- Audit evidence for important failures and mutations
+- Audit evidence for important failures and mutations without Cookie/CSRF values
 
-The exact HTTP routes, allowed Origins, roles, resource model, JSON body limits, ETag representation, and state machine remain project decisions.
+The exact HTTP routes, allowed Origins, roles, resource model, CSRF representation, JSON body limits, ETag representation, and state machine remain project decisions.
