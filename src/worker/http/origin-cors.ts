@@ -45,8 +45,17 @@ export type CorsRejectReason =
 export type CorsDecision =
   | {
       readonly kind: "allow";
-      readonly mode: "non-cors" | "same-origin" | "cross-origin";
-      readonly origin?: string;
+      readonly mode: "non-cors";
+    }
+  | {
+      readonly kind: "allow";
+      readonly mode: "same-origin";
+      readonly origin: string;
+    }
+  | {
+      readonly kind: "allow";
+      readonly mode: "cross-origin";
+      readonly origin: string;
     }
   | {
       readonly kind: "preflight";
