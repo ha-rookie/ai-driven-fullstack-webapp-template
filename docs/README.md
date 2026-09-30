@@ -47,6 +47,7 @@ Worker HTTP Boundary / Composition
 | `UPSTREAM_TEMPLATE.md` | Generic Templateとの責務境界、reviewed baseline、重複禁止ルール |
 | `FULLSTACK_ARCHITECTURE.md` | Full-stack runtime全体像、baseline layer model、各Foundationの配置 |
 | `instructions/README.md` | Full-stack固有Scoped Instructionsの選択方法と責務境界 |
+| `RUNTIME_PRIMITIVES.md` | Clock / IdGenerator / Runtime Config / Environmentの最小共通境界 |
 | `DATA_DESIGN.md` | D1 binding、migration、schema、Local / Preview / Production境界 |
 | `AUTH_DESIGN.md` | Provider-independent identityとapplication session |
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
@@ -75,6 +76,7 @@ Worker HTTP Boundary / Composition
 Full-stack固有で、実際のコード・migration・Worker・D1 operationと対応する内容を置きます。
 
 例:
+- shared Clock / IdGenerator / Runtime Config / Environment boundary
 - D1 session persistence
 - Resource ScopeのD1 schema
 - optimistic lockingのSQL条件

@@ -1,3 +1,4 @@
+import { systemClock } from "../../shared/runtime";
 import type {
   AuditEvent,
   AuditLogger,
@@ -44,7 +45,7 @@ export const toStructuredAuditRecord = (
 export class ConsoleAuditLogger implements AuditLogger {
   constructor(
     private readonly writeLine: AuditLineWriter = (line) => console.info(line),
-    private readonly now: AuditClock = () => new Date(),
+    private readonly now: AuditClock = () => systemClock.now(),
   ) {}
 
   write(event: AuditEvent): void {

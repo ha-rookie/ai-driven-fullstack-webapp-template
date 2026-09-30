@@ -1,3 +1,4 @@
+import { cryptoIdGenerator } from "../../shared/runtime";
 import type { RequestContext } from "./types";
 
 export const REQUEST_ID_MAX_LENGTH = 128;
@@ -13,7 +14,7 @@ export const isSafeRequestId = (value: string | null): value is string =>
 
 export const resolveRequestId = (
   request: Request,
-  generateId: () => string = () => crypto.randomUUID(),
+  generateId: () => string = () => cryptoIdGenerator.generate(),
 ): string => {
   const cfRay = request.headers.get("cf-ray");
   if (isSafeRequestId(cfRay)) return cfRay;
