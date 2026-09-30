@@ -1,5 +1,6 @@
 import {
   clearSessionCookie,
+  createSessionPolicy,
   resolveApplicationSession,
   revokeApplicationSession,
 } from "./worker/auth";
@@ -27,6 +28,8 @@ interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   CORS_ALLOWED_ORIGINS?: string;
+  SESSION_IDLE_TIMEOUT_SECONDS?: string;
+  SESSION_TOUCH_INTERVAL_SECONDS?: string;
 }
 
 type RequestAuditFields = Omit<AuditEvent, "requestId" | "method" | "path">;
@@ -56,9 +59,14 @@ export default {
       );
 
     let corsPolicy;
+    let sessionPolicy;
     try {
       corsPolicy = createCorsPolicy({
         allowedOrigins: env.CORS_ALLOWED_ORIGINS,
+      });
+      sessionPolicy = createSessionPolicy({
+        idleTimeoutSeconds: env.SESSION_IDLE_TIMEOUT_SECONDS,
+        touchIntervalSeconds: env.SESSION_TOUCH_INTERVAL_SECONDS,
       });
     } catch {
       return secure(
@@ -118,7 +126,12 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/auth/me") {
       try {
-        const session = await resolveApplicationSession(request, env.DB);
+        const session = await resolveApplicationSession(
+          request,
+          env.DB,
+          undefined,
+          sessionPolicy,
+        );
         if (!session) {
           audit({
             category: "authentication",
@@ -152,7 +165,12 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/auth/csrf") {
       try {
-        const session = await resolveApplicationSession(request, env.DB);
+        const session = await resolveApplicationSession(
+          request,
+          env.DB,
+          undefined,
+          sessionPolicy,
+        );
         if (!session) {
           audit({
             category: "authentication",
@@ -251,6 +269,7 @@ export default {
       env.DB,
       audit,
       requestContext.requestId,
+      sessionPolicy,
     );
     if (exampleResourceResponse) {
       return api(exampleResourceResponse);
