@@ -43,6 +43,7 @@ const sessionDb = (): D1Database =>
                 id: "user-1",
                 displayName: "Example User",
                 expiresAt: "2099-01-01T00:00:00.000Z",
+                lastSeenAt: "2099-01-01T00:00:00.000Z",
               } as T;
             },
           };

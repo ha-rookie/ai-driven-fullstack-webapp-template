@@ -1,6 +1,7 @@
 import {
   resolveApplicationSession,
   type AuthenticatedUser,
+  type SessionPolicy,
 } from "../auth";
 import { findScopeMembership } from "./membership";
 import { authorizeScopedAction } from "./policy";
@@ -45,8 +46,14 @@ export type AuthorizationHttpGuardFailure =
 export const requireAuthenticatedUser = async (
   request: Request,
   db: D1Database,
+  sessionPolicy?: SessionPolicy,
 ): Promise<AuthenticationGuardResult> => {
-  const session = await resolveApplicationSession(request, db);
+  const session = await resolveApplicationSession(
+    request,
+    db,
+    undefined,
+    sessionPolicy,
+  );
 
   return session
     ? { allowed: true, user: session.user }

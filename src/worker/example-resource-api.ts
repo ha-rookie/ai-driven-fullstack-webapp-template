@@ -11,6 +11,7 @@ import {
   requireScopedAuthorization,
   type RolePolicy,
 } from "./authorization";
+import type { SessionPolicy } from "./auth";
 import type { AuditEvent } from "./audit";
 import {
   apiErrorResponse,
@@ -176,6 +177,7 @@ export const handleExampleResourceApi = async (
   db: D1Database,
   audit: Audit,
   requestId: string,
+  sessionPolicy?: SessionPolicy,
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   const statusMatch = url.pathname.match(
@@ -204,7 +206,7 @@ export const handleExampleResourceApi = async (
 
   let authentication;
   try {
-    authentication = await requireAuthenticatedUser(request, db);
+    authentication = await requireAuthenticatedUser(request, db, sessionPolicy);
   } catch {
     audit({
       category: "authentication",
