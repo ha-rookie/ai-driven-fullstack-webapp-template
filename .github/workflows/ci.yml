@@ -95,6 +95,10 @@ jobs:
           grep -q '"authenticated":false' /tmp/auth-me.json
           grep -qi '^x-request-id: smoke-auth-001' /tmp/auth-me-headers.txt
 
+          CSRF_UNAUTH_STATUS=$(curl --silent --output /tmp/csrf-unauth.json --write-out '%{http_code}' http://127.0.0.1:4173/api/auth/csrf)
+          test "$CSRF_UNAUTH_STATUS" = "401"
+          grep -q '"code":"authentication_required"' /tmp/csrf-unauth.json
+
           LOGOUT_STATUS=$(curl --silent --output /dev/null --dump-header /tmp/logout-headers.txt --write-out '%{http_code}' -X POST http://127.0.0.1:4173/api/auth/logout)
           test "$LOGOUT_STATUS" = "204"
           grep -qi '^set-cookie: app_session=;' /tmp/logout-headers.txt
@@ -113,9 +117,23 @@ jobs:
           RESOURCE_A='http://127.0.0.1:4173/api/scopes/scope-a/example-resources/resource-a'
           RESOURCE_B='http://127.0.0.1:4173/api/scopes/scope-b/example-resources/resource-a'
           STATUS_A="$RESOURCE_A/status"
+          CSRF_URL='http://127.0.0.1:4173/api/auth/csrf'
           EDITOR_COOKIE='app_session=boundary-editor-token'
           VIEWER_COOKIE='app_session=boundary-viewer-token'
           SCOPE_B_COOKIE='app_session=boundary-scope-b-token'
+
+          get_csrf_token() {
+            local cookie="$1"
+            curl --fail --silent --show-error --cookie "$cookie" "$CSRF_URL" \
+              | sed -n 's/.*"csrfToken":"\([^"]*\)".*/\1/p'
+          }
+
+          EDITOR_CSRF=$(get_csrf_token "$EDITOR_COOKIE")
+          VIEWER_CSRF=$(get_csrf_token "$VIEWER_COOKIE")
+          SCOPE_B_CSRF=$(get_csrf_token "$SCOPE_B_COOKIE")
+          test -n "$EDITOR_CSRF"
+          test -n "$VIEWER_CSRF"
+          test -n "$SCOPE_B_CSRF"
 
           assert_resource_state() {
             local expected_name="$1"
@@ -145,9 +163,18 @@ jobs:
           grep -q '"code":"authentication_required"' /tmp/boundary-unauth.json
           assert_resource_state 'Original Resource' 'draft' 1
 
+          CSRF_MISSING_STATUS=$(curl --silent --output /tmp/boundary-csrf-missing.json --write-out '%{http_code}' \
+            --cookie "$EDITOR_COOKIE" \
+            -X PATCH -H 'content-type: application/json' \
+            --data '{"name":"CSRF Change","expectedVersion":1}' \
+            "$RESOURCE_A")
+          test "$CSRF_MISSING_STATUS" = "403"
+          grep -q '"code":"csrf_failed"' /tmp/boundary-csrf-missing.json
+          assert_resource_state 'Original Resource' 'draft' 1
+
           VIEWER_WRITE_STATUS=$(curl --silent --output /tmp/boundary-viewer-write.json --write-out '%{http_code}' \
             --cookie "$VIEWER_COOKIE" \
-            -X PATCH -H 'content-type: application/json' \
+            -X PATCH -H 'content-type: application/json' -H "x-csrf-token: $VIEWER_CSRF" \
             --data '{"name":"Viewer Change","expectedVersion":1}' \
             "$RESOURCE_A")
           test "$VIEWER_WRITE_STATUS" = "403"
@@ -156,7 +183,7 @@ jobs:
 
           WRONG_SCOPE_STATUS=$(curl --silent --output /tmp/boundary-wrong-scope.json --write-out '%{http_code}' \
             --cookie "$SCOPE_B_COOKIE" \
-            -X PATCH -H 'content-type: application/json' \
+            -X PATCH -H 'content-type: application/json' -H "x-csrf-token: $SCOPE_B_CSRF" \
             --data '{"name":"Wrong Scope Change","expectedVersion":1}' \
             "$RESOURCE_B")
           test "$WRONG_SCOPE_STATUS" = "403"
@@ -165,7 +192,7 @@ jobs:
 
           INVALID_STATUS=$(curl --silent --output /tmp/boundary-invalid.json --write-out '%{http_code}' \
             --cookie "$EDITOR_COOKIE" \
-            -X PATCH -H 'content-type: application/json' \
+            -X PATCH -H 'content-type: application/json' -H "x-csrf-token: $EDITOR_CSRF" \
             --data '{"name":"","expectedVersion":1}' \
             "$RESOURCE_A")
           test "$INVALID_STATUS" = "400"
@@ -174,7 +201,7 @@ jobs:
 
           RENAME_STATUS=$(curl --silent --output /tmp/boundary-rename.json --write-out '%{http_code}' \
             --cookie "$EDITOR_COOKIE" \
-            -X PATCH -H 'content-type: application/json' \
+            -X PATCH -H 'content-type: application/json' -H "x-csrf-token: $EDITOR_CSRF" \
             --data '{"name":"Renamed Resource","expectedVersion":1}' \
             "$RESOURCE_A")
           test "$RENAME_STATUS" = "200"
@@ -184,7 +211,7 @@ jobs:
 
           STALE_STATUS=$(curl --silent --output /tmp/boundary-stale.json --write-out '%{http_code}' \
             --cookie "$EDITOR_COOKIE" \
-            -X PATCH -H 'content-type: application/json' \
+            -X PATCH -H 'content-type: application/json' -H "x-csrf-token: $EDITOR_CSRF" \
             --data '{"name":"Stale Overwrite","expectedVersion":1}' \
             "$RESOURCE_A")
           test "$STALE_STATUS" = "409"
@@ -193,7 +220,7 @@ jobs:
 
           INVALID_TRANSITION_STATUS=$(curl --silent --output /tmp/boundary-invalid-transition.json --write-out '%{http_code}' \
             --cookie "$EDITOR_COOKIE" \
-            -X POST -H 'content-type: application/json' \
+            -X POST -H 'content-type: application/json' -H "x-csrf-token: $EDITOR_CSRF" \
             --data '{"fromStatus":"draft","toStatus":"finalized","expectedVersion":2}' \
             "$STATUS_A")
           test "$INVALID_TRANSITION_STATUS" = "409"
@@ -202,7 +229,7 @@ jobs:
 
           ACTIVE_STATUS=$(curl --silent --output /tmp/boundary-active.json --write-out '%{http_code}' \
             --cookie "$EDITOR_COOKIE" \
-            -X POST -H 'content-type: application/json' \
+            -X POST -H 'content-type: application/json' -H "x-csrf-token: $EDITOR_CSRF" \
             --data '{"fromStatus":"draft","toStatus":"active","expectedVersion":2}' \
             "$STATUS_A")
           test "$ACTIVE_STATUS" = "200"
@@ -212,7 +239,7 @@ jobs:
 
           FINALIZE_STATUS=$(curl --silent --output /tmp/boundary-finalize.json --write-out '%{http_code}' \
             --cookie "$EDITOR_COOKIE" \
-            -X POST -H 'content-type: application/json' \
+            -X POST -H 'content-type: application/json' -H "x-csrf-token: $EDITOR_CSRF" \
             --data '{"fromStatus":"active","toStatus":"finalized","expectedVersion":3}' \
             "$STATUS_A")
           test "$FINALIZE_STATUS" = "200"
@@ -222,7 +249,7 @@ jobs:
 
           IMMUTABLE_STATUS=$(curl --silent --output /tmp/boundary-immutable.json --write-out '%{http_code}' \
             --cookie "$EDITOR_COOKIE" \
-            -X PATCH -H 'content-type: application/json' \
+            -X PATCH -H 'content-type: application/json' -H "x-csrf-token: $EDITOR_CSRF" \
             --data '{"name":"After Finalize","expectedVersion":4}' \
             "$RESOURCE_A")
           test "$IMMUTABLE_STATUS" = "409"
@@ -239,6 +266,8 @@ jobs:
           grep -q '"category":"authorization"' /tmp/fullstack-template-vite.log
           grep -q '"reason":"role_required"' /tmp/fullstack-template-vite.log
           grep -q '"reason":"resource_scope_mismatch"' /tmp/fullstack-template-vite.log
+          grep -q '"action":"csrf_guard","outcome":"failure"' /tmp/fullstack-template-vite.log
+          grep -q '"reason":"csrf_proof_missing_or_invalid"' /tmp/fullstack-template-vite.log
           grep -q '"category":"mutation"' /tmp/fullstack-template-vite.log
           grep -q '"reason":"invalid_request"' /tmp/fullstack-template-vite.log
           grep -q '"reason":"stale"' /tmp/fullstack-template-vite.log
