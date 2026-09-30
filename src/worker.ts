@@ -11,7 +11,7 @@ import {
   type AuditEvent,
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
-import { apiErrorResponse } from "./worker/http";
+import { apiErrorResponse, applySecurityHeaders } from "./worker/http";
 
 interface Env {
   DB: D1Database;
@@ -39,7 +39,10 @@ export default {
 
     const requestContext = createRequestContext(request);
     const api = (response: Response) =>
-      attachRequestId(response, requestContext.requestId);
+      applySecurityHeaders(
+        attachRequestId(response, requestContext.requestId),
+        request,
+      );
     const audit = (event: RequestAuditFields) =>
       writeAuditSafely(consoleAuditLogger, { ...requestContext, ...event });
 
