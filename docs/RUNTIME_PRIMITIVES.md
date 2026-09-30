@@ -59,7 +59,7 @@ The baseline environment vocabulary is:
 
 ```text
 local
- test
+test
 preview
 production
 ```
