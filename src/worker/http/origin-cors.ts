@@ -10,6 +10,7 @@ export const DEFAULT_CORS_ALLOWED_METHODS = [
 export const DEFAULT_CORS_ALLOWED_HEADERS = [
   "content-type",
   "if-match",
+  "x-csrf-token",
   "x-request-id",
 ] as const;
 
