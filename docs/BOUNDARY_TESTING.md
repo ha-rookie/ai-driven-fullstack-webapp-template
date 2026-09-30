@@ -11,6 +11,10 @@ The goal is not only to check response codes. Rejected requests must also prove 
 ```text
 HTTP Request
    ↓
+Origin / CORS Guard
+   ├─ disallowed cross-origin -> reject before Auth/D1
+   └─ allowed preflight -> 204 before Auth
+   ↓
 Authentication Guard
    ↓
 Resource Scope lookup
@@ -33,6 +37,8 @@ HTTP Response
 ```
 
 Each layer owns a different decision. UI validation is never treated as a substitute for this trusted boundary.
+
+Issue #67 puts Origin / CORS evaluation before session resolution so a disallowed browser Origin does not reach the D1-backed authentication or Domain boundary. CORS remains separate from CSRF; Issue #89 owns the explicit CSRF proof contract.
 
 The HTTP guards introduced by Issue #62 centralize the 401/403 contract, but they do not replace the pure authorization policy. Membership, role, and scope decisions still come from `authorizeScopedAction(...)`.
 
@@ -63,6 +69,7 @@ Projects should replace those role names and actions with their own vocabulary. 
 | invalid request body / Domain input | 400 | `invalid_request` |
 | malformed / conflicting concurrency precondition | 400 | `invalid_precondition` |
 | no valid session | 401 | `authentication_required` |
+| disallowed Origin / preflight method / preflight header | 403 | `origin_forbidden` |
 | membership / role / scope denied | 403 | `forbidden` |
 | resource missing / unscoped | 404 | `resource_not_found` |
 | body `expectedVersion` stale | 409 | `stale_update` |
@@ -73,11 +80,54 @@ Projects should replace those role names and actions with their own vocabulary. 
 | JSON payload exceeds endpoint limit | 413 | `payload_too_large` |
 | missing / unsupported JSON Content-Type | 415 | `unsupported_media_type` |
 | missing concurrency precondition | 428 | `precondition_required` |
+| invalid CORS runtime configuration | 500 | `security_configuration_invalid` |
 | dependency failure | 503 | `*_unavailable` |
 
 Authorization denial details remain in the Audit record. The API response stays generic instead of exposing policy internals.
 
 A D1/dependency failure is not treated as missing authentication or denied authorization. The guard lets those failures propagate so the endpoint can return `503` rather than an incorrect `401` or `403`.
+
+## Origin / CORS guard
+
+Issue #67 establishes a same-origin-by-default browser boundary before Authentication.
+
+The baseline behavior is:
+
+```text
+Origin missing
+  -> allow as non-CORS client
+
+Origin == request URL origin
+  -> allow as same-origin
+
+cross-origin + exact configured Origin
+  -> allow and emit exact ACAO + credentials + Vary
+
+cross-origin + unlisted/malformed/null Origin
+  -> 403 origin_forbidden
+```
+
+The optional `CORS_ALLOWED_ORIGINS` runtime value is a comma-separated exact allowlist. Missing or empty configuration does not broaden access; it keeps the API same-origin only.
+
+Configured Origins must be canonical absolute `http:` or `https:` origins without path, query, fragment, credentials, wildcard, or `null`. Invalid configuration fails closed instead of silently dropping the bad entry.
+
+Allowed cross-origin responses receive:
+
+```http
+Access-Control-Allow-Origin: <exact request Origin>
+Access-Control-Allow-Credentials: true
+Vary: Origin
+```
+
+The Guard never combines `Access-Control-Allow-Origin: *` with credentials.
+
+Cross-origin preflight is handled before Authentication. The baseline validates requested method/header against the configured policy and returns `204` only when both are allowed. Preflight does not require a session cookie.
+
+Preview and Production use the same config key but bind different environment-specific values. Concrete Project origins are never fixed in Template source.
+
+The current application session remains `Secure; SameSite=Lax`. CORS does not weaken that cookie policy, and CORS is not a CSRF substitute. A Project that needs cross-site authenticated cookies must make that separate security decision explicitly.
+
+See `ORIGIN_CORS.md` for the complete responsibility and configuration contract.
 
 ## Request body guard
 
@@ -106,6 +156,8 @@ A successfully parsed JSON value is returned as `unknown`. The Request Body Guar
 The Example Resource API therefore has this order for mutations:
 
 ```text
+Origin / CORS
+        ↓
 Authentication / Authorization
         ↓
 readJsonBody (type / size / JSON syntax)
@@ -219,6 +271,19 @@ The same runtime smoke verifies structured events for:
 
 Audit records contain identifiers and bounded reasons, not raw Cookie/token/request-body data.
 
+Origin/CORS guard unit tests additionally verify that:
+
+- Originなしrequest remains non-CORS and preserves existing API behavior
+- same-origin works with no cross-origin allowlist
+- exact configured cross-origin succeeds
+- suffix/subdomain lookalike Origins fail
+- `null` Origin fails
+- invalid configured Origins fail closed
+- allowed preflight returns 204 before Authentication
+- disallowed requested methods/headers fail
+- exact ACAO / credentials / Vary are added only to allowed cross-origin responses
+- existing response headers remain intact
+
 Guard unit tests additionally verify that:
 
 - missing authentication maps to the shared 401 contract
@@ -278,6 +343,9 @@ No Preview or Production database is touched. This keeps CI deterministic and av
 When replacing `example_resources`, preserve the test shape rather than the sample business words:
 
 - positive path
+- same-origin default and exact cross-origin allowlist
+- CORS preflight before Authentication
+- disallowed Origin reject before D1/session access
 - unauthenticated reject
 - authorization reject
 - cross-scope reject
@@ -290,4 +358,4 @@ When replacing `example_resources`, preserve the test shape rather than the samp
 - multi-write completeness after success
 - Audit evidence for important failures and mutations
 
-The exact HTTP routes, roles, resource model, JSON body limits, ETag representation, and state machine remain project decisions.
+The exact HTTP routes, allowed Origins, roles, resource model, JSON body limits, ETag representation, and state machine remain project decisions.
