@@ -11,11 +11,19 @@ import {
   type AuditEvent,
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
-import { apiErrorResponse, applySecurityHeaders } from "./worker/http";
+import {
+  apiErrorResponse,
+  applyCorsResponseHeaders,
+  applySecurityHeaders,
+  buildCorsPreflightResponse,
+  createCorsPolicy,
+  evaluateCorsRequest,
+} from "./worker/http";
 
 interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  CORS_ALLOWED_ORIGINS?: string;
 }
 
 type RequestAuditFields = Omit<AuditEvent, "requestId" | "method" | "path">;
@@ -38,11 +46,50 @@ export default {
     }
 
     const requestContext = createRequestContext(request);
-    const api = (response: Response) =>
+    const secure = (response: Response) =>
       applySecurityHeaders(
         attachRequestId(response, requestContext.requestId),
         request,
       );
+
+    let corsPolicy;
+    try {
+      corsPolicy = createCorsPolicy({
+        allowedOrigins: env.CORS_ALLOWED_ORIGINS,
+      });
+    } catch {
+      return secure(
+        apiErrorResponse(
+          {
+            status: 500,
+            code: "security_configuration_invalid",
+            message: "Internal server error",
+          },
+          requestContext.requestId,
+        ),
+      );
+    }
+
+    const corsDecision = evaluateCorsRequest(request, corsPolicy);
+    if (corsDecision.kind === "reject") {
+      return secure(
+        apiErrorResponse(
+          {
+            status: 403,
+            code: "origin_forbidden",
+            message: "Access denied",
+          },
+          requestContext.requestId,
+        ),
+      );
+    }
+
+    if (corsDecision.kind === "preflight") {
+      return secure(buildCorsPreflightResponse(corsDecision, corsPolicy));
+    }
+
+    const api = (response: Response) =>
+      secure(applyCorsResponseHeaders(response, corsDecision));
     const audit = (event: RequestAuditFields) =>
       writeAuditSafely(consoleAuditLogger, { ...requestContext, ...event });
 
