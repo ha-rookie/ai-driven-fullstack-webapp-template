@@ -23,7 +23,9 @@ const resource = (overrides: Partial<ExampleResource> = {}): ExampleResource => 
   status: "draft",
   version: 1,
   createdAt: "2026-09-27T00:00:00.000Z",
+  createdBy: null,
   updatedAt: "2026-09-27T00:00:00.000Z",
+  updatedBy: null,
   ...overrides,
 });
 
@@ -53,7 +55,9 @@ const fakeDb = (options: {
                 status: current.status,
                 version: current.version,
                 createdAt: current.createdAt,
+                createdBy: current.createdBy,
                 updatedAt: current.updatedAt,
+                updatedBy: current.updatedBy,
               } as T;
             },
           };
@@ -85,11 +89,12 @@ test("example resource transitions are explicit and finalized is terminal", () =
   assert.equal(isTerminalExampleResourceStatus("active"), false);
 });
 
-test("rename uses one D1 batch for the optimistic update and change record", async () => {
+test("rename uses one D1 batch for optimistic update, actor metadata, and change record", async () => {
   const updated = resource({
     name: "Renamed",
     version: 2,
     updatedAt: "2026-09-27T00:01:00.000Z",
+    updatedBy: "user-1",
   });
   const { db, batches } = fakeDb({
     batchChanges: [1, 1],
@@ -102,11 +107,13 @@ test("rename uses one D1 batch for the optimistic update and change record", asy
     name: "Renamed",
     expectedVersion: 1,
     changedAt: "2026-09-27T00:01:00.000Z",
+    actorId: "user-1",
   });
 
   assert.deepEqual(result, { ok: true, resource: updated });
   assert.equal(batches.length, 1);
   assert.equal(batches[0].length, 2);
+  assert.match(batches[0][0].sql, /updated_by = \?/);
   assert.match(batches[0][0].sql, /version = version \+ 1/);
   assert.match(batches[0][0].sql, /version = \?/);
   assert.match(batches[0][0].sql, /status <> 'finalized'/);
@@ -114,6 +121,7 @@ test("rename uses one D1 batch for the optimistic update and change record", asy
   assert.deepEqual(batches[0][0].values, [
     "Renamed",
     "2026-09-27T00:01:00.000Z",
+    "user-1",
     "resource-1",
     1,
   ]);
@@ -128,6 +136,7 @@ test("stale rename does not report success", async () => {
     name: "Late change",
     expectedVersion: 1,
     changedAt: "2026-09-27T00:02:00.000Z",
+    actorId: "user-1",
   });
 
   assert.deepEqual(result, { ok: false, reason: "stale", current });
@@ -142,16 +151,18 @@ test("finalized resource is immutable", async () => {
     name: "Should not change",
     expectedVersion: 3,
     changedAt: "2026-09-27T00:03:00.000Z",
+    actorId: "user-1",
   });
 
   assert.deepEqual(result, { ok: false, reason: "immutable", current });
 });
 
-test("valid status transition is versioned and recorded in one batch", async () => {
+test("valid status transition is versioned, attributed, and recorded in one batch", async () => {
   const updated = resource({
     status: "active",
     version: 2,
     updatedAt: "2026-09-27T00:04:00.000Z",
+    updatedBy: "user-2",
   });
   const { db, batches } = fakeDb({
     batchChanges: [1, 1],
@@ -165,13 +176,16 @@ test("valid status transition is versioned and recorded in one batch", async () 
     toStatus: "active",
     expectedVersion: 1,
     changedAt: "2026-09-27T00:04:00.000Z",
+    actorId: "user-2",
   });
 
   assert.deepEqual(result, { ok: true, resource: updated });
   assert.equal(batches.length, 1);
   assert.match(batches[0][0].sql, /status = \?/);
+  assert.match(batches[0][0].sql, /updated_by = \?/);
   assert.match(batches[0][0].sql, /version = \?/);
   assert.match(batches[0][1].sql, /'status_transition'/);
+  assert.equal(batches[0][0].values[2], "user-2");
 });
 
 test("invalid status transition is rejected before touching D1", async () => {
@@ -183,6 +197,7 @@ test("invalid status transition is rejected before touching D1", async () => {
     toStatus: "finalized",
     expectedVersion: 1,
     changedAt: "2026-09-27T00:05:00.000Z",
+    actorId: "user-1",
   });
 
   assert.deepEqual(result, {
@@ -203,6 +218,7 @@ test("state changed with the same version is rejected", async () => {
     toStatus: "active",
     expectedVersion: 1,
     changedAt: "2026-09-27T00:06:00.000Z",
+    actorId: "user-1",
   });
 
   assert.deepEqual(result, { ok: false, reason: "state_changed", current });
@@ -221,7 +237,24 @@ test("a batch result mismatch is treated as an integrity failure", async () => {
       name: "Renamed",
       expectedVersion: 1,
       changedAt: "2026-09-27T00:07:00.000Z",
+      actorId: "user-1",
     }),
     /runtime_integrity_batch_mismatch/,
   );
+});
+
+test("mutation rejects a missing actor before touching D1", async () => {
+  const { db, batches } = fakeDb({ batchChanges: [1, 1], current: resource() });
+
+  await assert.rejects(
+    renameExampleResource(db, {
+      id: "resource-1",
+      name: "Renamed",
+      expectedVersion: 1,
+      changedAt: "2026-09-27T00:08:00.000Z",
+      actorId: "   ",
+    }),
+    /actorId must be between 1 and 128 characters/,
+  );
+  assert.equal(batches.length, 0);
 });

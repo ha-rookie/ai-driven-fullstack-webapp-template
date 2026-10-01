@@ -6,7 +6,9 @@ export interface ExampleResource {
   status: ExampleResourceStatus;
   version: number;
   createdAt: string;
+  createdBy: string | null;
   updatedAt: string;
+  updatedBy: string | null;
 }
 
 const allowedTransitions: Record<ExampleResourceStatus, readonly ExampleResourceStatus[]> = {
