@@ -26,6 +26,8 @@ const resource = (overrides: Partial<ExampleResource> = {}): ExampleResource => 
   createdBy: null,
   updatedAt: "2026-09-27T00:00:00.000Z",
   updatedBy: null,
+  deletedAt: null,
+  deletedBy: null,
   ...overrides,
 });
 
@@ -49,6 +51,7 @@ const fakeDb = (options: {
                 throw new Error("unexpected first() call");
               }
               if (!current) return null;
+              if (/deleted_at IS NULL/.test(sql) && current.deletedAt !== null) return null;
               return {
                 id: current.id,
                 name: current.name,
@@ -58,6 +61,8 @@ const fakeDb = (options: {
                 createdBy: current.createdBy,
                 updatedAt: current.updatedAt,
                 updatedBy: current.updatedBy,
+                deletedAt: current.deletedAt,
+                deletedBy: current.deletedBy,
               } as T;
             },
           };
@@ -116,6 +121,7 @@ test("rename uses one D1 batch for optimistic update, actor metadata, and change
   assert.match(batches[0][0].sql, /updated_by = \?/);
   assert.match(batches[0][0].sql, /version = version \+ 1/);
   assert.match(batches[0][0].sql, /version = \?/);
+  assert.match(batches[0][0].sql, /deleted_at IS NULL/);
   assert.match(batches[0][0].sql, /status <> 'finalized'/);
   assert.match(batches[0][1].sql, /INSERT INTO example_resource_changes/);
   assert.deepEqual(batches[0][0].values, [
@@ -183,6 +189,7 @@ test("valid status transition is versioned, attributed, and recorded in one batc
   assert.equal(batches.length, 1);
   assert.match(batches[0][0].sql, /status = \?/);
   assert.match(batches[0][0].sql, /updated_by = \?/);
+  assert.match(batches[0][0].sql, /deleted_at IS NULL/);
   assert.match(batches[0][0].sql, /version = \?/);
   assert.match(batches[0][1].sql, /'status_transition'/);
   assert.equal(batches[0][0].values[2], "user-2");

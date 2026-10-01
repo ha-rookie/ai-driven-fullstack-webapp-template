@@ -25,6 +25,8 @@ interface ExampleResourceRow {
   createdBy: string | null;
   updatedAt: string;
   updatedBy: string | null;
+  deletedAt: string | null;
+  deletedBy: string | null;
 }
 
 const normalizeActorId = (actorId: string): string => {
@@ -44,6 +46,8 @@ const mapRow = (row: ExampleResourceRow): ExampleResource => ({
   createdBy: row.createdBy,
   updatedAt: row.updatedAt,
   updatedBy: row.updatedBy,
+  deletedAt: row.deletedAt,
+  deletedBy: row.deletedBy,
 });
 
 const changedRows = (result: D1Result<unknown>): number => Number(result.meta?.changes ?? 0);
@@ -51,14 +55,17 @@ const changedRows = (result: D1Result<unknown>): number => Number(result.meta?.c
 export const loadExampleResource = async (
   db: D1Database,
   id: string,
+  options: { includeDeleted?: boolean } = {},
 ): Promise<ExampleResource | null> => {
+  const includeDeleted = options.includeDeleted === true;
   const row = await db
     .prepare(
       `SELECT id, name, status, version,
               created_at AS createdAt, created_by AS createdBy,
-              updated_at AS updatedAt, updated_by AS updatedBy
+              updated_at AS updatedAt, updated_by AS updatedBy,
+              deleted_at AS deletedAt, deleted_by AS deletedBy
          FROM example_resources
-        WHERE id = ?`,
+        WHERE id = ?${includeDeleted ? "" : " AND deleted_at IS NULL"}`,
     )
     .bind(id)
     .first<ExampleResourceRow>();
@@ -133,8 +140,9 @@ const classifyMutationFailure = async (
 const completeSuccessfulMutation = async (
   db: D1Database,
   id: string,
+  options: { includeDeleted?: boolean } = {},
 ): Promise<IntegrityMutationResult> => {
-  const resource = await loadExampleResource(db, id);
+  const resource = await loadExampleResource(db, id, options);
   if (!resource) {
     throw new Error("runtime_integrity_resource_missing_after_mutation");
   }
@@ -161,6 +169,7 @@ export const renameExampleResource = async (
             SET name = ?, updated_at = ?, updated_by = ?, version = version + 1
           WHERE id = ?
             AND version = ?
+            AND deleted_at IS NULL
             AND status <> 'finalized'`,
       )
       .bind(input.name, input.changedAt, actorId, input.id, input.expectedVersion),
@@ -173,6 +182,7 @@ export const renameExampleResource = async (
            FROM example_resources
           WHERE id = ?
             AND version = ?
+            AND deleted_at IS NULL
             AND NOT EXISTS (
               SELECT 1
                 FROM example_resource_changes
@@ -221,6 +231,7 @@ export const transitionExampleResourceStatus = async (
             SET status = ?, updated_at = ?, updated_by = ?, version = version + 1
           WHERE id = ?
             AND version = ?
+            AND deleted_at IS NULL
             AND status = ?
             AND status <> 'finalized'`,
       )
@@ -241,6 +252,7 @@ export const transitionExampleResourceStatus = async (
            FROM example_resources
           WHERE id = ?
             AND version = ?
+            AND deleted_at IS NULL
             AND status = ?
             AND NOT EXISTS (
               SELECT 1
@@ -277,4 +289,82 @@ export const transitionExampleResourceStatus = async (
     input.expectedVersion,
     input.fromStatus,
   );
+};
+
+const classifySoftDeleteFailure = async (
+  db: D1Database,
+  id: string,
+  expectedVersion: number,
+): Promise<IntegrityMutationResult> => {
+  const current = await loadExampleResource(db, id, { includeDeleted: true });
+  if (!current) {
+    return { ok: false, reason: "not_found", current: null };
+  }
+  if (current.version !== expectedVersion) {
+    return { ok: false, reason: "stale", current };
+  }
+  return { ok: false, reason: "state_changed", current };
+};
+
+export const softDeleteExampleResource = async (
+  db: D1Database,
+  input: {
+    id: string;
+    expectedVersion: number;
+    changedAt: string;
+    actorId: string;
+  },
+): Promise<IntegrityMutationResult> => {
+  const actorId = normalizeActorId(input.actorId);
+  const result = await db
+    .prepare(
+      `UPDATE example_resources
+          SET deleted_at = ?, deleted_by = ?,
+              updated_at = ?, updated_by = ?, version = version + 1
+        WHERE id = ?
+          AND version = ?
+          AND deleted_at IS NULL`,
+    )
+    .bind(
+      input.changedAt,
+      actorId,
+      input.changedAt,
+      actorId,
+      input.id,
+      input.expectedVersion,
+    )
+    .run();
+
+  if (changedRows(result) === 1) {
+    return completeSuccessfulMutation(db, input.id, { includeDeleted: true });
+  }
+  return classifySoftDeleteFailure(db, input.id, input.expectedVersion);
+};
+
+export const restoreExampleResource = async (
+  db: D1Database,
+  input: {
+    id: string;
+    expectedVersion: number;
+    changedAt: string;
+    actorId: string;
+  },
+): Promise<IntegrityMutationResult> => {
+  const actorId = normalizeActorId(input.actorId);
+  const result = await db
+    .prepare(
+      `UPDATE example_resources
+          SET deleted_at = NULL, deleted_by = NULL,
+              updated_at = ?, updated_by = ?, version = version + 1
+        WHERE id = ?
+          AND version = ?
+          AND deleted_at IS NOT NULL`,
+    )
+    .bind(input.changedAt, actorId, input.id, input.expectedVersion)
+    .run();
+
+  if (changedRows(result) === 1) {
+    return completeSuccessfulMutation(db, input.id);
+  }
+  return classifySoftDeleteFailure(db, input.id, input.expectedVersion);
 };
