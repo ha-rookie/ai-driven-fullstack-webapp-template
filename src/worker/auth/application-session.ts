@@ -164,7 +164,7 @@ export const resolveSessionToken = async (
   const tokenHash = await hashSessionToken(token);
   const row = await db
     .prepare(
-      "SELECT u.id,u.display_name AS displayName,s.expires_at AS expiresAt,s.last_seen_at AS lastSeenAt FROM application_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL",
+      "SELECT u.id,u.display_name AS displayName,s.expires_at AS expiresAt,s.last_seen_at AS lastSeenAt FROM application_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND u.status='active'",
     )
     .bind(tokenHash)
     .first<SessionLookupRow>();

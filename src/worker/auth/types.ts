@@ -1,6 +1,9 @@
+export type UserStatus = "active" | "disabled";
+
 export interface UserRecord {
   id: string;
   displayName: string | null;
+  status: UserStatus;
   createdAt: string;
   updatedAt: string;
 }
