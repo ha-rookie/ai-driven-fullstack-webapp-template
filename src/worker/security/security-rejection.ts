@@ -1,0 +1,147 @@
+import type { LogContext } from "../../shared/logging";
+import type { AuditEvent } from "../audit";
+import type { AuthenticationGuardFailure, ScopedAuthorizationGuardFailure } from "../authorization/http-guard";
+import type { CsrfGuardFailure } from "../http/csrf";
+import type { CorsRejectReason } from "../http/origin-cors";
+import type { RateLimitCheckInput, RateLimitRejectDecision } from "../http/rate-limit";
+
+export type SecurityRejectionEventType =
+  | "authentication_rejected"
+  | "authorization_rejected"
+  | "rate_limit_rejected"
+  | "csrf_rejected"
+  | "origin_rejected";
+
+export type SecurityRejectionReasonCode =
+  | "session_missing_or_invalid"
+  | "authorization_denied"
+  | "rate_limited"
+  | "csrf_proof_missing_or_invalid"
+  | "invalid_origin"
+  | "origin_not_allowed"
+  | "method_not_allowed"
+  | "header_not_allowed";
+
+export interface SecurityRejectionEvent {
+  readonly eventType: SecurityRejectionEventType;
+  readonly reasonCode: SecurityRejectionReasonCode;
+  readonly outcome: "rejected";
+  readonly timestamp: string;
+  readonly requestId: string;
+  readonly method: string;
+  readonly path: string;
+  readonly actorId?: string;
+  readonly sessionId?: string;
+  readonly scopeId?: string;
+  readonly resourceType?: string;
+  readonly resourceId?: string;
+}
+
+export interface SecurityRejectionContext {
+  readonly requestId: string;
+  readonly method: string;
+  readonly path: string;
+  readonly timestamp?: Date;
+  readonly actorId?: string;
+  readonly sessionId?: string;
+  readonly scopeId?: string;
+  readonly resourceType?: string;
+  readonly resourceId?: string;
+}
+
+const createEvent = (
+  context: SecurityRejectionContext,
+  eventType: SecurityRejectionEventType,
+  reasonCode: SecurityRejectionReasonCode,
+): SecurityRejectionEvent => ({
+  eventType,
+  reasonCode,
+  outcome: "rejected",
+  timestamp: (context.timestamp ?? new Date()).toISOString(),
+  requestId: context.requestId,
+  method: context.method,
+  path: context.path,
+  ...(context.actorId ? { actorId: context.actorId } : {}),
+  ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+  ...(context.scopeId ? { scopeId: context.scopeId } : {}),
+  ...(context.resourceType ? { resourceType: context.resourceType } : {}),
+  ...(context.resourceId ? { resourceId: context.resourceId } : {}),
+});
+
+export const fromAuthenticationFailure = (
+  _failure: AuthenticationGuardFailure,
+  context: SecurityRejectionContext,
+): SecurityRejectionEvent =>
+  createEvent(context, "authentication_rejected", "session_missing_or_invalid");
+
+export const fromAuthorizationFailure = (
+  _failure: ScopedAuthorizationGuardFailure,
+  context: SecurityRejectionContext,
+): SecurityRejectionEvent =>
+  createEvent(context, "authorization_rejected", "authorization_denied");
+
+export const fromCsrfFailure = (
+  _failure: CsrfGuardFailure,
+  context: SecurityRejectionContext,
+): SecurityRejectionEvent =>
+  createEvent(context, "csrf_rejected", "csrf_proof_missing_or_invalid");
+
+export const fromOriginRejection = (
+  reason: CorsRejectReason,
+  context: SecurityRejectionContext,
+): SecurityRejectionEvent => createEvent(context, "origin_rejected", reason);
+
+export const fromRateLimitRejection = (
+  _decision: RateLimitRejectDecision,
+  input: RateLimitCheckInput,
+  context: SecurityRejectionContext,
+): SecurityRejectionEvent =>
+  createEvent(
+    {
+      ...context,
+      ...(input.subject.kind === "actor" ? { actorId: input.subject.id } : {}),
+      resourceType: context.resourceType ?? "http_endpoint",
+      resourceId: context.resourceId ?? input.policy.endpointId,
+    },
+    "rate_limit_rejected",
+    "rate_limited",
+  );
+
+export const securityRejectionAuditEvent = (
+  event: SecurityRejectionEvent,
+): AuditEvent => ({
+  requestId: event.requestId,
+  method: event.method,
+  path: event.path,
+  category:
+    event.eventType === "authentication_rejected"
+      ? "authentication"
+      : event.eventType === "authorization_rejected"
+        ? "authorization"
+        : "system",
+  action: event.eventType,
+  outcome: "failure",
+  ...(event.actorId ? { actorId: event.actorId } : {}),
+  ...(event.scopeId ? { scopeId: event.scopeId } : {}),
+  ...(event.resourceType ? { resourceType: event.resourceType } : {}),
+  ...(event.resourceId ? { resourceId: event.resourceId } : {}),
+  reason: event.reasonCode,
+});
+
+export const securityRejectionLogContext = (
+  event: SecurityRejectionEvent,
+): LogContext => ({
+  kind: "security_rejection",
+  eventType: event.eventType,
+  reasonCode: event.reasonCode,
+  outcome: event.outcome,
+  timestamp: event.timestamp,
+  requestId: event.requestId,
+  method: event.method,
+  path: event.path,
+  ...(event.actorId ? { actorId: event.actorId } : {}),
+  ...(event.sessionId ? { sessionId: event.sessionId } : {}),
+  ...(event.scopeId ? { scopeId: event.scopeId } : {}),
+  ...(event.resourceType ? { resourceType: event.resourceType } : {}),
+  ...(event.resourceId ? { resourceId: event.resourceId } : {}),
+});
