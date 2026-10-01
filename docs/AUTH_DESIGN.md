@@ -86,7 +86,7 @@ The baseline uses a **DB-backed opaque session**.
 
 The raw session token must not be persisted in D1 or logs.
 
-This differs from a self-contained signed session cookie: server-side storage allows explicit revoke/logout before expiry and supports server-side idle activity tracking.
+This differs from a self-contained signed session cookie: server-side storage allows explicit revoke/logout before expiry, user-wide revocation, and server-side idle activity tracking.
 
 ## Cookie baseline
 
@@ -152,6 +152,26 @@ This prevents concurrent requests from moving `last_seen_at` backwards. If anoth
 
 Because writes are coalesced, stored activity can lag real activity by up to the touch interval. Projects that require tighter idle-time precision can shorten the interval, accepting the corresponding D1 write increase.
 
+## Explicit session revocation
+
+Revocation is distinct from timeout. A timeout decides whether a session is currently acceptable; revocation records an explicit durable invalidation in `revoked_at`.
+
+`revokeAllApplicationSessionsForUser(...)` revokes every non-revoked session row for a target user and returns the affected row count. It intentionally does not filter out absolute-expired or idle-expired rows. This means an explicit revoke remains durable even if timeout configuration changes later.
+
+`revokeOtherApplicationSessionsForUser(...)` preserves the current request's application session and revokes the target user's other non-revoked sessions. Before mutating rows, the service:
+
+1. reads the current `app_session` cookie
+2. hashes the raw token server-side
+3. verifies that the hash belongs to an unrevoked session owned by the target user
+4. fails closed without revoking anything when ownership cannot be proven
+5. revokes the target user's remaining non-revoked session rows
+
+The raw token and token hash are not returned from the service and must not be added to Audit or application logs.
+
+Both bulk revocation operations are idempotent: already-revoked rows are not changed, and a repeated operation can return `revokedCount = 0`.
+
+Administration authorization is deliberately not embedded in the authentication service. A future Administration HTTP boundary must authenticate and authorize the actor before invoking these services.
+
 ## Runtime endpoints
 
 ### `GET /api/auth/me`
@@ -173,6 +193,8 @@ Returns a CSRF proof only when the same application session is currently valid. 
 ### `POST /api/auth/logout`
 
 Revokes the matching server-side session and clears the browser cookie. Revocation still operates on the presented cookie token and does not depend on the idle-timeout resolver; an already-idle session may still be explicitly logged out.
+
+Bulk user-session revocation does not expose a public HTTP endpoint in this issue. Administration API and UI boundaries remain separate concerns.
 
 ## Secrets and public repositories
 
@@ -198,7 +220,8 @@ This foundation does not define:
 - system administrator bootstrap
 - account recovery
 - session rotation
-- revoke-all-sessions workflow
+- active-session listing UI/API
+- Administration API/UI for bulk revocation
 - persistent security-event storage
 - client-side idle warning UI
 - scheduled session cleanup

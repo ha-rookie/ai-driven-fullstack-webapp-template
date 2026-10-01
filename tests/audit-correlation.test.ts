@@ -6,6 +6,7 @@ import {
   REQUEST_ID_MAX_LENGTH,
   attachRequestId,
   createRequestContext,
+  createSessionRevocationAuditEvent,
   resolveRequestId,
   writeAuditSafely,
   type AuditEvent,
@@ -84,6 +85,7 @@ test("ConsoleAuditLogger emits a bounded structured JSON record", () => {
     resourceType: "example_resource",
     resourceId: "resource-1",
     reason: "role_required",
+    affectedCount: 2,
     token: "must-not-be-serialized",
     cookie: "must-not-be-serialized",
     requestBody: "must-not-be-serialized",
@@ -110,7 +112,58 @@ test("ConsoleAuditLogger emits a bounded structured JSON record", () => {
     resourceType: "example_resource",
     resourceId: "resource-1",
     reason: "role_required",
+    affectedCount: 2,
   });
+});
+
+test("invalid affected counts are omitted from the bounded audit projection", () => {
+  const lines: string[] = [];
+  const logger = new ConsoleAuditLogger((line) => lines.push(line));
+
+  logger.write({
+    category: "authentication",
+    action: "session_revoke_all",
+    outcome: "success",
+    requestId: "request-1",
+    method: "POST",
+    path: "/api/admin/users/user-1/sessions/revoke",
+    affectedCount: -1,
+  });
+
+  const record = JSON.parse(lines[0]) as Record<string, unknown>;
+  assert.equal(Object.prototype.hasOwnProperty.call(record, "affectedCount"), false);
+});
+
+test("session revocation audit event contains only bounded accountability fields", () => {
+  const event = createSessionRevocationAuditEvent({
+    requestContext: {
+      requestId: "request-revoke-1",
+      method: "POST",
+      path: "/api/admin/users/user-2/sessions/revoke",
+    },
+    actorId: "admin-user",
+    result: {
+      userId: "user-2",
+      mode: "others",
+      revokedCount: 3,
+    },
+  });
+
+  assert.deepEqual(event, {
+    requestId: "request-revoke-1",
+    method: "POST",
+    path: "/api/admin/users/user-2/sessions/revoke",
+    category: "authentication",
+    action: "session_revoke_others",
+    outcome: "success",
+    actorId: "admin-user",
+    resourceType: "application_session",
+    resourceId: "user-2",
+    affectedCount: 3,
+  });
+  assert.equal("token" in event, false);
+  assert.equal("tokenHash" in event, false);
+  assert.equal("cookie" in event, false);
 });
 
 test("the same audit contract represents authentication and mutation outcomes", () => {

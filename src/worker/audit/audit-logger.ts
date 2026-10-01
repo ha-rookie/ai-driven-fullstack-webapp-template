@@ -39,6 +39,13 @@ export const toStructuredAuditRecord = (
   if (event.reason !== undefined) {
     Object.assign(record, { reason: event.reason });
   }
+  if (
+    event.affectedCount !== undefined &&
+    Number.isSafeInteger(event.affectedCount) &&
+    event.affectedCount >= 0
+  ) {
+    Object.assign(record, { affectedCount: event.affectedCount });
+  }
 
   return record;
 };

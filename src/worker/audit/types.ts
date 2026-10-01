@@ -21,6 +21,7 @@ export interface AuditEvent extends RequestContext {
   readonly resourceType?: string;
   readonly resourceId?: string | null;
   readonly reason?: string;
+  readonly affectedCount?: number;
 }
 
 export interface StructuredAuditRecord extends AuditEvent {
