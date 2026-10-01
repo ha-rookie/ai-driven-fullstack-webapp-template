@@ -299,5 +299,5 @@ test("rejection connects to Audit and Security Rejection Event without role voca
   assert.equal(security.reasonCode, "last_privileged_membership");
   assert.equal(securityRejectionAuditEvent(security).category, "authorization");
   assert.equal(JSON.stringify(security).includes("manager"), false);
-  assert.equal(JSON.stringify(security).includes("operator"), false);
+  assert.equal("role" in security, false);
 });
