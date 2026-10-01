@@ -399,6 +399,7 @@ export const handleExampleResourceApi = async (
         name,
         expectedVersion: precondition.expectedVersion,
         changedAt: new Date().toISOString(),
+        actorId,
       });
 
       if (!result.ok) {
@@ -495,6 +496,7 @@ export const handleExampleResourceApi = async (
       toStatus,
       expectedVersion: precondition.expectedVersion,
       changedAt: new Date().toISOString(),
+      actorId,
     });
 
     if (!result.ok) {
