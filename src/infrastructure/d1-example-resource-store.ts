@@ -22,8 +22,18 @@ interface ExampleResourceRow {
   status: ExampleResourceStatus;
   version: number;
   createdAt: string;
+  createdBy: string | null;
   updatedAt: string;
+  updatedBy: string | null;
 }
+
+const normalizeActorId = (actorId: string): string => {
+  const normalized = actorId.trim();
+  if (!normalized || normalized.length > 128) {
+    throw new TypeError("actorId must be between 1 and 128 characters");
+  }
+  return normalized;
+};
 
 const mapRow = (row: ExampleResourceRow): ExampleResource => ({
   id: row.id,
@@ -31,7 +41,9 @@ const mapRow = (row: ExampleResourceRow): ExampleResource => ({
   status: row.status,
   version: Number(row.version),
   createdAt: row.createdAt,
+  createdBy: row.createdBy,
   updatedAt: row.updatedAt,
+  updatedBy: row.updatedBy,
 });
 
 const changedRows = (result: D1Result<unknown>): number => Number(result.meta?.changes ?? 0);
@@ -43,7 +55,8 @@ export const loadExampleResource = async (
   const row = await db
     .prepare(
       `SELECT id, name, status, version,
-              created_at AS createdAt, updated_at AS updatedAt
+              created_at AS createdAt, created_by AS createdBy,
+              updated_at AS updatedAt, updated_by AS updatedBy
          FROM example_resources
         WHERE id = ?`,
     )
@@ -51,6 +64,43 @@ export const loadExampleResource = async (
     .first<ExampleResourceRow>();
 
   return row ? mapRow(row) : null;
+};
+
+export const createExampleResource = async (
+  db: D1Database,
+  input: {
+    id: string;
+    name: string;
+    actorId: string;
+    createdAt: string;
+  },
+): Promise<ExampleResource> => {
+  const actorId = normalizeActorId(input.actorId);
+  const result = await db
+    .prepare(
+      `INSERT INTO example_resources(
+         id, name, status, version, created_at, created_by, updated_at, updated_by
+       ) VALUES(?, ?, 'draft', 1, ?, ?, ?, ?)`,
+    )
+    .bind(
+      input.id,
+      input.name,
+      input.createdAt,
+      actorId,
+      input.createdAt,
+      actorId,
+    )
+    .run();
+
+  if (changedRows(result) !== 1) {
+    throw new Error("example_resource_create_failed");
+  }
+
+  const created = await loadExampleResource(db, input.id);
+  if (!created) {
+    throw new Error("example_resource_missing_after_create");
+  }
+  return created;
 };
 
 const classifyMutationFailure = async (
@@ -98,20 +148,22 @@ export const renameExampleResource = async (
     name: string;
     expectedVersion: number;
     changedAt: string;
+    actorId: string;
   },
 ): Promise<IntegrityMutationResult> => {
+  const actorId = normalizeActorId(input.actorId);
   const nextVersion = input.expectedVersion + 1;
 
   const [updateResult, changeResult] = await db.batch([
     db
       .prepare(
         `UPDATE example_resources
-            SET name = ?, updated_at = ?, version = version + 1
+            SET name = ?, updated_at = ?, updated_by = ?, version = version + 1
           WHERE id = ?
             AND version = ?
             AND status <> 'finalized'`,
       )
-      .bind(input.name, input.changedAt, input.id, input.expectedVersion),
+      .bind(input.name, input.changedAt, actorId, input.id, input.expectedVersion),
     db
       .prepare(
         `INSERT INTO example_resource_changes(
@@ -152,19 +204,21 @@ export const transitionExampleResourceStatus = async (
     toStatus: ExampleResourceStatus;
     expectedVersion: number;
     changedAt: string;
+    actorId: string;
   },
 ): Promise<IntegrityMutationResult> => {
   if (!canTransitionExampleResource(input.fromStatus, input.toStatus)) {
     return { ok: false, reason: "invalid_transition", current: null };
   }
 
+  const actorId = normalizeActorId(input.actorId);
   const nextVersion = input.expectedVersion + 1;
 
   const [updateResult, changeResult] = await db.batch([
     db
       .prepare(
         `UPDATE example_resources
-            SET status = ?, updated_at = ?, version = version + 1
+            SET status = ?, updated_at = ?, updated_by = ?, version = version + 1
           WHERE id = ?
             AND version = ?
             AND status = ?
@@ -173,6 +227,7 @@ export const transitionExampleResourceStatus = async (
       .bind(
         input.toStatus,
         input.changedAt,
+        actorId,
         input.id,
         input.expectedVersion,
         input.fromStatus,
