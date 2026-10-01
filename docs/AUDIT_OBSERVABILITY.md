@@ -127,6 +127,30 @@ The revocation helper receives only the bounded `SessionRevocationResult`; raw s
 
 Administration boundary failures remain the caller's responsibility. The future Administration API must record authorization/dependency failures using the normal bounded Audit contract rather than placing exception text or credentials into `reason`.
 
+## Session rotation events
+
+Session Rotation uses `createSessionRotationAuditEvent(...)` as the provider-neutral connection point for login, authentication-level changes, or future privilege-boundary changes.
+
+The reference action is:
+
+```text
+session_rotate
+```
+
+Success records use:
+
+```text
+category      authentication
+outcome       success
+actorId       internal user id
+resourceType  application_session
+resourceId    internal user id
+```
+
+Failure records may use only controlled reasons from the Session Rotation contract, plus `dependency_error` at an outer HTTP/provider boundary. Exception text, raw session tokens, token hashes, and `Set-Cookie` values must not be copied into `reason` or any other Audit field.
+
+The rotation helper intentionally receives `userId`, `outcome`, and controlled `reason` separately. It does **not** receive the Rotation service result because that result contains the browser `Set-Cookie` value.
+
 ## Output sink
 
 The baseline sink writes one JSON record per event through Worker `console.info`.
@@ -184,7 +208,7 @@ Issue #15 connects Audit to the existing authentication boundary:
   - action: `logout`
   - resource type: `application_session`
 
-Issue #71 adds a reusable Audit builder for successful user-level bulk Session Revocation. It does not add a public Administration endpoint; that HTTP boundary remains a later issue.
+Issue #71 adds a reusable Audit builder for successful user-level bulk Session Revocation. Issue #88 adds the corresponding provider-neutral Session Rotation Audit builder. Neither issue adds a new public Administration/provider endpoint; those HTTP boundaries remain later concerns.
 
 Successful read-only `/api/auth/me` requests are not audited by default to avoid producing low-value high-volume logs.
 
@@ -202,6 +226,7 @@ Unit tests verify:
 - shared key-based redaction and size limits at the Audit sink
 - generic authentication / authorization / mutation categories
 - Session Revocation event shape without token/Cookie fields
+- Session Rotation success/failure event shape without token/hash/Cookie fields
 - Audit sink failure isolation
 
 Runtime smoke tests also verify `x-request-id` propagation on success, authentication failure, logout, and API 404 responses.
