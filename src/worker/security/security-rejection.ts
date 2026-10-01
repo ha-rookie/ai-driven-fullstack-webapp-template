@@ -1,6 +1,7 @@
 import type { LogContext } from "../../shared/logging";
 import type { AuditEvent } from "../audit";
 import type { AuthenticationGuardFailure, ScopedAuthorizationGuardFailure } from "../authorization/http-guard";
+import type { PrivilegedMembershipSafetyError } from "../administration/privileged-membership-safety";
 import type { CsrfGuardFailure } from "../http/csrf";
 import type { CorsRejectReason } from "../http/origin-cors";
 import type { RateLimitCheckInput, RateLimitRejectDecision } from "../http/rate-limit";
@@ -8,6 +9,7 @@ import type { RateLimitCheckInput, RateLimitRejectDecision } from "../http/rate-
 export type SecurityRejectionEventType =
   | "authentication_rejected"
   | "authorization_rejected"
+  | "administration_rejected"
   | "rate_limit_rejected"
   | "csrf_rejected"
   | "origin_rejected";
@@ -15,6 +17,8 @@ export type SecurityRejectionEventType =
 export type SecurityRejectionReasonCode =
   | "session_missing_or_invalid"
   | "authorization_denied"
+  | "self_privileged_membership_change_denied"
+  | "last_privileged_membership"
   | "rate_limited"
   | "csrf_proof_missing_or_invalid"
   | "invalid_origin"
@@ -80,6 +84,16 @@ export const fromAuthorizationFailure = (
 ): SecurityRejectionEvent =>
   createEvent(context, "authorization_rejected", "authorization_denied");
 
+export const fromPrivilegedMembershipSafetyFailure = (
+  failure: PrivilegedMembershipSafetyError,
+  context: SecurityRejectionContext,
+): SecurityRejectionEvent => {
+  if (failure.reasonCode === "privileged_role_policy_invalid") {
+    return createEvent(context, "administration_rejected", "authorization_denied");
+  }
+  return createEvent(context, "administration_rejected", failure.reasonCode);
+};
+
 export const fromCsrfFailure = (
   _failure: CsrfGuardFailure,
   context: SecurityRejectionContext,
@@ -116,7 +130,7 @@ export const securityRejectionAuditEvent = (
   category:
     event.eventType === "authentication_rejected"
       ? "authentication"
-      : event.eventType === "authorization_rejected"
+      : event.eventType === "authorization_rejected" || event.eventType === "administration_rejected"
         ? "authorization"
         : "system",
   action: event.eventType,
