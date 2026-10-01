@@ -65,6 +65,7 @@ scopeId?
 resourceType?
 resourceId?
 reason?
+affectedCount?
 ```
 
 Categories are:
@@ -80,6 +81,8 @@ Outcomes are:
 - `failure`
 
 `actorId`, `scopeId`, and resource identifiers are generic contracts. Projects decide which identifiers are justified for accountability.
+
+`affectedCount` is an optional non-negative safe integer for operations where the number of changed records is part of the accountability result, such as bulk session revocation. It is not a general-purpose metadata container. Invalid numeric values are omitted from the serialized Audit record.
 
 The serializer explicitly projects the allowed fields instead of blindly serializing the caller object. This prevents accidental extra properties from entering the baseline Audit record.
 
@@ -97,6 +100,32 @@ Do not put the following into the Audit contract:
 - unnecessary display names, email addresses, or other PII
 
 A project that needs extra Audit metadata must explicitly define why it is required, whether it is personal data, and how long it is retained.
+
+## Session revocation events
+
+Bulk Session Revocation uses `createSessionRevocationAuditEvent(...)` to produce a bounded success record from the service result.
+
+Reference actions are:
+
+```text
+session_revoke_all
+session_revoke_others
+```
+
+Reference fields are:
+
+```text
+category      authentication
+outcome       success
+actorId       authenticated actor id
+resourceType  application_session
+resourceId    target user id
+affectedCount revoked session count
+```
+
+The revocation helper receives only the bounded `SessionRevocationResult`; raw session tokens, token hashes, and Cookie headers are not part of that result and therefore cannot be serialized by the helper.
+
+Administration boundary failures remain the caller's responsibility. The future Administration API must record authorization/dependency failures using the normal bounded Audit contract rather than placing exception text or credentials into `reason`.
 
 ## Output sink
 
@@ -155,9 +184,9 @@ Issue #15 connects Audit to the existing authentication boundary:
   - action: `logout`
   - resource type: `application_session`
 
-Successful read-only `/api/auth/me` requests are not audited by default to avoid producing low-value high-volume logs.
+Issue #71 adds a reusable Audit builder for successful user-level bulk Session Revocation. It does not add a public Administration endpoint; that HTTP boundary remains a later issue.
 
-Authorization and Runtime Integrity do not yet have concrete HTTP endpoints in the template. Their future boundary handlers should use the same Audit contract for authorization denials and important mutation results.
+Successful read-only `/api/auth/me` requests are not audited by default to avoid producing low-value high-volume logs.
 
 ## Testing
 
@@ -169,8 +198,10 @@ Unit tests verify:
 - query data excluded from Request Context
 - response request-ID propagation
 - explicit Audit field projection
+- non-negative integer `affectedCount` projection and invalid-value omission
 - shared key-based redaction and size limits at the Audit sink
 - generic authentication / authorization / mutation categories
+- Session Revocation event shape without token/Cookie fields
 - Audit sink failure isolation
 
 Runtime smoke tests also verify `x-request-id` propagation on success, authentication failure, logout, and API 404 responses.
