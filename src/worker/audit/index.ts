@@ -7,3 +7,4 @@ export * from "./user-lifecycle";
 export * from "./scope-membership";
 export * from "./membership-role-change";
 export * from "./invitation";
+export * from "./invitation-redeem";
