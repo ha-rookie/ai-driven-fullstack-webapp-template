@@ -120,7 +120,7 @@ class FakeD1 {
 
 const asD1 = (db: FakeD1) => db as unknown as D1Database;
 const privilegedPolicy = {
-  getPrivilegedRoles: (_scopeId: string) => ["manager", "operator"],
+  getPrivilegedRoles: () => ["manager", "operator"],
 };
 const rolePolicy = {
   isValidRole: (role: string) => ["member", "manager", "operator"].includes(role),
