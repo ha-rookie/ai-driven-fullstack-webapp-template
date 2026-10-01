@@ -22,6 +22,13 @@ export class SessionPolicyConfigurationError extends Error {
   }
 }
 
+export class ApplicationUserUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ApplicationUserUnavailableError";
+  }
+}
+
 const parsePositiveInteger = (
   value: string | number | null | undefined,
   fallback: number,
@@ -118,6 +125,9 @@ interface SessionLookupRow {
   lastSeenAt: string | null;
 }
 
+const changesOf = (result: D1Result<unknown>): number =>
+  typeof result.meta?.changes === "number" ? result.meta.changes : 0;
+
 export const issueApplicationSession = async (
   db: D1Database,
   userId: string,
@@ -135,12 +145,18 @@ export const issueApplicationSession = async (
   const issuedAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + ttlSeconds * 1000).toISOString();
 
-  await db
+  const result = await db
     .prepare(
-      "INSERT INTO application_sessions(token_hash,user_id,expires_at,created_at,last_seen_at) VALUES(?,?,?,?,?)",
+      "INSERT INTO application_sessions(token_hash,user_id,expires_at,created_at,last_seen_at) SELECT ?,id,?,?,? FROM users WHERE id=? AND status='active'",
     )
-    .bind(tokenHash, userId, expiresAt, issuedAt, issuedAt)
+    .bind(tokenHash, expiresAt, issuedAt, issuedAt, userId)
     .run();
+
+  if (changesOf(result) !== 1) {
+    throw new ApplicationUserUnavailableError(
+      "Application user is missing or disabled",
+    );
+  }
 
   return { token, expiresAt };
 };
@@ -164,7 +180,7 @@ export const resolveSessionToken = async (
   const tokenHash = await hashSessionToken(token);
   const row = await db
     .prepare(
-      "SELECT u.id,u.display_name AS displayName,s.expires_at AS expiresAt,s.last_seen_at AS lastSeenAt FROM application_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL",
+      "SELECT u.id,u.display_name AS displayName,s.expires_at AS expiresAt,s.last_seen_at AS lastSeenAt FROM application_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND u.status='active'",
     )
     .bind(tokenHash)
     .first<SessionLookupRow>();
