@@ -9,6 +9,8 @@ export interface ExampleResource {
   createdBy: string | null;
   updatedAt: string;
   updatedBy: string | null;
+  deletedAt: string | null;
+  deletedBy: string | null;
 }
 
 const allowedTransitions: Record<ExampleResourceStatus, readonly ExampleResourceStatus[]> = {
