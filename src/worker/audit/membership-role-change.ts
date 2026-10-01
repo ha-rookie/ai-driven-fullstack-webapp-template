@@ -6,22 +6,28 @@ export interface MembershipRoleChangeAuditInput {
   readonly result: MembershipRoleChangeResult;
 }
 
-export const createMembershipRoleChangeAuditEvent = ({
+export interface MembershipRoleChangeAuditContext {
+  readonly event: AuditEvent;
+  readonly previousRole: string;
+  readonly nextRole: string;
+}
+
+export const createMembershipRoleChangeAuditContext = ({
   requestContext,
   result,
-}: MembershipRoleChangeAuditInput): AuditEvent => ({
-  ...requestContext,
-  category: "authorization",
-  action: "scope_membership_role_change",
-  outcome: "success",
-  actorId: result.actorId,
-  scopeId: result.scopeId,
-  resourceType: "user",
-  resourceId: result.targetUserId,
-  reason: result.reason,
-  affectedCount: result.kind === "changed" ? 1 : 0,
-  metadata: {
-    previousRole: result.previousRole,
-    nextRole: result.nextRole,
+}: MembershipRoleChangeAuditInput): MembershipRoleChangeAuditContext => ({
+  event: {
+    ...requestContext,
+    category: "authorization",
+    action: "scope_membership_role_change",
+    outcome: "success",
+    actorId: result.actorId,
+    scopeId: result.scopeId,
+    resourceType: "user",
+    resourceId: result.targetUserId,
+    reason: result.reason,
+    affectedCount: result.kind === "changed" ? 1 : 0,
   },
+  previousRole: result.previousRole,
+  nextRole: result.nextRole,
 });
