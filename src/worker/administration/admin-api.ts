@@ -411,8 +411,6 @@ export const handleAdministrationApi = async (
         audit({ category: "authorization", action: route.kind === "user-disable" ? "admin.user.disable" : "admin.user.reactivate", outcome: "success", actorId, scopeId: route.scopeId, resourceType: "user", resourceId: route.targetId!, reason });
         return json({ result });
       }
-      case "active-sessions":
-        return error(requestId, "method_not_allowed", "Method not allowed", 405);
     }
   } catch (caught) {
     if (caught instanceof PrivilegedMembershipSafetyError) {
