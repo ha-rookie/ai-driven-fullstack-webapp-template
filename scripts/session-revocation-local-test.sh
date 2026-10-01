@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+npm run db:migrate:local > /tmp/session-revocation-migrate.txt
+
 suffix="${GITHUB_RUN_ID:-local}-$$-$(date +%s)"
 user_all="__session_revocation_all_${suffix}"
 user_others="__session_revocation_others_${suffix}"
