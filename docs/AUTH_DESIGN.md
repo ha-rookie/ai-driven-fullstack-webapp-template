@@ -86,7 +86,7 @@ The baseline uses a **DB-backed opaque session**.
 
 The raw session token must not be persisted in D1 or logs.
 
-This differs from a self-contained signed session cookie: server-side storage allows explicit revoke/logout before expiry, user-wide revocation, and server-side idle activity tracking.
+This differs from a self-contained signed session cookie: server-side storage allows explicit revoke/logout before expiry, user-wide revocation, session rotation, and server-side idle activity tracking.
 
 ## Cookie baseline
 
@@ -172,6 +172,44 @@ Both bulk revocation operations are idempotent: already-revoked rows are not cha
 
 Administration authorization is deliberately not embedded in the authentication service. A future Administration HTTP boundary must authenticate and authorize the actor before invoking these services.
 
+## Session rotation
+
+`rotateApplicationSession(...)` replaces a valid current session token when authentication state or a privilege/authentication boundary changes. Provider adapters and future login/MFA flows can reuse this service rather than implementing token replacement independently.
+
+Rotation uses the same validity baseline as normal authentication. Missing, revoked, absolute-expired, idle-expired, malformed-activity, or user-orphaned sessions cannot be rotated.
+
+The sequence is:
+
+```text
+current raw cookie token
+  -> hash server-side
+  -> pre-read valid current session
+  -> generate new random opaque token + hash
+  -> D1 batch
+       1. conditional revoke old session
+       2. insert new hashed session only when revoke changed 1 row
+  -> secure Set-Cookie
+```
+
+The old-session UPDATE includes the observed `user_id`, `expires_at`, and `last_seen_at`. A concurrent activity touch, revoke, or rotation therefore causes the operation to fail closed rather than silently rotating stale state.
+
+The new session preserves the previous absolute `expires_at`. Rotation **does not grant a new 24-hour lifetime**. Its `created_at` and `last_seen_at` become the rotation time, so idle activity restarts while the original absolute lifetime remains the upper bound.
+
+The returned cookie keeps the baseline attributes:
+
+```text
+Path=/
+HttpOnly
+Secure
+SameSite=Lax
+```
+
+Its `Max-Age` is calculated from the remaining absolute lifetime. The service result exposes the cookie value required by the HTTP boundary, but does not expose the raw token as a separate field. D1 stores only the new token hash.
+
+CSRF proof is session-token-bound. After rotation, a proof derived from the previous token is no longer valid; the client must obtain a new proof from `GET /api/auth/csrf` before the next protected mutation.
+
+This issue provides the reusable service only. It does not add a new public rotation endpoint or provider-specific callback flow.
+
 ## Runtime endpoints
 
 ### `GET /api/auth/me`
@@ -194,7 +232,7 @@ Returns a CSRF proof only when the same application session is currently valid. 
 
 Revokes the matching server-side session and clears the browser cookie. Revocation still operates on the presented cookie token and does not depend on the idle-timeout resolver; an already-idle session may still be explicitly logged out.
 
-Bulk user-session revocation does not expose a public HTTP endpoint in this issue. Administration API and UI boundaries remain separate concerns.
+Bulk user-session revocation and session rotation do not expose public HTTP endpoints in these foundation issues. Administration and provider-specific HTTP boundaries remain separate concerns.
 
 ## Secrets and public repositories
 
@@ -219,9 +257,9 @@ This foundation does not define:
 - invitation flows
 - system administrator bootstrap
 - account recovery
-- session rotation
 - active-session listing UI/API
 - Administration API/UI for bulk revocation
+- provider-specific login/MFA rotation trigger endpoints
 - persistent security-event storage
 - client-side idle warning UI
 - scheduled session cleanup
