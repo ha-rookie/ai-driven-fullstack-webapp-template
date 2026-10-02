@@ -31,10 +31,18 @@ interface SafeErrorBoundaryState {
   readonly failed: boolean;
 }
 
+const containsControlCharacter = (value: string) => {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
+};
+
 const safeIdentifier = (value: string | undefined, max = 128) => {
   if (!value) return undefined;
   const normalized = value.trim();
-  if (!normalized || normalized.length > max || /[\u0000-\u001F\u007F]/u.test(normalized)) return undefined;
+  if (!normalized || normalized.length > max || containsControlCharacter(normalized)) return undefined;
   return normalized;
 };
 
@@ -61,11 +69,16 @@ export class SafeErrorBoundary extends Component<SafeErrorBoundaryProps, SafeErr
     return { failed: true };
   }
 
-  componentDidCatch(_error: Error, _info: ErrorInfo): void {
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    // The shared report contract intentionally excludes raw Error and component stack detail.
+    void error;
+    void info;
+    const boundaryId = safeIdentifier(this.props.boundaryId);
+    const correlationId = safeIdentifier(this.props.correlationId);
     const report: ErrorBoundaryReport = {
       kind: "render_error",
-      ...(safeIdentifier(this.props.boundaryId) ? { boundaryId: safeIdentifier(this.props.boundaryId) } : {}),
-      ...(safeIdentifier(this.props.correlationId) ? { correlationId: safeIdentifier(this.props.correlationId) } : {}),
+      ...(boundaryId ? { boundaryId } : {}),
+      ...(correlationId ? { correlationId } : {}),
     };
     try {
       this.props.onReport?.(Object.freeze(report));
