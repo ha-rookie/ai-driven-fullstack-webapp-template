@@ -183,6 +183,8 @@ Performance CI additionally verifies indexed access paths by executing the repre
 
 ## Environment boundary
 
+`migrations/0015_operation_modes.sql` adds the environment-keyed `operation_modes` table. It stores mode, version and latest update metadata without seeding a default state. See [Operation Mode Store](OPERATION_MODE.md) for explicit initialization and fail-safe behavior. Resource-level Preview / Production isolation is still mandatory.
+
 ```text
 Local
   └─ isolated D1 state used by developer/CI

@@ -9,6 +9,7 @@
     "placeholder"
   ],
   "requiredTables": {
+    "operation_modes": ["environment", "mode", "version", "updated_at", "updated_by", "reason"],
     "example_resources": ["id", "name", "created_at", "updated_at", "status", "version", "created_by", "updated_by", "deleted_at", "deleted_by"],
     "example_resource_changes": ["resource_id", "version", "change_kind", "from_status", "to_status", "created_at"],
     "example_resource_scope_bindings": ["resource_id", "scope_id", "created_at"],
