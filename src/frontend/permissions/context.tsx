@@ -29,9 +29,17 @@ export interface PermissionGuardProps extends PropsWithChildren {
 
 const PermissionContext = createContext<PermissionContextValue | null>(null);
 
+const containsControlCharacter = (value: string) => {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
+};
+
 const validPermission = (permission: FrontendPermission) => {
   const normalized = permission.trim();
-  if (!normalized || normalized.length > 200 || /[\u0000-\u001F\u007F]/u.test(normalized)) {
+  if (!normalized || normalized.length > 200 || containsControlCharacter(normalized)) {
     throw new TypeError("permission must be a bounded non-empty string");
   }
   return normalized;
