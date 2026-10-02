@@ -1,0 +1,274 @@
+name: Production migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full 40-character commit SHA to migrate from
+        required: true
+        type: string
+      production_database_name:
+        description: Immutable Production D1 database name
+        required: true
+        type: string
+      production_database_id:
+        description: Production D1 database UUID
+        required: true
+        type: string
+      preview_database_id:
+        description: Preview D1 database UUID; must differ from Production
+        required: true
+        type: string
+      preview_evidence_ref:
+        description: Reference to successful Preview validation evidence
+        required: true
+        type: string
+      recovery_point_ref:
+        description: Reference to confirmed recovery point / backup evidence
+        required: true
+        type: string
+      verification_queries_json:
+        description: JSON array describing row-count / aggregate / invariant checks
+        required: true
+        default: '["production schema baseline"]'
+        type: string
+      migration_contracts_json:
+        description: JSON object for review/backfill contracts required by pending migrations
+        required: true
+        default: '{}'
+        type: string
+      confirmation:
+        description: Type exactly MIGRATE PRODUCTION
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-d1-migration
+  cancel-in-progress: false
+
+jobs:
+  validate-request:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact target SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify exact checkout and request contract
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          PRODUCTION_DATABASE_NAME: ${{ inputs.production_database_name }}
+          PRODUCTION_DATABASE_ID: ${{ inputs.production_database_id }}
+          PREVIEW_DATABASE_ID: ${{ inputs.preview_database_id }}
+          PREVIEW_EVIDENCE_REF: ${{ inputs.preview_evidence_ref }}
+          RECOVERY_POINT_REF: ${{ inputs.recovery_point_ref }}
+          VERIFICATION_QUERIES_JSON: ${{ inputs.verification_queries_json }}
+          MIGRATION_CONTRACTS_JSON: ${{ inputs.migration_contracts_json }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          node scripts/production-migration-workflow.mjs --validate-request \
+            "--target-sha=$TARGET_SHA" \
+            "--production-database-name=$PRODUCTION_DATABASE_NAME" \
+            "--production-database-id=$PRODUCTION_DATABASE_ID" \
+            "--preview-database-id=$PREVIEW_DATABASE_ID" \
+            "--preview-evidence-ref=$PREVIEW_EVIDENCE_REF" \
+            "--recovery-point-ref=$RECOVERY_POINT_REF" \
+            "--verification-queries-json=$VERIFICATION_QUERIES_JSON" \
+            "--migration-contracts-json=$MIGRATION_CONTRACTS_JSON" \
+            "--confirmation=$CONFIRMATION"
+          {
+            echo "### Production D1 migration request"
+            echo "- target SHA: \`$TARGET_SHA\`"
+            echo "- database name: \`$PRODUCTION_DATABASE_NAME\`"
+            echo "- database id: \`$PRODUCTION_DATABASE_ID\`"
+            echo "- preview id: \`$PREVIEW_DATABASE_ID\`"
+            echo "- preview evidence: \`$PREVIEW_EVIDENCE_REF\`"
+            echo "- recovery point: \`$RECOVERY_POINT_REF\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  preflight:
+    needs: validate-request
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_READ_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+      PRODUCTION_DATABASE_NAME: ${{ inputs.production_database_name }}
+      PRODUCTION_DATABASE_ID: ${{ inputs.production_database_id }}
+      PREVIEW_DATABASE_ID: ${{ inputs.preview_database_id }}
+      PREVIEW_EVIDENCE_REF: ${{ inputs.preview_evidence_ref }}
+      RECOVERY_POINT_REF: ${{ inputs.recovery_point_ref }}
+      VERIFICATION_QUERIES_JSON: ${{ inputs.verification_queries_json }}
+      MIGRATION_CONTRACTS_JSON: ${{ inputs.migration_contracts_json }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Checkout exact target SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Capture current Production metadata
+        run: |
+          mkdir -p .release-evidence
+          npm run db:migration:workflow -- --capture-schema --phase=pre-deploy \
+            "--target-sha=$TARGET_SHA" \
+            "--production-database-name=$PRODUCTION_DATABASE_NAME" \
+            "--production-database-id=$PRODUCTION_DATABASE_ID" \
+            "--preview-database-id=$PREVIEW_DATABASE_ID" \
+            "--preview-evidence-ref=$PREVIEW_EVIDENCE_REF" \
+            "--recovery-point-ref=$RECOVERY_POINT_REF" \
+            "--verification-queries-json=$VERIFICATION_QUERIES_JSON" \
+            "--migration-contracts-json=$MIGRATION_CONTRACTS_JSON" \
+            --output=.release-evidence/pre-deploy-schema.json
+
+      - name: Build and run Production migration preflight
+        run: |
+          npm run db:migration:workflow -- --build-preflight \
+            "--target-sha=$TARGET_SHA" \
+            "--production-database-name=$PRODUCTION_DATABASE_NAME" \
+            "--production-database-id=$PRODUCTION_DATABASE_ID" \
+            "--preview-database-id=$PREVIEW_DATABASE_ID" \
+            "--preview-evidence-ref=$PREVIEW_EVIDENCE_REF" \
+            "--recovery-point-ref=$RECOVERY_POINT_REF" \
+            "--verification-queries-json=$VERIFICATION_QUERIES_JSON" \
+            "--migration-contracts-json=$MIGRATION_CONTRACTS_JSON" \
+            "--confirmation=$CONFIRMATION" \
+            --schema-snapshot=.release-evidence/pre-deploy-schema.json \
+            --output=.release-evidence/preflight-snapshot.json
+          npm run db:migration:preflight -- --snapshot=.release-evidence/preflight-snapshot.json \
+            | tee .release-evidence/preflight-report.txt
+
+      - name: Show pending migration plan
+        run: |
+          set -o pipefail
+          npx wrangler d1 migrations list "$PRODUCTION_DATABASE_NAME" --remote \
+            | tee .release-evidence/migration-plan.txt
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-migration-preflight-${{ github.run_id }}
+          path: .release-evidence/
+          retention-days: 14
+
+  migrate-production:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+      PRODUCTION_DATABASE_NAME: ${{ inputs.production_database_name }}
+      PRODUCTION_DATABASE_ID: ${{ inputs.production_database_id }}
+      PREVIEW_DATABASE_ID: ${{ inputs.preview_database_id }}
+      PREVIEW_EVIDENCE_REF: ${{ inputs.preview_evidence_ref }}
+      RECOVERY_POINT_REF: ${{ inputs.recovery_point_ref }}
+      VERIFICATION_QUERIES_JSON: ${{ inputs.verification_queries_json }}
+      MIGRATION_CONTRACTS_JSON: ${{ inputs.migration_contracts_json }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Checkout exact target SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Revalidate request after Human Gate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          npm run db:migration:workflow -- --validate-request \
+            "--target-sha=$TARGET_SHA" \
+            "--production-database-name=$PRODUCTION_DATABASE_NAME" \
+            "--production-database-id=$PRODUCTION_DATABASE_ID" \
+            "--preview-database-id=$PREVIEW_DATABASE_ID" \
+            "--preview-evidence-ref=$PREVIEW_EVIDENCE_REF" \
+            "--recovery-point-ref=$RECOVERY_POINT_REF" \
+            "--verification-queries-json=$VERIFICATION_QUERIES_JSON" \
+            "--migration-contracts-json=$MIGRATION_CONTRACTS_JSON" \
+            "--confirmation=$CONFIRMATION"
+
+      - name: Re-run preflight against current Production state
+        run: |
+          mkdir -p .release-evidence
+          npm run db:migration:workflow -- --capture-schema --phase=pre-deploy \
+            "--target-sha=$TARGET_SHA" \
+            "--production-database-name=$PRODUCTION_DATABASE_NAME" \
+            "--production-database-id=$PRODUCTION_DATABASE_ID" \
+            "--preview-database-id=$PREVIEW_DATABASE_ID" \
+            "--preview-evidence-ref=$PREVIEW_EVIDENCE_REF" \
+            "--recovery-point-ref=$RECOVERY_POINT_REF" \
+            "--verification-queries-json=$VERIFICATION_QUERIES_JSON" \
+            "--migration-contracts-json=$MIGRATION_CONTRACTS_JSON" \
+            --output=.release-evidence/pre-apply-schema.json
+          npm run db:migration:workflow -- --build-preflight \
+            "--target-sha=$TARGET_SHA" \
+            "--production-database-name=$PRODUCTION_DATABASE_NAME" \
+            "--production-database-id=$PRODUCTION_DATABASE_ID" \
+            "--preview-database-id=$PREVIEW_DATABASE_ID" \
+            "--preview-evidence-ref=$PREVIEW_EVIDENCE_REF" \
+            "--recovery-point-ref=$RECOVERY_POINT_REF" \
+            "--verification-queries-json=$VERIFICATION_QUERIES_JSON" \
+            "--migration-contracts-json=$MIGRATION_CONTRACTS_JSON" \
+            "--confirmation=$CONFIRMATION" \
+            --schema-snapshot=.release-evidence/pre-apply-schema.json \
+            --output=.release-evidence/pre-apply-preflight.json
+          npm run db:migration:preflight -- --snapshot=.release-evidence/pre-apply-preflight.json \
+            | tee .release-evidence/pre-apply-preflight-report.txt
+
+      - name: Apply pending migrations to Production D1
+        run: |
+          set -o pipefail
+          npx wrangler d1 migrations apply "$PRODUCTION_DATABASE_NAME" --remote \
+            2>&1 | tee .release-evidence/migration-apply.log
+
+      - name: Capture and verify post-migration schema
+        run: |
+          npm run db:migration:workflow -- --capture-schema --phase=post-migration \
+            "--target-sha=$TARGET_SHA" \
+            "--production-database-name=$PRODUCTION_DATABASE_NAME" \
+            "--production-database-id=$PRODUCTION_DATABASE_ID" \
+            "--preview-database-id=$PREVIEW_DATABASE_ID" \
+            "--preview-evidence-ref=$PREVIEW_EVIDENCE_REF" \
+            "--recovery-point-ref=$RECOVERY_POINT_REF" \
+            "--verification-queries-json=$VERIFICATION_QUERIES_JSON" \
+            "--migration-contracts-json=$MIGRATION_CONTRACTS_JSON" \
+            --output=.release-evidence/post-migration-schema.json
+          npm run db:schema:verify:production -- --snapshot=.release-evidence/post-migration-schema.json \
+            | tee .release-evidence/post-migration-schema-report.txt
+
+      - name: Upload migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-migration-result-${{ github.run_id }}
+          path: .release-evidence/
+          retention-days: 14
