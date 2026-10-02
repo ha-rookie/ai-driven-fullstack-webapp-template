@@ -1,0 +1,128 @@
+name: Production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full 40-character commit SHA to deploy
+        required: true
+        type: string
+      confirmation:
+        description: Type DEPLOY PRODUCTION exactly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate dispatch request
+        run: |
+          node -e 'const sha=process.argv[1], c=process.argv[2]; if(!/^[a-f0-9]{40}$/.test(sha)||c!=="DEPLOY PRODUCTION") process.exit(1)' "${{ inputs.target_sha }}" "${{ inputs.confirmation }}"
+
+      - name: Checkout exact deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Verify checked out SHA
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.target_sha }}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate lockfile
+        run: npm run supply-chain:lockfile
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build exact deploy SHA
+        run: npm run build
+
+      - name: Validate Production security configuration
+        env:
+          SECURITY_SNAPSHOT: ${{ secrets.PRODUCTION_SECURITY_SNAPSHOT_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SECURITY_SNAPSHOT"
+          SNAPSHOT="$RUNNER_TEMP/production-security-snapshot.json"
+          trap 'rm -f "$SNAPSHOT"' EXIT
+          printf '%s' "$SECURITY_SNAPSHOT" > "$SNAPSHOT"
+          npm run security:validate -- --config="$SNAPSHOT"
+
+  deploy:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout exact deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Verify checked out SHA after Human Gate
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.target_sha }}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate request again after Human Gate
+        run: npm run deploy:production:validate -- --target-sha=${{ inputs.target_sha }} --confirmation="${{ inputs.confirmation }}"
+
+      - name: Validate lockfile again after Human Gate
+        run: npm run supply-chain:lockfile
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build exact deploy SHA again
+        run: npm run build
+
+      - name: Revalidate Production security configuration
+        env:
+          SECURITY_SNAPSHOT: ${{ secrets.PRODUCTION_SECURITY_SNAPSHOT_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SECURITY_SNAPSHOT"
+          SNAPSHOT="$RUNNER_TEMP/production-security-snapshot.json"
+          trap 'rm -f "$SNAPSHOT"' EXIT
+          printf '%s' "$SECURITY_SNAPSHOT" > "$SNAPSHOT"
+          npm run security:validate -- --config="$SNAPSHOT"
+
+      - name: Deploy exact SHA to Production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PRODUCTION_WRANGLER_CONFIG_JSON: ${{ secrets.PRODUCTION_WRANGLER_CONFIG_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$PRODUCTION_WRANGLER_CONFIG_JSON"
+          CONFIG="$RUNNER_TEMP/wrangler.production.json"
+          trap 'rm -f "$CONFIG"' EXIT
+          printf '%s' "$PRODUCTION_WRANGLER_CONFIG_JSON" > "$CONFIG"
+          npx wrangler deploy --config "$CONFIG"
+
+      - name: Record deploy evidence
+        run: |
+          mkdir -p evidence
+          node -e 'const fs=require("fs"); fs.writeFileSync("evidence/production-deploy.json", JSON.stringify({targetSha:process.argv[1], workflowRunId:process.argv[2], environment:"production", status:"deployed"}, null, 2)+"\n")' "${{ inputs.target_sha }}" "${{ github.run_id }}"
+
+      - name: Upload deploy evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deploy-evidence-${{ inputs.target_sha }}
+          path: evidence/production-deploy.json
+          retention-days: 30
