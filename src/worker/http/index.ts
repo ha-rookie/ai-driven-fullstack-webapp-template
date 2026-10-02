@@ -3,6 +3,7 @@ export * from "./concurrency-precondition";
 export * from "./csrf";
 export * from "./idempotency";
 export * from "./origin-cors";
+export * from "./operation-mode";
 export * from "./rate-limit";
 export * from "./request-body";
 export * from "./security-headers";
