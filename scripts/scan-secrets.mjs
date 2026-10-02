@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024;
 const ALLOW_MARKER = "secret-scan: allow";
 
 const rules = [
@@ -50,15 +49,9 @@ const trackedFiles = execFileSync("git", ["ls-files", "-z"], {
 const findings = [];
 let scannedFiles = 0;
 let skippedBinaryFiles = 0;
-let skippedLargeFiles = 0;
 
 for (const path of trackedFiles) {
   const buffer = readFileSync(path);
-
-  if (buffer.length > MAX_TEXT_FILE_BYTES) {
-    skippedLargeFiles += 1;
-    continue;
-  }
 
   if (buffer.includes(0)) {
     skippedBinaryFiles += 1;
@@ -106,7 +99,6 @@ const summary = {
   result: uniqueFindings.length === 0 ? "ok" : "failed",
   scannedFiles,
   skippedBinaryFiles,
-  skippedLargeFiles,
   findingCount: uniqueFindings.length,
 };
 
