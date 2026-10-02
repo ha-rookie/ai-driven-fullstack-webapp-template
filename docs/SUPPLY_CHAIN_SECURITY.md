@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the dependency supply-chain baseline for this Full-stack Template. The first control is reproducible installation from a committed npm lockfile. Vulnerability scanning, SBOM generation, license inventory, and broader SCS control mapping are separate implementation units.
+Define the dependency supply-chain baseline for this Full-stack Template. The baseline starts with reproducible installation from a committed npm lockfile and adds dependency vulnerability scanning. SBOM generation, license inventory, and broader SCS control mapping remain separate implementation units.
 
 ## Lockfile as install source of truth
 
@@ -78,21 +78,69 @@ When reviewing a dependency update, inspect at least:
 - lifecycle/install-script implications
 - unexpected large lockfile churn unrelated to the intended update
 
+## Dependency vulnerability scanning
+
+The required dependency scan uses npm's lockfile-backed advisory check after a reproducible install. It does not update dependencies and does not require a paid external service.
+
+Two scopes are intentionally separated.
+
+### Production dependencies
+
+Production dependencies are checked with:
+
+```text
+npm audit --omit=dev --audit-level=high
+```
+
+`high` or `critical` findings fail CI. Production runtime exposure receives the stricter threshold because these dependencies are part of the deployed application boundary.
+
+### Full dependency tree
+
+The complete dependency tree, including development dependencies, is checked with:
+
+```text
+npm audit --audit-level=critical
+```
+
+`critical` findings fail CI. `high`, `moderate`, and `low` findings remain visible in the audit output and must not be silently discarded, but they do not fail the Template baseline automatically. This prevents tooling-only transitive findings from permanently blocking development while still keeping them visible for remediation.
+
+A product can choose a stricter threshold. It must not weaken the production baseline without documenting the accepted risk.
+
+## Accepted risk and false positives
+
+The Template does not encode package-specific vulnerability exceptions or advisory allowlists. A project that temporarily accepts a finding should record, in a reviewable project-owned location:
+
+- affected package and advisory identifier
+- whether the package is production or development-only
+- why the vulnerable path is or is not reachable in that product
+- compensating controls when applicable
+- owner
+- expiry or next review date
+- remediation plan
+
+Do not suppress findings only to make CI green. An accepted risk is a time-bounded engineering decision, not an invisible CI exception.
+
+## Vulnerability scan evidence
+
+The dependency scan workflow captures the npm audit output for both production-only and full-tree scans and uploads it as a short-retention GitHub Actions artifact. The workflow log also retains the exact pass/fail step result.
+
+This gives Release Evidence (#112) a repository-native source without requiring an external vulnerability platform. Audit evidence must not include registry credentials or other secrets.
+
 ## Secrets and registries
 
 The Template does not require a private registry and does not log registry tokens. Projects that add authenticated registries must use CI secret facilities and must not commit credentials into `.npmrc`, manifests, lockfiles, or workflow output.
 
 ## CI evidence
 
-The required CI exposes distinct steps for lockfile validation, clean install, dependency-tree validation, and manifest/lockfile mutation detection. These step results can later be referenced by Release Evidence (#112) without introducing a separate external service.
+Required supply-chain CI exposes distinct steps for lockfile validation, clean install, dependency-tree validation, manifest/lockfile mutation detection, production dependency audit, and full dependency-tree audit. These step results and dependency audit artifacts can later be referenced by Release Evidence (#112).
 
 ## Scope boundary
 
-This control does not:
+These controls do not:
 
 - update dependencies automatically
-- scan known vulnerabilities (#83)
 - generate an SBOM (#85)
 - inventory licenses (#119)
 - provision a private registry
 - change the package manager
+- scan container images
