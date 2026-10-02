@@ -42,7 +42,7 @@
     {"id":"4-4-5","level":"star3-and-star4","name":"マルウェア感染からの保護","status":"Organization Responsibility","control":"endpoint/host protectionは実行環境・組織統制","test":"","evidence":""},
     {"id":"4-5-1","level":"star3-and-star4","name":"ネットワーク境界防護","status":"Project Responsibility","control":"Cloudflare/ネットワーク構成・segmentationはProject側で設計","test":"","evidence":""},
     {"id":"5-1-1","level":"star3-and-star4","name":"ネットワーク接続・データ転送の監視","status":"Project Responsibility","control":"WAF/Cloudflare/SIEM等の監視運用はProject/Organization責任","test":"","evidence":""},
-    {"id":"6-1-1","level":"star3-and-star4","name":"インシデント対応手順・体制","status":"Not Yet Implemented","control":"Security Incident Response #87で扱う予定","test":"","evidence":""},
+    {"id":"6-1-1","level":"star3-and-star4","name":"インシデント対応手順・体制","status":"Partially Implemented","control":"docs/security/SECURITY_INCIDENT_RESPONSE.mdでAudit/session revoke/mode/recoveryを接続。体制・remote承認・private retention・実施済み演習はProject/Organization責任","test":"tests/session-revocation.test.ts; tests/operation-mode-api.test.ts; scripts/operation-mode-local-test.mjs; scripts/validate-recovery-safety.mjs","evidence":"Full-stack template CI (Local technical contracts only; organization tabletop/Production unverified)"},
     {"id":"7-1-1","level":"star3-and-star4","name":"事業継続要件に沿った復旧準備","status":"Partially Implemented","control":"recovery rehearsalと安全検証を提供。RTO/RPO/BCPはProject/Organization責任","test":"scripts/d1-recovery-rehearsal.sh; scripts/validate-recovery-safety.mjs","evidence":"Full-stack template CI"},
 
     {"id":"1-1-1","level":"star4-only","name":"社内ルール","status":"Organization Responsibility","control":"法令・契約を踏まえた社内規程は組織責任","test":"","evidence":""},
@@ -61,6 +61,6 @@
     {"id":"4-4-2","level":"star4-only","name":"サポート切れOS・ソフトウェア対策","status":"Partially Implemented","control":"npm inventoryで依存version把握を支援。OS/全Software lifecycleはProject/Organization","test":"scripts/generate-sbom.mjs; scripts/license-inventory.mjs","evidence":"SBOM generation; License inventory"},
     {"id":"4-4-3","level":"star4-only","name":"ログ取得・レビュー","status":"Partially Implemented","control":"structured application log / audit / correlation基盤を提供。保存期間・SIEMレビューはProject責任","test":"tests/audit-correlation.test.ts; tests/log-redaction.test.ts","evidence":"Full-stack template CI"},
     {"id":"5-1-2","level":"star4-only","name":"情報機器・ソフトウェアの挙動監視","status":"Organization Responsibility","control":"EDR/host behavior monitoringは実行環境・組織統制","test":"","evidence":""},
-    {"id":"5-2-1","level":"star4-only","name":"インシデントレベルと対象範囲","status":"Not Yet Implemented","control":"Security Incident Response #87で分類・対応契約を扱う予定","test":"","evidence":""}
+    {"id":"5-2-1","level":"star4-only","name":"インシデントレベルと対象範囲","status":"Partially Implemented","control":"docs/security/SECURITY_INCIDENT_RESPONSE.mdでpriority/confidence/scopeの判断材料を提供。実環境severity policy・記録済み組織対応はProject/Organization責任","test":"tests/security-rejection-event.test.ts; tests/audit-correlation.test.ts; tests/operation-mode-api.test.ts","evidence":"Full-stack template CI (technical event/context contracts; actual incident classification/exercise unverified)"}
   ]
 }

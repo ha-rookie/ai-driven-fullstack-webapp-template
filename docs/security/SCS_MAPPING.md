@@ -87,8 +87,8 @@ The machine-readable source of truth is `config/scs-control-mapping.json`. The t
 | 4-5-1 | ★3/★4 | Project Responsibility | Network segmentation, WAF/firewall boundary and topology are deployment-specific |
 | 5-1-1 | ★3/★4 | Project Responsibility | Network/data-transfer monitoring depends on Cloudflare/SIEM/runtime operations |
 | 5-1-2 | ★4 only | Organization Responsibility | Endpoint/software behaviour monitoring such as EDR is runtime/organization control |
-| 5-2-1 | ★4 only | Not Yet Implemented | Incident severity classification and response contract are planned under Security Incident Response (#87) |
-| 6-1-1 | ★3/★4 | Not Yet Implemented | Full incident response procedure/organization is planned under Security Incident Response (#87) |
+| 5-2-1 | ★4 only | Partially Implemented | Technical triage priority/confidence/scope and scenario decision aids exist; actual severity policy, deployment/telemetry evidence and organizational response remain Project/Organization responsibilities |
+| 6-1-1 | ★3/★4 | Partially Implemented | Incident runbook connects Audit, session revoke, operation mode and recovery with Local contracts; staffed response, approved remote actions, private evidence retention and recorded exercises remain Project/Organization responsibilities |
 | 7-1-1 | ★3/★4 | Partially Implemented | Recovery rehearsal/validation supports technical recovery; business continuity and target recovery objectives remain Project/Organization responsibilities |
 
 ## Template evidence currently mapped
@@ -104,6 +104,7 @@ Key repository-native evidence sources include:
 - local D1 recovery rehearsal / safety validation
 - authorization / administration / runtime-integrity tests
 - Audit and Correlation tests
+- [Security Incident Response](SECURITY_INCIDENT_RESPONSE.md) and its existing Local/tabletop evidence matrix (document existence does not prove an organizational exercise occurred)
 
 A green workflow is evidence that the Template control executed successfully for that commit. It is not evidence that organization-owned procedures were performed.
 
