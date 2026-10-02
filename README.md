@@ -2,6 +2,14 @@
 
 React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webアプリで事故になりやすい認証・認可・排他・監査・復旧・性能までを実装例として持つFull-stack Templateです。
 
+業務Webアプリの共通基盤を検証・採用する開発者向けです。完成済み業務製品、具体的なログインProvider、実環境の構築・運用保証は含みません。
+
+- [Quick Start / Local development](#local-development)
+- [Implementation design](docs/README.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security Policy / vulnerability reporting](SECURITY.md)
+- [MIT License](LICENSE)
+
 ## Positioning
 
 このRepositoryは、AI駆動開発の開発標準そのものを置き換えません。
