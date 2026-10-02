@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "requiredEnvironment": "production",
+  "requiredConfirmation": "MIGRATE PRODUCTION",
+  "targetShaPattern": "^[a-f0-9]{40}$",
+  "placeholderPatterns": [
+    "REPLACE_WITH_",
+    "00000000-0000-0000-0000-000000000000",
+    "example",
+    "placeholder"
+  ],
+  "requiredReadSecretNames": [
+    "CLOUDFLARE_D1_READ_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID"
+  ],
+  "requiredMutationSecretNames": [
+    "CLOUDFLARE_D1_MIGRATION_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID"
+  ],
+  "mutationEnvironment": "production",
+  "evidenceRetentionDays": 14
+}
