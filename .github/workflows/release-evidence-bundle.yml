@@ -1,0 +1,77 @@
+name: Release evidence bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Opaque release identifier (no personal or secret data)
+        required: true
+        type: string
+      deployed_sha:
+        description: Immutable deployed 40-character SHA
+        required: true
+        type: string
+      deploy_run:
+        description: Existing Production deploy run ID
+        required: true
+        type: string
+      smoke_run:
+        description: Existing Production smoke run ID
+        required: false
+        type: string
+      migration_run:
+        description: Existing Production migration run ID
+        required: false
+        type: string
+      rollback_run:
+        description: Existing rollback/stable-marker run ID
+        required: false
+        type: string
+      supply_runs:
+        description: Optional comma-separated supply-chain run IDs
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout evidence tooling
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate offline collector contract
+        run: node scripts/release-evidence-bundle.mjs --self-test
+      - name: Collect existing GitHub evidence (read only)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_IDENTIFIER: ${{ inputs.release_id }}
+          DEPLOYED_SHA: ${{ inputs.deployed_sha }}
+          DEPLOY_RUN: ${{ inputs.deploy_run }}
+          SMOKE_RUN: ${{ inputs.smoke_run }}
+          MIGRATION_RUN: ${{ inputs.migration_run }}
+          ROLLBACK_RUN: ${{ inputs.rollback_run }}
+          SUPPLY_RUNS: ${{ inputs.supply_runs }}
+        run: |
+          node scripts/release-evidence-bundle.mjs \
+            "--repository=$RELEASE_REPOSITORY" "--release-id=$RELEASE_IDENTIFIER" \
+            "--deployed-sha=$DEPLOYED_SHA" "--deploy-run=$DEPLOY_RUN" \
+            "--smoke-run=$SMOKE_RUN" "--migration-run=$MIGRATION_RUN" \
+            "--rollback-run=$ROLLBACK_RUN" "--supply-runs=$SUPPLY_RUNS" \
+            --output=.evidence/release-bundle.json
+      - name: Upload projected release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ github.run_id }}
+          path: .evidence/release-bundle.json
+          if-no-files-found: error
+          retention-days: 14
