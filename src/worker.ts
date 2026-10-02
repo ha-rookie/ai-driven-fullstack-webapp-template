@@ -13,6 +13,7 @@ import {
   type AuditEvent,
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
+import { handleLiveness, handleReadiness } from "./worker/health";
 import {
   apiErrorResponse,
   applyCorsResponseHeaders,
@@ -108,28 +109,22 @@ export default {
     const audit = (event: RequestAuditFields) =>
       writeAuditSafely(consoleAuditLogger, { ...requestContext, ...event });
 
-    if (request.method === "GET" && url.pathname === "/api/health") {
-      return api(json({ status: "ok" }));
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/api/health" || url.pathname === "/api/health/live")
+    ) {
+      return api(handleLiveness());
     }
 
     if (
       request.method === "GET" &&
-      url.pathname === "/api/health/database"
+      (url.pathname === "/api/health/database" || url.pathname === "/api/health/ready")
     ) {
-      try {
-        const row = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
-        if (row?.ok !== 1) {
-          appLogger.warn("database_health_check_unavailable");
-        }
-        return api(
-          row?.ok === 1
-            ? json({ status: "ok" })
-            : json({ status: "unavailable" }, { status: 503 }),
-        );
-      } catch (error) {
-        appLogger.error("database_health_check_failed", { error });
-        return api(json({ status: "unavailable" }, { status: 503 }));
-      }
+      return api(
+        await handleReadiness(env.DB, () => {
+          appLogger.warn("database_readiness_unavailable");
+        }),
+      );
     }
 
     if (request.method === "GET" && url.pathname === "/api/auth/me") {
