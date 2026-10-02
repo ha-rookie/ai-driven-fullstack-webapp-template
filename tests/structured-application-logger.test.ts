@@ -64,7 +64,7 @@ test("request-scoped context is inherited, overridable and does not leak to othe
 
 test("caller-supplied secrets and arbitrary nested values are never serialized", () => {
   const { logger, lines } = captured();
-  const secret = "highly-sensitive-credential";
+  const secret = "highly-sensitive-credential"; // secret-scan: allow — deterministic redaction fixture
   logger.withContext({
     requestId: "request-safe",
     token: secret,
@@ -92,7 +92,7 @@ test("caller-supplied secrets and arbitrary nested values are never serialized",
 
 test("Error serialization includes standard type but omits message, stack and cause", () => {
   const { logger, lines } = captured();
-  const secret = "super-secret-from-dependency";
+  const secret = "super-secret-from-dependency"; // secret-scan: allow — deterministic redaction fixture
   const failure = new TypeError(secret, { cause: new Error(secret) });
   failure.stack = secret;
   logger.error("dependency_failed", { error: failure, cookie: secret });
