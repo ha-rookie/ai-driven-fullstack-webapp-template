@@ -1,3 +1,4 @@
+import type { ApiErrorEnvelope } from "../../shared/api";
 import { AppError } from "../../shared/errors";
 import type { ValidationIssue } from "../../shared/validation";
 
@@ -7,15 +8,6 @@ export interface ApiErrorDescriptor {
   readonly message: string;
   readonly issues?: readonly ValidationIssue[];
   readonly extra?: Readonly<Record<string, unknown>>;
-}
-
-export interface ApiErrorEnvelope {
-  readonly error: {
-    readonly code: string;
-    readonly message: string;
-    readonly issues?: readonly ValidationIssue[];
-  };
-  readonly requestId: string;
 }
 
 const appErrorStatusByCode: Readonly<Record<string, number>> = {
