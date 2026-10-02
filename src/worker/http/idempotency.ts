@@ -85,7 +85,7 @@ export interface IdempotencyHttpStore {
   complete(
     input: IdempotencyContext & { fingerprint: string; changedAt: string },
   ): Promise<TransitionIdempotencyRecordResult>;
-  completeReplayable(
+  completeReplayable?(
     input: IdempotencyContext & {
       fingerprint: string;
       changedAt: string;
@@ -122,10 +122,6 @@ const concatenate = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return combined;
 };
 
-/**
- * Fingerprints the HTTP mutation without persisting raw request data.
- * Call this before consuming the original request body, or pass an untouched clone.
- */
 export const fingerprintIdempotentRequest = async (
   request: Request,
 ): Promise<string> => {
@@ -277,10 +273,6 @@ export type ReplayCaptureResult =
         | "sensitive_json_field";
     };
 
-/**
- * Safe-by-default replay capture. Only bounded 2xx JSON responses without
- * credential/session headers or common secret-bearing JSON field names qualify.
- */
 export const captureReplayableResponse = async (
   response: Response,
 ): Promise<ReplayCaptureResult> => {
@@ -376,7 +368,7 @@ export class IdempotencyHttpGuard {
   }> {
     const captured = await captureReplayableResponse(response);
     const changedAt = this.clock.now().toISOString();
-    if (captured.kind === "replayable") {
+    if (captured.kind === "replayable" && this.store.completeReplayable) {
       return {
         transition: await this.store.completeReplayable({
           ...execution,
@@ -389,7 +381,9 @@ export class IdempotencyHttpGuard {
     return {
       transition: await this.store.complete({ ...execution, changedAt }),
       replayStored: false,
-      notReplayableReason: captured.reason,
+      ...(captured.kind === "not_replayable"
+        ? { notReplayableReason: captured.reason }
+        : {}),
     };
   }
 
@@ -440,7 +434,6 @@ export const idempotencyReplayResponse = (
     },
   });
 
-/** Safe Audit fields. Idempotency-Key and fingerprint are deliberately excluded. */
 export const idempotencyAuditFields = (
   input: Pick<IdempotencyGuardInput, "actorId" | "scopeId" | "action">,
   decision: IdempotencyDecision,
