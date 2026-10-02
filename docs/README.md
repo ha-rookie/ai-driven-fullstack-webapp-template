@@ -61,6 +61,7 @@ Worker HTTP Boundary / Composition
 | `BOUNDARY_TESTING.md` | Origin/CORS → Authn → CSRF → Authz → Validation → Integrity → Auditの統合境界とnegative paths |
 | `SECURITY_HEADERS.md` | Worker API / Static AssetsのSecurity Headers baselineとCSP/HSTS境界 |
 | `RECOVERY_OPERATIONS.md` | Preview recovery rehearsal、Production restore Human Gate、RPO/RTO境界 |
+| `operations/RELEASE_EVIDENCE_BUNDLE.md` | Release単位のread-only Workflow / Artifact証跡生成、SHAと検証状態の関連付け |
 | `security/SECURITY_INCIDENT_RESPONSE.md` | Security incident triage、Session revoke / Mode containment、private evidence、復旧判断とLocal/tabletop rehearsal |
 | `PERFORMANCE_CAPACITY.md` | Local / Preview benchmark、query plan、resource budget、計測単位 |
 

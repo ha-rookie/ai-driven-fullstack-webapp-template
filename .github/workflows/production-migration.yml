@@ -265,6 +265,22 @@ jobs:
           npm run db:schema:verify:production -- --snapshot=.release-evidence/post-migration-schema.json \
             | tee .release-evidence/post-migration-schema-report.txt
 
+      - name: Record SHA-bound migration evidence
+        run: |
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          const snapshot = JSON.parse(fs.readFileSync(".release-evidence/post-migration-schema.json", "utf8"));
+          const text = fs.readFileSync(".release-evidence/post-migration-schema-report.txt", "utf8");
+          const report = JSON.parse(text.slice(text.indexOf("{")));
+          if (!/^[a-f0-9]{40}$/.test(process.env.TARGET_SHA ?? "") || !/^\d+$/.test(process.env.GITHUB_RUN_ID ?? "") ||
+            snapshot.environment !== "production" || snapshot.phase !== "post-migration" || report.ok !== true ||
+            !Array.isArray(snapshot.appliedMigrations) || !snapshot.appliedMigrations.every(name => /^\d{4}_[A-Za-z0-9_-]+\.sql$/.test(name)) ||
+            report.appliedMigrationCount !== snapshot.appliedMigrations.length) throw new Error("Invalid migration evidence source");
+          fs.writeFileSync(".release-evidence/production-migration.json", JSON.stringify({ schemaVersion: 1,
+            environment: "production", targetSha: process.env.TARGET_SHA, workflowRunId: process.env.GITHUB_RUN_ID,
+            schemaVerified: true, appliedMigrations: snapshot.appliedMigrations }, null, 2) + "\n");
+          JS
+
       - name: Upload migration evidence
         if: always()
         uses: actions/upload-artifact@v4
