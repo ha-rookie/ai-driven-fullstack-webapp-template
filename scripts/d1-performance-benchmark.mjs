@@ -10,6 +10,8 @@ const CONFIRMATION = "BENCHMARK_PREVIEW";
 const MAX_RESOURCES = 20_000;
 const PROFILES = {
   smoke: 1_000,
+  "five-year": 5_000,
+  "ten-year": 10_000,
   capacity: 10_000,
 };
 
@@ -98,6 +100,9 @@ const maxNullable = (values) => {
   const numeric = values.filter((value) => value !== null && Number.isFinite(value));
   return numeric.length > 0 ? Math.max(...numeric) : null;
 };
+const sumNullable = (values) => values.every((value) => value !== null && Number.isFinite(value))
+  ? round(values.reduce((sum, value) => sum + value, 0))
+  : null;
 const sqlText = (value) => `'${String(value).replaceAll("'", "''")}'`;
 
 function parseJsonOutput(stdout) {
@@ -211,7 +216,19 @@ function queryPlan(sql) {
   return rowsFrom(measurement).map((row) => String(row.detail ?? ""));
 }
 
+function summarizeAction(measurements) {
+  return {
+    httpRequests: measurements.length,
+    d1Statements: measurements.reduce((sum, item) => sum + (item.statements ?? 0), 0),
+    cliWallMs: round(measurements.reduce((sum, item) => sum + item.cliWallMs, 0)),
+    sqlDurationMs: sumNullable(measurements.map((item) => item.sqlDurationMs)),
+    rowsRead: sumNullable(measurements.map((item) => item.rowsRead)),
+    rowsWritten: sumNullable(measurements.map((item) => item.rowsWritten)),
+  };
+}
+
 const results = [];
+let operationBudget = null;
 let fixtureLoad = null;
 let cleanup = null;
 let benchmarkError = null;
@@ -265,6 +282,36 @@ try {
       },
     });
   }
+
+  const sampleCount = Math.min(20, resourceCount);
+  const sampleIds = Array.from({ length: sampleCount }, (_, index) => `${PREFIX}${String(index + 1).padStart(6, "0")}`);
+  const nPlusOneMeasurements = sampleIds.map((id) => executeCommand(
+    `SELECT id,name,status,version FROM example_resources WHERE id=${sqlText(id)}`,
+    { json: true, quiet: true },
+  ));
+  const aggregateMeasurement = executeCommand(
+    `SELECT id,name,status,version FROM example_resources WHERE id IN (${sampleIds.map(sqlText).join(",")}) ORDER BY id`,
+    { json: true, quiet: true },
+  );
+  if (rowsFrom(aggregateMeasurement).length !== sampleCount) {
+    throw new Error(`operation-budget aggregate expected ${sampleCount} rows`);
+  }
+  const nPlusOne = summarizeAction(nPlusOneMeasurements);
+  const aggregate = summarizeAction([aggregateMeasurement]);
+  if (nPlusOne.d1Statements <= aggregate.d1Statements) {
+    throw new Error(`N+1 baseline did not use more statements (${nPlusOne.d1Statements} <= ${aggregate.d1Statements})`);
+  }
+  operationBudget = {
+    sampleRows: sampleCount,
+    nPlusOne,
+    aggregate,
+    delta: {
+      httpRequests: nPlusOne.httpRequests - aggregate.httpRequests,
+      d1Statements: nPlusOne.d1Statements - aggregate.d1Statements,
+      rowsRead: nPlusOne.rowsRead === null || aggregate.rowsRead === null ? null : nPlusOne.rowsRead - aggregate.rowsRead,
+      rowsWritten: nPlusOne.rowsWritten === null || aggregate.rowsWritten === null ? null : nPlusOne.rowsWritten - aggregate.rowsWritten,
+    },
+  };
 } catch (error) {
   benchmarkError = error;
 } finally {
@@ -307,12 +354,15 @@ const report = {
     cleanupCliWallMs: cleanup?.cliWallMs ?? null,
   },
   queries: results,
+  operationBudget,
   notes: [
     mode === "local"
       ? "Local D1 timing is a development/CI signal and is not a Production latency SLA."
       : "Preview benchmark consumes remote D1 resources and must be interpreted with rows-read/write cost evidence.",
     "CLI wall time and D1 SQL execution time are intentionally reported separately.",
     "Required PR CI has no hard-coded absolute latency threshold. Projects may opt in with PERF_SERVER_TARGET_MS.",
+    "five-year/ten-year profiles are replaceable fixture-volume views, not forecasts of a particular Product's growth.",
+    "N+1 and aggregate action costs keep HTTP request count and D1 statement count separate from latency.",
   ],
 };
 
@@ -338,6 +388,17 @@ const markdown = [
     `| ${result.name} | ${displayMetric(result.summary.sqlDurationAvgMs)} | ${displayMetric(result.summary.sqlDurationMaxMs)} | ${result.summary.cliWallAvgMs} | ${result.summary.cliWallMaxMs} | ${displayMetric(result.summary.rowsReadMax)} | ${displayMetric(result.summary.rowsWrittenMax)} | ${result.summary.statementsMax} |`,
   ),
   "",
+  "## Action operation budget",
+  "",
+  `Representative lookup set: ${operationBudget.sampleRows} rows`,
+  "",
+  "| Shape | HTTP requests | D1 statements | SQL ms | CLI wall ms | Rows read | Rows written |",
+  "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+  `| N+1 | ${operationBudget.nPlusOne.httpRequests} | ${operationBudget.nPlusOne.d1Statements} | ${displayMetric(operationBudget.nPlusOne.sqlDurationMs)} | ${operationBudget.nPlusOne.cliWallMs} | ${displayMetric(operationBudget.nPlusOne.rowsRead)} | ${displayMetric(operationBudget.nPlusOne.rowsWritten)} |`,
+  `| Aggregate | ${operationBudget.aggregate.httpRequests} | ${operationBudget.aggregate.d1Statements} | ${displayMetric(operationBudget.aggregate.sqlDurationMs)} | ${operationBudget.aggregate.cliWallMs} | ${displayMetric(operationBudget.aggregate.rowsRead)} | ${displayMetric(operationBudget.aggregate.rowsWritten)} |`,
+  "",
+  `Statement delta: ${operationBudget.delta.d1Statements}; HTTP request delta: ${operationBudget.delta.httpRequests}; rows-read delta: ${displayMetric(operationBudget.delta.rowsRead)}.`,
+  "",
   "## Query plans",
   "",
   ...results.flatMap((result) => [
@@ -354,6 +415,8 @@ const markdown = [
   "- Local D1 values prove workload shape and access paths, not Production SLA compliance.",
   "- Remote Preview runs are manual because they consume shared external quota/resources.",
   "- Rows read/written belong beside timing when evaluating query cost.",
+  "- A fast N+1 flow is still inefficient when it multiplies HTTP requests or D1 statements.",
+  "- five-year/ten-year labels describe replaceable fixture volumes only; they are not universal retention or growth assumptions.",
   "",
 ].join("\n");
 writeFileSync(markdownPath, markdown);
@@ -364,6 +427,7 @@ for (const result of results) {
     `${result.name}: SQL max ${displayMetric(result.summary.sqlDurationMaxMs)} ms; CLI wall avg ${result.summary.cliWallAvgMs} ms; rows read max ${displayMetric(result.summary.rowsReadMax)}`,
   );
 }
+console.log(`Operation budget: N+1 ${operationBudget.nPlusOne.d1Statements} statements/${operationBudget.nPlusOne.httpRequests} requests; aggregate ${operationBudget.aggregate.d1Statements} statements/${operationBudget.aggregate.httpRequests} request`);
 
 if (thresholdFailures.length > 0) {
   throw new Error(`Configured server-time threshold exceeded: ${thresholdFailures.join("; ")}`);

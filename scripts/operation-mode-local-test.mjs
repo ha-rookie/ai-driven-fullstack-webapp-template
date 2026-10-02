@@ -11,13 +11,16 @@ const scratch = mkdtempSync(join(tmpdir(), "operation-mode-local-"));
 try {
   const compiled = join(scratch, "compiled");
   execFileSync(process.execPath, [resolve("node_modules/typescript/bin/tsc"),
-    "src/infrastructure/d1-operation-mode-store.ts", "src/worker/administration/operation-mode-api.ts", "--outDir", compiled,
+    "src/infrastructure/d1-operation-mode-store.ts", "src/infrastructure/d1-operation-budget.ts",
+    "src/shared/performance/operation-budget.ts", "src/worker/administration/operation-mode-api.ts", "--outDir", compiled,
     "--rootDir", "src", "--target", "ES2023", "--module", "CommonJS",
     "--moduleResolution", "Node", "--types", "node,@cloudflare/workers-types",
     "--strict", "--skipLibCheck"], { stdio: "inherit" });
   writeFileSync(join(compiled, "package.json"), '{"type":"commonjs"}');
   const require = createRequire(import.meta.url);
   const { D1OperationModeStore } = require(join(compiled, "infrastructure/d1-operation-mode-store.js"));
+  const { instrumentD1Database } = require(join(compiled, "infrastructure/d1-operation-budget.js"));
+  const { OperationBudgetRecorder } = require(join(compiled, "shared/performance/operation-budget.js"));
   const { OperationModeUnavailableError } = require(join(compiled, "domain/operation-mode.js"));
   const { handleOperationModeApi } = require(join(compiled, "worker/administration/operation-mode-api.js"));
   const { issueApplicationSession } = require(join(compiled, "worker/auth/application-session.js"));
@@ -34,13 +37,15 @@ try {
     if (value === null) return "NULL";
     throw new TypeError("Unsupported fixture binding");
   };
-  const db = { prepare(sql) { return { bind(...values) { const execute = () => {
+  const rawDb = { prepare(sql) { return { bind(...values) { const execute = () => {
     let i = 0;
     const rendered = sql.replaceAll("?", () => literal(values[i++]));
     assert.equal(i, values.length);
     const output = JSON.parse(run(["--command", rendered]));
     return output[0];
   }; return { async first() { return execute().results[0] ?? null; }, async run() { return execute(); } }; } }; } };
+  const budget = new OperationBudgetRecorder("operation-mode.local.setup");
+  const db = instrumentD1Database(rawDb, budget);
   const clock = { now: () => new Date("2026-10-02T10:00:00.000Z") };
   const preview = new D1OperationModeStore(db, "preview", clock);
   const production = new D1OperationModeStore(db, "production", clock);
@@ -82,6 +87,7 @@ try {
     rateLimitPolicy: { endpointId: "local-mode-api", limit: 100, windowSeconds: 60 },
     securityEventSink: event => security.push(event) };
   const request = async (method, body, authenticated = true, proof = true) => {
+    budget.recordHttpRequest();
     const headers = { "content-type": "application/json" };
     if (authenticated) headers.cookie = `app_session=${session.token}`;
     if (proof) headers["x-csrf-token"] = csrf;
@@ -92,12 +98,28 @@ try {
   const before = await preview.read();
   const payload = { targetEnvironment: "preview", mode: "maintenance", expectedVersion: before.version,
     reason: "Local incident containment", updatedBy: "untrusted-client" };
+
+  budget.reset("operation-mode.api.get");
   assert.equal((await request("GET")).status, 200);
+  const getBudget = budget.snapshot();
+  assert.equal(getBudget.httpRequests, 1);
+  assert.ok(getBudget.d1Statements >= 3, `authenticated GET unexpectedly used only ${getBudget.d1Statements} D1 statements`);
+  assert.equal(getBudget.rowsRead, null, "first() row metadata must remain unavailable, not zero");
+
   assert.equal((await request("PATCH", payload, false)).status, 401);
   assert.equal((await request("PATCH", payload, true, false)).status, 403);
   assert.equal((await request("PATCH", { ...payload, targetEnvironment: "production" })).status, 400);
   assert.deepEqual(await preview.read(), before);
+
+  budget.reset("operation-mode.api.patch");
   assert.equal((await request("PATCH", payload)).status, 200);
+  const patchBudget = budget.snapshot();
+  assert.equal(patchBudget.httpRequests, 1);
+  assert.ok(patchBudget.d1Statements > getBudget.d1Statements,
+    `authenticated PATCH should cost more D1 statements than GET (${patchBudget.d1Statements} <= ${getBudget.d1Statements})`);
+  assert.equal(patchBudget.rowsRead, null);
+  console.log(`Operation mode budget: GET=${getBudget.d1Statements} D1 statements, PATCH=${patchBudget.d1Statements}`);
+
   const changed = await preview.read();
   assert.equal(changed.mode, "maintenance");
   assert.equal(changed.version, before.version + 1);

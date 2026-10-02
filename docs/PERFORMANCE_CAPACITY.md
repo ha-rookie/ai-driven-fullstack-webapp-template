@@ -52,6 +52,64 @@ When D1 metadata is available, the report also records:
 
 Performance result and external-resource consumption belong in the same evidence. A fast query that reads an unnecessarily large number of rows can still be a poor capacity design.
 
+## Operation Budget
+
+Latency is not treated as a proxy for efficiency. A user action can return quickly while still multiplying HTTP requests, D1 statements, rows read, or rows written.
+
+The opt-in `OperationBudgetRecorder` records these dimensions separately:
+
+- foreground HTTP requests
+- background HTTP requests
+- duplicate HTTP requests
+- D1 statement executions
+- D1 failures
+- rows read when D1 metadata is available
+- rows written when D1 metadata is available
+
+`src/infrastructure/d1-operation-budget.ts` wraps a supplied D1 binding without changing the Domain/Store contract. It instruments `prepare/bind/first/all/run/raw`, `batch`, `withSession`, and `exec` execution paths.
+
+The wrapper never records:
+
+- SQL text
+- bind values
+- session tokens
+- response bodies
+- business row values
+
+It is opt-in. The Template does not globally wrap `env.DB` or silently change every endpoint.
+
+### Unavailable metadata is not zero
+
+Some D1 APIs return row metadata while others, such as `first()` or `raw()`, do not expose equivalent metadata to the caller.
+
+When row metadata is unavailable the recorder emits `null`, not `0`. A Project that configures a rows-read/written threshold cannot silently pass that threshold using unavailable metadata.
+
+Statement/request counts remain available even when row metadata is not.
+
+### Project-defined budget
+
+`assessOperationBudget()` accepts optional Project thresholds such as:
+
+- maximum HTTP requests per action
+- maximum D1 statements per action
+- maximum rows read per action
+- maximum rows written per action
+- expected actions per day for a simple daily resource forecast
+
+The Template does not embed Cloudflare Free/Paid plan quotas because those limits, pricing, traffic shape, and account sharing change independently of this codebase.
+
+Daily forecast values are arithmetic projections from the measured action and a Project-supplied action count. They are not load forecasts or billing guarantees.
+
+### Duplicate/background traffic
+
+Auth bootstrap, polling, refresh, retry, and duplicate fetches can consume D1 budget even when the visible business operation did not change.
+
+The recorder therefore distinguishes background and duplicate request counts from the total. Frontend work such as #126 can later feed these values without changing the backend measurement vocabulary.
+
+### Regression evidence
+
+`diffOperationBudget()` compares two snapshots and reports request, statement, failure, and row deltas. This lets Performance review say, for example, "latency stayed flat but this change added three D1 statements per action" rather than relying only on milliseconds.
+
 ## Required Local benchmark
 
 CI already applies all numbered migrations to Local D1 before `npm test`.
@@ -71,6 +129,14 @@ The Local smoke profile creates approximately:
 The fixture uses the reserved `__perf_template_` prefix and is deleted before and after the benchmark.
 
 The resource count is a Template workload example, not an expected business-system limit.
+
+Additional replaceable volume views are available through the benchmark script:
+
+- `--profile=five-year` → 5,000 example resources
+- `--profile=ten-year` → 10,000 example resources
+- `--profile=capacity` → 10,000 example resources
+
+The year labels are fixture-volume views for comparing cost curves. They do not imply universal retention, growth, or transaction assumptions. Projects should override fixture volume with their own data model and NFR assumptions.
 
 ## Representative workload
 
@@ -107,6 +173,31 @@ Count benchmark resources by status.
 Purpose:
 - provide an intentionally broader aggregation workload
 - record the cost instead of pretending every valid query must be a point lookup
+
+### N+1 versus aggregate action
+
+The benchmark also reads the same representative set in two shapes:
+
+1. N+1: one D1 command per selected resource
+2. Aggregate: one `IN (...)` query for the same selected resources
+
+The report compares:
+
+- HTTP/CLI request count
+- D1 statement count
+- SQL duration when available
+- CLI wall time
+- rows read/written when available
+
+Required Local CI asserts that the N+1 form uses more D1 statements than the aggregate form. It does not require the aggregate form to win an arbitrary millisecond threshold on a shared CI runner.
+
+## Representative authenticated API evidence
+
+`operation-mode:local` executes the real authenticated Operation Mode control-plane API against isolated Local D1 state.
+
+The test now records the D1 statement count for a representative authenticated GET and PATCH through the same opt-in instrumentation. This proves the measurement works across Request → Authentication → Authorization → Store → D1 rather than only inside synthetic SQL benchmark code.
+
+The assertion intentionally does not invent a rows-read value for `first()` based queries.
 
 ## Query-plan Gate
 
@@ -148,6 +239,7 @@ Each report contains:
 - rows read/written when available
 - statement count
 - query plans
+- N+1 versus aggregate action budget
 - optional configured threshold result
 
 The explicit unit names exist to prevent a value such as `12 ms` from being accidentally described as `12 seconds`.
@@ -165,6 +257,8 @@ PERF_SERVER_TARGET_MS=<project threshold>
 When configured, only available D1 SQL-duration measurements are compared with that Project-defined target.
 
 The threshold must come from Project NFR/SLO requirements, not from this Template.
+
+Operation-count and row thresholds belong to the Project's `OperationBudgetThresholds`; they are similarly not fixed by the Template.
 
 ## Preview capacity benchmark
 
@@ -221,8 +315,9 @@ Execution performs:
 2. generate/load the selected fixture
 3. capture query plans
 4. execute representative queries
-5. write aggregate reports
-6. delete benchmark rows in `finally`
+5. compare N+1 and aggregate action cost
+6. write aggregate reports
+7. delete benchmark rows in `finally`
 
 Cleanup is best effort if the benchmark fails. If a remote run fails during cleanup, operators must verify Preview state before rerunning.
 
@@ -255,14 +350,15 @@ Local benchmark proves:
 - expected query plan is present
 - result assertions hold
 - metric/report pipeline works
+- N+1 statement/request amplification is visible
 
-It does **not** prove Production latency.
+It does **not** prove Production latency or Production daily quota consumption.
 
-Preview benchmark adds real remote D1 execution evidence, but still does not automatically establish a Production SLA. Production geography, workload concurrency, Worker logic, network path, and real data distribution may differ.
+Preview benchmark adds real remote D1 execution evidence, but still does not automatically establish a Production SLA. Production geography, workload concurrency, Worker logic, network path, real data distribution, and daily action frequency may differ.
 
 ## Verification status
 
-This Template can verify the Local benchmark and the safety contract in normal CI.
+This Template can verify the Local benchmark, representative Local API operation counts, and the safety contract in normal CI.
 
 A successful remote Preview benchmark must only be claimed after a provisioned Project executes the manual workflow and records its actual run evidence.
 
@@ -274,8 +370,9 @@ This foundation does not implement:
 - stress/load/soak testing
 - browser Core Web Vitals
 - Worker concurrency saturation testing
-- autoscaling policy
+- automatic query optimization
+- Cloudflare billing optimization
 - distributed tracing
-- universal SLA/SLO targets
+- universal SLA/SLO or daily quota targets
 
 Those require Project-specific workload and risk decisions.
