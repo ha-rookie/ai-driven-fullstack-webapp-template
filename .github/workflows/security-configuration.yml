@@ -1,0 +1,29 @@
+name: Security configuration
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-security-configuration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validator self-test
+        run: node scripts/validate-security-config.mjs --self-test
+      - name: Upload validation policy evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-configuration-policy
+          path: |
+            config/security-validation-policy.json
+            docs/security/SECURITY_CONFIGURATION_VALIDATION.md
+          retention-days: 14

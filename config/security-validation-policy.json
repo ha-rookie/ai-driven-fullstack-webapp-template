@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "placeholderFragments": [
+    "REPLACE_WITH_",
+    "CHANGEME",
+    "PLACEHOLDER",
+    "00000000-0000-0000-0000-000000000000"
+  ],
+  "requiredCspDirectives": [
+    "default-src",
+    "object-src",
+    "frame-ancestors",
+    "script-src",
+    "connect-src"
+  ],
+  "forbiddenCspFragments": [
+    "'unsafe-eval'",
+    "'unsafe-inline'"
+  ],
+  "allowedSameSite": ["Lax", "Strict"],
+  "maxSessionIdleSeconds": 86400
+}
