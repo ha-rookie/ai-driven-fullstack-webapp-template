@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the dependency supply-chain baseline for this Full-stack Template. The baseline starts with reproducible installation from a committed npm lockfile and adds dependency vulnerability scanning and repository secret detection. SBOM generation, license inventory, and broader SCS control mapping remain separate implementation units.
+Define the dependency supply-chain baseline for this Full-stack Template. The baseline starts with reproducible installation from a committed npm lockfile and adds dependency vulnerability scanning, repository secret detection, and machine-generated SBOM evidence. License inventory and broader SCS control mapping remain separate implementation units.
 
 ## Lockfile as install source of truth
 
@@ -168,23 +168,71 @@ The Secret detection workflow uploads a short-retention scan summary artifact. I
 
 This provides a repository-native evidence source for Release Evidence (#112) without requiring an external paid secret-scanning service.
 
+## SBOM generation
+
+The Template generates a Software Bill of Materials from the reproducibly installed npm dependency tree with:
+
+```text
+npm run supply-chain:sbom
+```
+
+The generator delegates dependency resolution to npm and emits **CycloneDX JSON**. It then validates that the generated document contains:
+
+- CycloneDX `bomFormat`
+- a declared `specVersion`
+- dependency components
+- a name and version for every component
+- dependency relationship entries with `ref` and `dependsOn`
+
+The default output is:
+
+```text
+artifacts/sbom.cdx.json
+```
+
+A project may override the path with the `SBOM_OUTPUT` environment variable without changing the generated format contract.
+
+### Why CycloneDX
+
+CycloneDX is the Template baseline because the primary purpose here is dependency inventory and relationship evidence. It records package identity, version, component references, and dependency relationships in a machine-readable format that can later feed security or release processes.
+
+SPDX remains a valid project-level choice when a product has a separate compliance requirement, but the Template does not generate multiple formats by default because duplicate evidence adds maintenance cost without improving the baseline control.
+
+### SBOM generation boundary
+
+SBOM generation is inventory, not vulnerability assessment. The SBOM workflow does not decide whether a component is vulnerable, acceptable, or deployable. Known-vulnerability policy remains the responsibility of the dependency vulnerability scan (#83).
+
+The SBOM also does not represent container image contents, operating-system packages, SaaS dependencies, or infrastructure assets. Those require separate inventory controls.
+
+## SBOM evidence
+
+The SBOM workflow performs:
+
+1. lockfile manifest validation
+2. reproducible `npm ci --ignore-scripts`
+3. CycloneDX generation and structural validation
+4. GitHub Actions artifact upload
+
+The generated SBOM is not committed to the repository. It is stored as a short-retention CI artifact so Release Evidence (#112) can reference the exact dependency inventory generated for a specific workflow run without creating generated-file churn in normal source review.
+
 ## Secrets and registries
 
-The Template does not require a private registry and does not log registry tokens. Projects that add authenticated registries must use CI secret facilities and must not commit credentials into `.npmrc`, manifests, lockfiles, or workflow output.
+The Template does not require a private registry and does not log registry tokens. Projects that add authenticated registries must use CI secret facilities and must not commit credentials into `.npmrc`, manifests, lockfiles, SBOM output, or workflow output.
 
 ## CI evidence
 
-Required supply-chain CI exposes distinct steps for lockfile validation, clean install, dependency-tree validation, manifest/lockfile mutation detection, production dependency audit, full dependency-tree audit, and secret detection. These step results and short-retention artifacts can later be referenced by Release Evidence (#112).
+Required supply-chain CI exposes distinct steps for lockfile validation, clean install, dependency-tree validation, manifest/lockfile mutation detection, production dependency audit, full dependency-tree audit, secret detection, and SBOM generation. These step results and short-retention artifacts can later be referenced by Release Evidence (#112).
 
 ## Scope boundary
 
 These controls do not:
 
 - update dependencies automatically
-- generate an SBOM (#85)
 - inventory licenses (#119)
 - provision a private registry
 - change the package manager
 - scan container images
 - manage organization-wide GitHub secrets
 - rotate leaked credentials automatically
+- provide enterprise asset management
+- submit SBOMs automatically to suppliers, customers, or external platforms
