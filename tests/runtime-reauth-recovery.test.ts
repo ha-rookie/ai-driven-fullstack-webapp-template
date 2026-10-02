@@ -91,3 +91,23 @@ test("failed recovery can be retried explicitly and logout reset is separate", a
   controller.resetAfterLogout();
   assert.deepEqual(controller.getSnapshot(), { status: "idle", attempt: 0 });
 });
+
+test("explicit logout stays authoritative when an older reauthentication finishes later", async () => {
+  let release: (() => void) | undefined;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const controller = createRuntimeReauthController({
+    beginReauthentication: async () => { await gate; },
+    synchronize: async () => ({ status: "authenticated", user: { id: "u1", displayName: null }, syncing: false }),
+  });
+
+  const pending = controller.handle(authError("req-auth"));
+  await Promise.resolve();
+  assert.equal(controller.getSnapshot().status, "recovering");
+
+  controller.resetAfterLogout();
+  assert.deepEqual(controller.getSnapshot(), { status: "idle", attempt: 0 });
+
+  release?.();
+  await pending;
+  assert.deepEqual(controller.getSnapshot(), { status: "idle", attempt: 0 });
+});
