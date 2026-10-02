@@ -5,6 +5,7 @@
     "moduleResolution": "Node",
     "lib": ["ES2023", "DOM"],
     "types": ["node", "@cloudflare/workers-types"],
+    "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
