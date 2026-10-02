@@ -232,6 +232,27 @@ const buildPreflightSnapshot = () => {
   );
 };
 
+const validateWorkflowDefinition = () => {
+  const workflowPath = path.join(root, ".github/workflows/production-migration.yml");
+  const workflow = fs.readFileSync(workflowPath, "utf8");
+  const errors = [];
+  if (!/^\s{2}workflow_dispatch:/m.test(workflow)) errors.push("workflow_dispatch trigger is required");
+  if (/^\s{2}(pull_request|push|schedule):/m.test(workflow)) {
+    errors.push("Production migration workflow must not run from pull_request, push, or schedule");
+  }
+  if (!workflow.includes("environment: production")) errors.push("production environment Human Gate is required");
+  if (!workflow.includes("needs: preflight")) errors.push("migration job must depend on preflight");
+  if (!workflow.includes('migrations apply "$PRODUCTION_DATABASE_NAME" --remote')) {
+    errors.push("remote migration command must remain explicit");
+  }
+  if (!workflow.includes("db:schema:verify:production")) errors.push("post-migration schema verification is required");
+  if (!workflow.includes("cancel-in-progress: false")) errors.push("migration concurrency must never cancel in-progress work");
+  if (!workflow.includes("Re-run preflight against current Production state")) {
+    errors.push("preflight must be rerun after Human Gate");
+  }
+  return errors;
+};
+
 const selfTest = () => {
   const safeRequest = {
     targetSha: "a".repeat(40),
@@ -272,6 +293,9 @@ const selfTest = () => {
 
   const ids = collectUuidStrings({ result: { uuid: safeRequest.productionDatabaseId } });
   if (!ids.has(safeRequest.productionDatabaseId)) throw new Error("database ID extraction failed");
+
+  const workflowErrors = validateWorkflowDefinition();
+  if (workflowErrors.length) throw new Error(workflowErrors.join("\n"));
 
   console.log("[production-migration-workflow] self-test passed");
 };
