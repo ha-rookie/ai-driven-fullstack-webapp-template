@@ -1,0 +1,32 @@
+name: SCS control mapping
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-scs-mapping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate SCS mapping contract
+        run: npm run security:scs-mapping
+
+      - name: Upload SCS mapping evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: scs-control-mapping-${{ github.sha }}
+          path: |
+            config/scs-control-mapping.json
+            docs/security/SCS_MAPPING.md
+          retention-days: 14
