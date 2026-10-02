@@ -1,0 +1,198 @@
+name: Production code rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      current_deployed_sha:
+        description: Exact currently deployed 40-character SHA
+        required: true
+        type: string
+      previous_stable_sha:
+        description: Exact previously verified stable 40-character SHA
+        required: true
+        type: string
+      target_sha:
+        description: Exact rollback target SHA; must equal previous stable SHA
+        required: true
+        type: string
+      base_url:
+        description: Canonical Production HTTPS origin for post-rollback smoke
+        required: true
+        type: string
+      reason:
+        description: Operational reason for rollback
+        required: true
+        type: string
+      confirmation:
+        description: Type ROLLBACK PRODUCTION exactly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current control plane
+        uses: actions/checkout@v4
+        with:
+          path: control
+
+      - name: Checkout exact rollback target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          path: target
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate rollback request
+        working-directory: control
+        run: >-
+          node scripts/validate-code-rollback.mjs
+          --current-sha=${{ inputs.current_deployed_sha }}
+          --previous-stable-sha=${{ inputs.previous_stable_sha }}
+          --target-sha=${{ inputs.target_sha }}
+          --confirmation="${{ inputs.confirmation }}"
+          --reason="${{ inputs.reason }}"
+
+      - name: Verify exact target checkout
+        working-directory: target
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.target_sha }}"
+
+      - name: Verify Production schema compatibility against rollback target
+        env:
+          PRODUCTION_SCHEMA_SNAPSHOT_JSON: ${{ secrets.PRODUCTION_SCHEMA_SNAPSHOT_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$PRODUCTION_SCHEMA_SNAPSHOT_JSON"
+          SNAPSHOT="$RUNNER_TEMP/production-schema-snapshot.json"
+          trap 'rm -f "$SNAPSHOT"' EXIT
+          printf '%s' "$PRODUCTION_SCHEMA_SNAPSHOT_JSON" > "$SNAPSHOT"
+          cp control/scripts/verify-production-schema.mjs target/.rollback-schema-verify.mjs
+          cd target
+          node .rollback-schema-verify.mjs --snapshot="$SNAPSHOT"
+          rm -f .rollback-schema-verify.mjs
+
+      - name: Validate lockfile and build exact rollback target
+        working-directory: target
+        run: |
+          node ../control/scripts/validate-lockfile-integrity.mjs
+          npm ci --ignore-scripts
+          npm run build
+
+  rollback:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout current control plane after Human Gate
+        uses: actions/checkout@v4
+        with:
+          path: control
+
+      - name: Checkout exact rollback target after Human Gate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          path: target
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Revalidate rollback request after Human Gate
+        working-directory: control
+        run: >-
+          node scripts/validate-code-rollback.mjs
+          --current-sha=${{ inputs.current_deployed_sha }}
+          --previous-stable-sha=${{ inputs.previous_stable_sha }}
+          --target-sha=${{ inputs.target_sha }}
+          --confirmation="${{ inputs.confirmation }}"
+          --reason="${{ inputs.reason }}"
+
+      - name: Reverify Production schema compatibility
+        env:
+          PRODUCTION_SCHEMA_SNAPSHOT_JSON: ${{ secrets.PRODUCTION_SCHEMA_SNAPSHOT_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$PRODUCTION_SCHEMA_SNAPSHOT_JSON"
+          SNAPSHOT="$RUNNER_TEMP/production-schema-snapshot.json"
+          trap 'rm -f "$SNAPSHOT"' EXIT
+          printf '%s' "$PRODUCTION_SCHEMA_SNAPSHOT_JSON" > "$SNAPSHOT"
+          cp control/scripts/verify-production-schema.mjs target/.rollback-schema-verify.mjs
+          cd target
+          node .rollback-schema-verify.mjs --snapshot="$SNAPSHOT"
+          rm -f .rollback-schema-verify.mjs
+
+      - name: Validate Production security configuration
+        working-directory: control
+        env:
+          SECURITY_SNAPSHOT: ${{ secrets.PRODUCTION_SECURITY_SNAPSHOT_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SECURITY_SNAPSHOT"
+          SNAPSHOT="$RUNNER_TEMP/production-security-snapshot.json"
+          trap 'rm -f "$SNAPSHOT"' EXIT
+          printf '%s' "$SECURITY_SNAPSHOT" > "$SNAPSHOT"
+          node scripts/validate-security-config.mjs --config="$SNAPSHOT"
+
+      - name: Rebuild exact rollback target
+        working-directory: target
+        run: |
+          node ../control/scripts/validate-lockfile-integrity.mjs
+          npm ci --ignore-scripts
+          npm run build
+
+      - name: Deploy exact rollback target
+        working-directory: target
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PRODUCTION_WRANGLER_CONFIG_JSON: ${{ secrets.PRODUCTION_WRANGLER_CONFIG_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$PRODUCTION_WRANGLER_CONFIG_JSON"
+          CONFIG="$RUNNER_TEMP/wrangler.production.json"
+          trap 'rm -f "$CONFIG"' EXIT
+          printf '%s' "$PRODUCTION_WRANGLER_CONFIG_JSON" > "$CONFIG"
+          npx wrangler deploy --config "$CONFIG"
+
+      - name: Run bounded post-rollback smoke verification
+        working-directory: control
+        env:
+          PRODUCTION_SMOKE_SESSION_COOKIE: ${{ secrets.PRODUCTION_SMOKE_SESSION_COOKIE }}
+        run: >-
+          node scripts/production-smoke.mjs
+          --base-url="${{ inputs.base_url }}"
+          --deployed-sha="${{ inputs.target_sha }}"
+          --output=.evidence/production-rollback-smoke.json
+
+      - name: Record rollback evidence
+        working-directory: control
+        env:
+          ROLLBACK_REASON: ${{ inputs.reason }}
+        run: |
+          mkdir -p .evidence
+          node -e 'const fs=require("fs"); fs.writeFileSync(".evidence/production-rollback.json", JSON.stringify({environment:"production",currentDeployedSha:process.argv[1],previousStableSha:process.argv[2],targetSha:process.argv[3],actor:process.argv[4],reason:process.env.ROLLBACK_REASON,workflowRunId:process.argv[5],status:"rolled_back_and_smoke_verified",dataRestorePerformed:false}, null, 2)+"\n")' "${{ inputs.current_deployed_sha }}" "${{ inputs.previous_stable_sha }}" "${{ inputs.target_sha }}" "${{ github.actor }}" "${{ github.run_id }}"
+
+      - name: Upload rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-rollback-evidence-${{ inputs.target_sha }}
+          path: control/.evidence/
+          if-no-files-found: error
+          retention-days: 30
