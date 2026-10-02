@@ -19,7 +19,7 @@ export interface IdempotencyRecord extends IdempotencyContext {
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
-  replay: IdempotencyReplayRecord | null;
+  replay?: IdempotencyReplayRecord | null;
 }
 
 export type CreateIdempotencyRecordResult =
