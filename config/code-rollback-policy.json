@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "requiredEnvironment": "production",
+  "confirmation": "ROLLBACK PRODUCTION",
+  "reasonMinLength": 10,
+  "reasonMaxLength": 500,
+  "requireTargetEqualsPreviousStable": true,
+  "requireCurrentDiffersFromTarget": true,
+  "requireSchemaVerification": true,
+  "requireSmokeAfterRollback": true,
+  "forbidDataRestore": true
+}
