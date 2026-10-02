@@ -4,3 +4,4 @@ export * from "./invitation";
 export * from "./invitation-redeem";
 export * from "./privileged-membership-safety";
 export * from "./admin-api";
+export * from "./operation-mode-api";

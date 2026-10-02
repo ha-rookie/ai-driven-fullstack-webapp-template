@@ -1,5 +1,7 @@
 import { redactLogValue } from "../../shared/logging/redaction";
 import { systemClock } from "../../shared/runtime";
+import { isRuntimeEnvironment } from "../../shared/runtime";
+import { isOperationMode, isSafeOperationMetadata } from "../../domain/operation-mode";
 import type {
   AuditEvent,
   AuditLogger,
@@ -45,6 +47,18 @@ export const toStructuredAuditRecord = (
     event.affectedCount >= 0
   ) {
     Object.assign(record, { affectedCount: event.affectedCount });
+  }
+
+  const change = event.operationModeChange;
+  if (change && isRuntimeEnvironment(change.environment) &&
+    isOperationMode(change.beforeMode) && isOperationMode(change.afterMode) &&
+    Number.isSafeInteger(change.beforeVersion) && change.beforeVersion >= 1 &&
+    Number.isSafeInteger(change.afterVersion) && change.afterVersion === change.beforeVersion + 1 &&
+    isSafeOperationMetadata(change.reason, 200)) {
+    Object.assign(record, { operationModeChange: {
+      environment: change.environment, beforeMode: change.beforeMode, afterMode: change.afterMode,
+      beforeVersion: change.beforeVersion, afterVersion: change.afterVersion, reason: change.reason,
+    } });
   }
 
   return record;

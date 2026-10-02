@@ -189,6 +189,12 @@ Audit writing is best-effort in the baseline.
 
 A sink failure must not turn an otherwise valid Core operation into a business failure. `writeAuditSafely(...)` catches sink failures at the boundary.
 
+## Operation mode change projection (#117)
+
+`AuditEvent.operationModeChange` is an optional, explicitly projected accountability payload for `operation_mode.update`: environment, beforeMode, afterMode, beforeVersion, afterVersion and operator reason. Modes/environments must be from the shared contracts; versions must be positive safe integers with afterVersion exactly beforeVersion + 1. The reason is bounded to 200 non-control characters. Invalid payloads are omitted; arbitrary extra fields are never serialized. This is a narrow operational metadata exception to the general prohibition on copying user text into Audit: reasons must contain no credentials, request bodies or unnecessary personal information, and shared redaction still applies.
+
+The actor/scope/request context remains in standard fields. Failed changes use controlled reasons without the operator input or exception text. The baseline sink remains best-effort and isolated from mutation results; this field does not claim durable or atomic Audit persistence (see #44).
+
 This does **not** mean Audit reliability is unimportant. A project with regulatory or contractual requirements may deliberately choose a stronger transactional Audit design, but that is outside the generic baseline.
 
 ## Current Worker integration
