@@ -4,6 +4,8 @@ export interface FrontendOperationModeState {
   readonly mode: FrontendOperationMode;
   readonly version: number;
   readonly updatedAt?: string;
+  /** Optional server-derived Retry-After hint. Frontend must not invent this value. */
+  readonly retryAfterSeconds?: number;
 }
 
 export type OperationModeLoadStatus = "loading" | "ready" | "error";
@@ -40,10 +42,16 @@ export const validateFrontendOperationModeState = (value: unknown): FrontendOper
       (typeof record.updatedAt !== "string" || !Number.isFinite(Date.parse(record.updatedAt)))) {
     throw new TypeError("Operation mode updatedAt is invalid");
   }
+  if (record.retryAfterSeconds !== undefined &&
+      (typeof record.retryAfterSeconds !== "number" || !Number.isSafeInteger(record.retryAfterSeconds) ||
+       record.retryAfterSeconds <= 0)) {
+    throw new TypeError("Operation mode retryAfterSeconds is invalid");
+  }
   return Object.freeze({
     mode: record.mode,
     version: record.version,
     ...(typeof record.updatedAt === "string" ? { updatedAt: record.updatedAt } : {}),
+    ...(typeof record.retryAfterSeconds === "number" ? { retryAfterSeconds: record.retryAfterSeconds } : {}),
   });
 };
 
