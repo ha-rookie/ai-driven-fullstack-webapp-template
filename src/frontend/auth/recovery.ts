@@ -36,6 +36,7 @@ export const createRuntimeReauthController = (
 ): RuntimeReauthController => {
   let snapshot: RuntimeReauthSnapshot = Object.freeze({ status: "idle", attempt: 0 });
   let inFlight: Promise<RuntimeReauthSnapshot> | null = null;
+  let generation = 0;
   const listeners = new Set<() => void>();
 
   const publish = (next: RuntimeReauthSnapshot) => {
@@ -46,6 +47,7 @@ export const createRuntimeReauthController = (
 
   const run = () => {
     if (inFlight) return inFlight;
+    const runGeneration = generation;
     const attempt = snapshot.attempt + 1;
     const requestId = snapshot.requestId;
     publish({
@@ -58,6 +60,7 @@ export const createRuntimeReauthController = (
       .then(() => options.beginReauthentication())
       .then(() => options.synchronize())
       .then((auth) => {
+        if (runGeneration !== generation) return snapshot;
         if (auth.status !== "authenticated") {
           return publish({
             status: "failed",
@@ -71,13 +74,16 @@ export const createRuntimeReauthController = (
           ...(requestId ? { requestId } : {}),
         });
       })
-      .catch(() => publish({
-        status: "failed",
-        attempt,
-        ...(requestId ? { requestId } : {}),
-      }))
+      .catch(() => {
+        if (runGeneration !== generation) return snapshot;
+        return publish({
+          status: "failed",
+          attempt,
+          ...(requestId ? { requestId } : {}),
+        });
+      })
       .finally(() => {
-        inFlight = null;
+        if (runGeneration === generation) inFlight = null;
       });
 
     return inFlight;
@@ -102,12 +108,16 @@ export const createRuntimeReauthController = (
       await run();
       return true;
     },
-    retry: run,
+    retry() {
+      if (snapshot.status !== "failed") return Promise.resolve(snapshot);
+      return run();
+    },
     acknowledge() {
       if (snapshot.status === "recovering") return;
       publish({ status: "idle", attempt: snapshot.attempt });
     },
     resetAfterLogout() {
+      generation += 1;
       inFlight = null;
       publish({ status: "idle", attempt: 0 });
     },
