@@ -1,0 +1,27 @@
+{
+  "migrationDirectory": "migrations",
+  "requiredEnvironment": "production",
+  "maxMigrationNumberGap": 0,
+  "destructivePatterns": [
+    "\\bDROP\\s+(TABLE|INDEX|VIEW)\\b",
+    "\\bTRUNCATE\\b",
+    "\\bVACUUM\\b",
+    "\\b(RESEED|RESET|CLEAN)\\b"
+  ],
+  "reviewPatterns": [
+    "\\bALTER\\s+TABLE\\b[^;]*\\bADD\\s+COLUMN\\b[^;]*\\bNOT\\s+NULL\\b",
+    "\\bUPDATE\\s+[^;]+\\bSET\\b",
+    "\\bCREATE\\s+UNIQUE\\s+INDEX\\b"
+  ],
+  "placeholderPatterns": [
+    "REPLACE_WITH_",
+    "00000000-0000-0000-0000-000000000000",
+    "example",
+    "placeholder"
+  ],
+  "requiredEvidence": [
+    "previewValidated",
+    "recoveryPointConfirmed",
+    "verificationContractDefined"
+  ]
+}

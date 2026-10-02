@@ -1,0 +1,32 @@
+name: Production migration preflight
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-preflight-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Static/self-test only
+        run: npm run db:migration:preflight -- --self-test
+
+      - name: Upload preflight policy evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-migration-preflight-policy
+          path: |
+            config/migration-preflight-policy.json
+            docs/operations/PRODUCTION_MIGRATION_PREFLIGHT.md
+          retention-days: 14
