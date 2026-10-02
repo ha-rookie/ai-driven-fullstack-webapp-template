@@ -35,10 +35,18 @@ jobs:
   preflight:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout current control plane
+      - name: Require workflow dispatch from main
+        run: test "${{ github.ref }}" = "refs/heads/main"
+
+      - name: Checkout immutable control plane
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           path: control
+
+      - name: Verify immutable control plane SHA
+        working-directory: control
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
       - name: Checkout exact rollback target
         uses: actions/checkout@v4
@@ -92,10 +100,18 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Checkout current control plane after Human Gate
+      - name: Require workflow dispatch from main after Human Gate
+        run: test "${{ github.ref }}" = "refs/heads/main"
+
+      - name: Checkout immutable control plane after Human Gate
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           path: control
+
+      - name: Verify immutable control plane SHA after Human Gate
+        working-directory: control
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
       - name: Checkout exact rollback target after Human Gate
         uses: actions/checkout@v4
@@ -186,7 +202,7 @@ jobs:
           ROLLBACK_REASON: ${{ inputs.reason }}
         run: |
           mkdir -p .evidence
-          node -e 'const fs=require("fs"); fs.writeFileSync(".evidence/production-rollback.json", JSON.stringify({environment:"production",currentDeployedSha:process.argv[1],previousStableSha:process.argv[2],targetSha:process.argv[3],actor:process.argv[4],reason:process.env.ROLLBACK_REASON,workflowRunId:process.argv[5],status:"rolled_back_and_smoke_verified",dataRestorePerformed:false}, null, 2)+"\n")' "${{ inputs.current_deployed_sha }}" "${{ inputs.previous_stable_sha }}" "${{ inputs.target_sha }}" "${{ github.actor }}" "${{ github.run_id }}"
+          node -e 'const fs=require("fs"); fs.writeFileSync(".evidence/production-rollback.json", JSON.stringify({environment:"production",controlSha:process.argv[1],currentDeployedSha:process.argv[2],previousStableSha:process.argv[3],targetSha:process.argv[4],actor:process.argv[5],reason:process.env.ROLLBACK_REASON,workflowRunId:process.argv[6],status:"rolled_back_and_smoke_verified",dataRestorePerformed:false}, null, 2)+"\n")' "${{ github.sha }}" "${{ inputs.current_deployed_sha }}" "${{ inputs.previous_stable_sha }}" "${{ inputs.target_sha }}" "${{ github.actor }}" "${{ github.run_id }}"
 
       - name: Upload rollback evidence
         if: always()
