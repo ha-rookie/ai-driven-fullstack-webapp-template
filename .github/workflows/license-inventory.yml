@@ -1,0 +1,33 @@
+name: License inventory
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  license-inventory:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate lockfile manifest contract
+        run: npm run supply-chain:lockfile
+      - name: Reproducible clean install without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Generate license inventory and evaluate policy
+        run: npm run supply-chain:licenses
+      - name: Upload license inventory evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-inventory-${{ github.sha }}
+          path: license-inventory.json
+          if-no-files-found: warn
+          retention-days: 14
