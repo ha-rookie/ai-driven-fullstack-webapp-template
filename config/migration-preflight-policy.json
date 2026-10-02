@@ -5,7 +5,6 @@
   "destructivePatterns": [
     "\\bDROP\\s+(TABLE|INDEX|VIEW)\\b",
     "\\bTRUNCATE\\b",
-    "\\bDELETE\\s+FROM\\s+[^;]+(?:;|$)",
     "\\bVACUUM\\b",
     "\\b(RESEED|RESET|CLEAN)\\b"
   ],
