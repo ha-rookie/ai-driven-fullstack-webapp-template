@@ -1,0 +1,52 @@
+name: Production smoke verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Canonical Production HTTPS origin
+        required: true
+        type: string
+      deployed_sha:
+        description: Exact deployed 40-character commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout deployed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployed_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate smoke contract locally
+        run: node scripts/production-smoke.mjs --self-test
+
+      - name: Run bounded Production smoke verification
+        env:
+          PRODUCTION_SMOKE_SESSION_COOKIE: ${{ secrets.PRODUCTION_SMOKE_SESSION_COOKIE }}
+        run: >-
+          node scripts/production-smoke.mjs
+          --base-url="${{ inputs.base_url }}"
+          --deployed-sha="${{ inputs.deployed_sha }}"
+          --output=.evidence/production-smoke.json
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-smoke-${{ inputs.deployed_sha }}
+          path: .evidence/production-smoke.json
+          if-no-files-found: error
+          retention-days: 14
