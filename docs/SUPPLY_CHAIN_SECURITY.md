@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the dependency supply-chain baseline for this Full-stack Template. The baseline starts with reproducible installation from a committed npm lockfile and adds dependency vulnerability scanning. SBOM generation, license inventory, and broader SCS control mapping remain separate implementation units.
+Define the dependency supply-chain baseline for this Full-stack Template. The baseline starts with reproducible installation from a committed npm lockfile and adds dependency vulnerability scanning and repository secret detection. SBOM generation, license inventory, and broader SCS control mapping remain separate implementation units.
 
 ## Lockfile as install source of truth
 
@@ -126,13 +126,55 @@ The dependency scan workflow captures the npm audit output for both production-o
 
 This gives Release Evidence (#112) a repository-native source without requiring an external vulnerability platform. Audit evidence must not include registry credentials or other secrets.
 
+## Repository secret detection
+
+Tracked text files are scanned before dependency installation with:
+
+```text
+npm run supply-chain:secrets
+```
+
+The repository-native scanner checks high-confidence credential shapes such as private-key headers, AWS access key IDs, GitHub tokens, Slack tokens, Stripe live secret keys, and sufficiently long generic credential assignments. Binary files are skipped because line-oriented redaction-safe inspection is not reliable for binary content.
+
+The scanner fails CI when a candidate is found. Failure output contains only:
+
+- rule identifier
+- repository path
+- line number
+
+The candidate value itself is intentionally not printed to CI logs or evidence artifacts.
+
+### Placeholder and sample values
+
+Generic credential assignment detection ignores obvious placeholder fragments such as `example`, `sample`, `placeholder`, `changeme`, `dummy`, `fake`, `test`, and `local`. This is intended for documentation and deterministic test fixtures, not for bypassing real-secret detection.
+
+High-confidence provider-specific credential formats are still detected even when they appear in test or sample files.
+
+### False-positive exception
+
+A reviewed false positive may be excluded only on the same line with the explicit marker:
+
+```text
+secret-scan: allow
+```
+
+The surrounding code comment should explain why the value is non-secret. Do not add broad file-level exclusions, wildcard directories, or package-specific bypasses merely to make CI green.
+
+If a real credential was committed, removing the line is not sufficient incident response. Treat the credential as potentially exposed, rotate or revoke it through the owning provider, and then remove it from the repository as appropriate.
+
+## Secret scan evidence
+
+The Secret detection workflow uploads a short-retention scan summary artifact. It contains only aggregate counts and redacted finding locations; secret values are never intentionally persisted in the artifact.
+
+This provides a repository-native evidence source for Release Evidence (#112) without requiring an external paid secret-scanning service.
+
 ## Secrets and registries
 
 The Template does not require a private registry and does not log registry tokens. Projects that add authenticated registries must use CI secret facilities and must not commit credentials into `.npmrc`, manifests, lockfiles, or workflow output.
 
 ## CI evidence
 
-Required supply-chain CI exposes distinct steps for lockfile validation, clean install, dependency-tree validation, manifest/lockfile mutation detection, production dependency audit, and full dependency-tree audit. These step results and dependency audit artifacts can later be referenced by Release Evidence (#112).
+Required supply-chain CI exposes distinct steps for lockfile validation, clean install, dependency-tree validation, manifest/lockfile mutation detection, production dependency audit, full dependency-tree audit, and secret detection. These step results and short-retention artifacts can later be referenced by Release Evidence (#112).
 
 ## Scope boundary
 
@@ -144,3 +186,5 @@ These controls do not:
 - provision a private registry
 - change the package manager
 - scan container images
+- manage organization-wide GitHub secrets
+- rotate leaked credentials automatically
