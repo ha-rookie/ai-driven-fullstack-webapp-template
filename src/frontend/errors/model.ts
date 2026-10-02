@@ -106,7 +106,7 @@ const safeFieldPath = (value: string | undefined) => {
   if (!value) return undefined;
   const normalized = value.trim();
   if (!normalized || normalized.length > 200) return undefined;
-  if (!/^[A-Za-z0-9_.\[\]-]+$/.test(normalized)) return undefined;
+  if (!/^[A-Za-z0-9_.[\]-]+$/.test(normalized)) return undefined;
   return normalized;
 };
 
