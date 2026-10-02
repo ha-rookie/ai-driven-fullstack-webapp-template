@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "requiredEnvironment": "production",
+  "migrationDirectory": "migrations",
+  "placeholderPatterns": [
+    "REPLACE_WITH_",
+    "00000000-0000-0000-0000-000000000000",
+    "example",
+    "placeholder"
+  ],
+  "requiredTables": {
+    "example_resources": ["id", "name", "created_at", "updated_at", "status", "version", "created_by", "updated_by", "deleted_at", "deleted_by"],
+    "example_resource_changes": ["resource_id", "version", "change_kind", "from_status", "to_status", "created_at"],
+    "example_resource_scope_bindings": ["resource_id", "scope_id", "created_at"],
+    "example_resource_decisions": ["resource_id", "source_snapshot", "decision_value", "rule_version", "decision_version", "decided_at", "decided_by"],
+    "users": ["id", "display_name", "created_at", "updated_at", "status"],
+    "external_identities": ["provider", "provider_subject", "user_id", "created_at"],
+    "application_sessions": ["token_hash", "user_id", "expires_at", "revoked_at", "created_at", "last_seen_at"],
+    "resource_scopes": ["id", "name", "created_at", "updated_at"],
+    "scope_memberships": ["scope_id", "user_id", "role", "created_at", "updated_at"],
+    "scope_invitations": ["id", "token_hash", "scope_id", "invitee_identifier", "intended_role", "issued_by", "issued_at", "expires_at", "redeemed_at", "revoked_at"],
+    "idempotency_records": ["idempotency_key", "actor_id", "scope_id", "action", "fingerprint", "state", "created_at", "updated_at", "expires_at", "replay_status", "replay_content_type", "replay_body"]
+  },
+  "requiredIndexes": [
+    "idx_example_resources_created_at",
+    "idx_example_resource_changes_resource",
+    "idx_example_resource_scope_bindings_scope",
+    "idx_example_resources_status_updated",
+    "idx_external_identities_user",
+    "idx_application_sessions_user",
+    "idx_scope_memberships_user",
+    "idx_scope_memberships_scope_role",
+    "idx_scope_invitations_scope_state",
+    "idx_scope_invitations_invitee",
+    "idx_example_resources_active_created_at",
+    "idx_idempotency_records_expiry",
+    "idx_example_resource_decisions_rule"
+  ]
+}
