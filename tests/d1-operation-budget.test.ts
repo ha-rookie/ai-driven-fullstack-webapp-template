@@ -163,7 +163,7 @@ test("instrumentation rethrows dependency failures and records them", async () =
         async all() { throw new Error("database unavailable"); },
       } as unknown as D1PreparedStatement;
     },
-  } as D1Database;
+  } as unknown as D1Database;
   const db = instrumentD1Database(failing, recorder);
 
   await assert.rejects(db.prepare("SELECT hidden").all(), /database unavailable/);
