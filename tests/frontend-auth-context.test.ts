@@ -6,7 +6,7 @@ import {
   createAuthController,
   decodeAuthMePayload,
   type AuthUser,
-} from "../src/frontend/auth";
+} from "../src/frontend/auth/state";
 
 const jsonResponse = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), {
   ...init,
