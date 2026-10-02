@@ -30,7 +30,7 @@ test("denylist normalizes key case/separators and covers secret and PII candidat
 });
 
 test("nested objects and arrays redact sensitive values without mutating source", () => {
-  const secret = "sensitive-value-do-not-output";
+  const secret = "sensitive-value-do-not-output"; // secret-scan: allow — deterministic redaction fixture
   const source = {
     requestId: "safe-request",
     nested: [
@@ -105,7 +105,7 @@ test("string/key lengths, collection size, depth, cycles and node count are boun
 });
 
 test("unknown objects and unsupported values cannot bypass controlled projection", () => {
-  const secret = "never-output-this-secret";
+  const secret = "never-output-this-secret"; // secret-scan: allow — deterministic redaction fixture
   const value = {
     error: new Error(secret),
     date: new Date("2026-09-30T00:00:00.000Z"),
