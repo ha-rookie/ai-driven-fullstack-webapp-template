@@ -42,9 +42,9 @@ interface IdempotencyRow {
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
-  replayStatus: number | null;
-  replayContentType: string | null;
-  replayBody: string | null;
+  replayStatus?: number | null;
+  replayContentType?: string | null;
+  replayBody?: string | null;
 }
 
 const MAX_REPLAY_BODY_BYTES = 64 * 1024;
@@ -68,7 +68,7 @@ const normalizeContext = (context: IdempotencyContext): IdempotencyContext => ({
 
 const mapReplay = (row: IdempotencyRow): IdempotencyReplayRecord | null => {
   const values = [row.replayStatus, row.replayContentType, row.replayBody];
-  const presentCount = values.filter((value) => value !== null).length;
+  const presentCount = values.filter((value) => value != null).length;
   if (presentCount === 0) return null;
   if (presentCount !== 3) {
     throw new Error("idempotency_replay_metadata_incomplete");
@@ -164,6 +164,27 @@ export const createIdempotencyRecord = async (
     : { kind: "existing", record };
 };
 
+const classifyTransition = async (
+  db: D1Database,
+  context: IdempotencyContext,
+  fingerprint: string,
+  result: D1Result<unknown>,
+): Promise<TransitionIdempotencyRecordResult> => {
+  const record = await lookupIdempotencyRecord(db, context);
+  if (changedRows(result) === 1) {
+    if (!record) {
+      throw new Error("idempotency_record_missing_after_transition");
+    }
+    return { kind: "updated", record };
+  }
+  if (!record) return { kind: "not_found" };
+  if (record.fingerprint !== fingerprint) {
+    return { kind: "fingerprint_mismatch", record };
+  }
+  return { kind: "not_in_progress", record };
+};
+
+/** Preserve the original #75 transition shape for ordinary complete/fail operations. */
 const transitionIdempotencyRecord = async (
   db: D1Database,
   input: IdempotencyContext & {
@@ -171,19 +192,13 @@ const transitionIdempotencyRecord = async (
     changedAt: string;
   },
   nextState: Exclude<IdempotencyState, "in_progress">,
-  replay: IdempotencyReplayRecord | null,
 ): Promise<TransitionIdempotencyRecordResult> => {
   const context = normalizeContext(input);
   const fingerprint = normalizeBounded(input.fingerprint, "fingerprint", 256);
-
   const result = await db
     .prepare(
       `UPDATE idempotency_records
-          SET state = ?,
-              updated_at = ?,
-              replay_status = ?,
-              replay_content_type = ?,
-              replay_body = ?
+          SET state = ?, updated_at = ?
         WHERE idempotency_key = ?
           AND actor_id = ?
           AND scope_id = ?
@@ -194,9 +209,6 @@ const transitionIdempotencyRecord = async (
     .bind(
       nextState,
       input.changedAt,
-      replay?.status ?? null,
-      replay?.contentType ?? null,
-      replay?.body ?? null,
       context.key,
       context.actorId,
       context.scopeId,
@@ -205,21 +217,7 @@ const transitionIdempotencyRecord = async (
     )
     .run();
 
-  const record = await lookupIdempotencyRecord(db, context);
-  if (changedRows(result) === 1) {
-    if (!record) {
-      throw new Error("idempotency_record_missing_after_transition");
-    }
-    return { kind: "updated", record };
-  }
-
-  if (!record) {
-    return { kind: "not_found" };
-  }
-  if (record.fingerprint !== fingerprint) {
-    return { kind: "fingerprint_mismatch", record };
-  }
-  return { kind: "not_in_progress", record };
+  return classifyTransition(db, context, fingerprint, result);
 };
 
 const normalizeReplay = (replay: IdempotencyReplayRecord): IdempotencyReplayRecord => {
@@ -241,20 +239,52 @@ export const completeIdempotencyRecord = (
   db: D1Database,
   input: IdempotencyContext & { fingerprint: string; changedAt: string },
 ): Promise<TransitionIdempotencyRecordResult> =>
-  transitionIdempotencyRecord(db, input, "completed", null);
+  transitionIdempotencyRecord(db, input, "completed");
 
-export const completeIdempotencyRecordWithReplay = (
+export const completeIdempotencyRecordWithReplay = async (
   db: D1Database,
   input: IdempotencyContext & {
     fingerprint: string;
     changedAt: string;
     replay: IdempotencyReplayRecord;
   },
-): Promise<TransitionIdempotencyRecordResult> =>
-  transitionIdempotencyRecord(db, input, "completed", normalizeReplay(input.replay));
+): Promise<TransitionIdempotencyRecordResult> => {
+  const context = normalizeContext(input);
+  const fingerprint = normalizeBounded(input.fingerprint, "fingerprint", 256);
+  const replay = normalizeReplay(input.replay);
+  const result = await db
+    .prepare(
+      `UPDATE idempotency_records
+          SET state = 'completed',
+              updated_at = ?,
+              replay_status = ?,
+              replay_content_type = ?,
+              replay_body = ?
+        WHERE idempotency_key = ?
+          AND actor_id = ?
+          AND scope_id = ?
+          AND action = ?
+          AND fingerprint = ?
+          AND state = 'in_progress'`,
+    )
+    .bind(
+      input.changedAt,
+      replay.status,
+      replay.contentType,
+      replay.body,
+      context.key,
+      context.actorId,
+      context.scopeId,
+      context.action,
+      fingerprint,
+    )
+    .run();
+
+  return classifyTransition(db, context, fingerprint, result);
+};
 
 export const failIdempotencyRecord = (
   db: D1Database,
   input: IdempotencyContext & { fingerprint: string; changedAt: string },
 ): Promise<TransitionIdempotencyRecordResult> =>
-  transitionIdempotencyRecord(db, input, "failed", null);
+  transitionIdempotencyRecord(db, input, "failed");
