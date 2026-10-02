@@ -7,12 +7,19 @@ export interface IdempotencyContext {
   action: string;
 }
 
+export interface IdempotencyReplayRecord {
+  status: number;
+  contentType: string;
+  body: string;
+}
+
 export interface IdempotencyRecord extends IdempotencyContext {
   fingerprint: string;
   state: IdempotencyState;
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
+  replay: IdempotencyReplayRecord | null;
 }
 
 export type CreateIdempotencyRecordResult =
@@ -35,7 +42,12 @@ interface IdempotencyRow {
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
+  replayStatus: number | null;
+  replayContentType: string | null;
+  replayBody: string | null;
 }
+
+const MAX_REPLAY_BODY_BYTES = 64 * 1024;
 
 const changedRows = (result: D1Result<unknown>): number => Number(result.meta?.changes ?? 0);
 
@@ -54,6 +66,20 @@ const normalizeContext = (context: IdempotencyContext): IdempotencyContext => ({
   action: normalizeBounded(context.action, "action", 128),
 });
 
+const mapReplay = (row: IdempotencyRow): IdempotencyReplayRecord | null => {
+  const values = [row.replayStatus, row.replayContentType, row.replayBody];
+  const presentCount = values.filter((value) => value !== null).length;
+  if (presentCount === 0) return null;
+  if (presentCount !== 3) {
+    throw new Error("idempotency_replay_metadata_incomplete");
+  }
+  return {
+    status: row.replayStatus as number,
+    contentType: row.replayContentType as string,
+    body: row.replayBody as string,
+  };
+};
+
 const mapRow = (row: IdempotencyRow): IdempotencyRecord => ({
   key: row.idempotencyKey,
   actorId: row.actorId,
@@ -64,6 +90,7 @@ const mapRow = (row: IdempotencyRow): IdempotencyRecord => ({
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
   expiresAt: row.expiresAt,
+  replay: mapReplay(row),
 });
 
 export const lookupIdempotencyRecord = async (
@@ -81,7 +108,10 @@ export const lookupIdempotencyRecord = async (
               state,
               created_at AS createdAt,
               updated_at AS updatedAt,
-              expires_at AS expiresAt
+              expires_at AS expiresAt,
+              replay_status AS replayStatus,
+              replay_content_type AS replayContentType,
+              replay_body AS replayBody
          FROM idempotency_records
         WHERE idempotency_key = ?
           AND actor_id = ?
@@ -141,6 +171,7 @@ const transitionIdempotencyRecord = async (
     changedAt: string;
   },
   nextState: Exclude<IdempotencyState, "in_progress">,
+  replay: IdempotencyReplayRecord | null,
 ): Promise<TransitionIdempotencyRecordResult> => {
   const context = normalizeContext(input);
   const fingerprint = normalizeBounded(input.fingerprint, "fingerprint", 256);
@@ -148,7 +179,11 @@ const transitionIdempotencyRecord = async (
   const result = await db
     .prepare(
       `UPDATE idempotency_records
-          SET state = ?, updated_at = ?
+          SET state = ?,
+              updated_at = ?,
+              replay_status = ?,
+              replay_content_type = ?,
+              replay_body = ?
         WHERE idempotency_key = ?
           AND actor_id = ?
           AND scope_id = ?
@@ -159,6 +194,9 @@ const transitionIdempotencyRecord = async (
     .bind(
       nextState,
       input.changedAt,
+      replay?.status ?? null,
+      replay?.contentType ?? null,
+      replay?.body ?? null,
       context.key,
       context.actorId,
       context.scopeId,
@@ -184,14 +222,39 @@ const transitionIdempotencyRecord = async (
   return { kind: "not_in_progress", record };
 };
 
+const normalizeReplay = (replay: IdempotencyReplayRecord): IdempotencyReplayRecord => {
+  if (!Number.isInteger(replay.status) || replay.status < 200 || replay.status > 299) {
+    throw new TypeError("replay status must be a 2xx integer");
+  }
+  const contentType = normalizeBounded(replay.contentType, "replay contentType", 128);
+  if (!contentType.toLowerCase().startsWith("application/json")) {
+    throw new TypeError("replay contentType must be application/json");
+  }
+  const bodyBytes = new TextEncoder().encode(replay.body).byteLength;
+  if (bodyBytes > MAX_REPLAY_BODY_BYTES) {
+    throw new TypeError(`replay body must be at most ${MAX_REPLAY_BODY_BYTES} bytes`);
+  }
+  return { status: replay.status, contentType, body: replay.body };
+};
+
 export const completeIdempotencyRecord = (
   db: D1Database,
   input: IdempotencyContext & { fingerprint: string; changedAt: string },
 ): Promise<TransitionIdempotencyRecordResult> =>
-  transitionIdempotencyRecord(db, input, "completed");
+  transitionIdempotencyRecord(db, input, "completed", null);
+
+export const completeIdempotencyRecordWithReplay = (
+  db: D1Database,
+  input: IdempotencyContext & {
+    fingerprint: string;
+    changedAt: string;
+    replay: IdempotencyReplayRecord;
+  },
+): Promise<TransitionIdempotencyRecordResult> =>
+  transitionIdempotencyRecord(db, input, "completed", normalizeReplay(input.replay));
 
 export const failIdempotencyRecord = (
   db: D1Database,
   input: IdempotencyContext & { fingerprint: string; changedAt: string },
 ): Promise<TransitionIdempotencyRecordResult> =>
-  transitionIdempotencyRecord(db, input, "failed");
+  transitionIdempotencyRecord(db, input, "failed", null);
