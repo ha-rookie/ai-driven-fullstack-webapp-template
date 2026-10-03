@@ -24,9 +24,9 @@ test("WORKHUB login exposes the reference-only persona selector and performs rea
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /Aoi Employee/u }).click();
 
-  await expect(page.getByLabel("ユーザーID")).toHaveValue("aoi");
-  await expect(page.getByLabel("パスワード")).not.toHaveValue("");
-  await page.getByLabel("ログイン情報を保持する").check();
+  await expect(page.getByRole("textbox", { name: "ユーザーID", exact: true })).toHaveValue("aoi");
+  await expect(page.getByLabel("パスワード", { exact: true })).not.toHaveValue("");
+  await page.getByRole("checkbox", { name: /ログイン情報を保持する/u }).check();
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
