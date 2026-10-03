@@ -5,6 +5,8 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 業務Webアプリの共通基盤を検証・採用する開発者向けです。完成済み業務製品、具体的なログインProvider、実環境の構築・運用保証は含みません。
 
 - [Quick Start / Local development](#local-development)
+- [Project Bootstrap Profile](docs/PROJECT_BOOTSTRAP_PROFILE.md)
+- [Full-stack Recipes](docs/recipes/README.md)
 - [Implementation design](docs/README.md)
 - [Dependency update policy](docs/DEPENDENCY_UPDATE_POLICY.md)
 - [Contributing](CONTRIBUTING.md)
@@ -50,8 +52,9 @@ GitHub Template Repositoryは、作成元の後続変更を自動継承しませ
 | Protected Boundary | Authn → Authz → Validation → Integrity → Audit のExample API |
 | Observability | health / structured logs / low-cardinality runtime metrics / provider-neutral alert policy |
 | Recovery | Preview D1 recovery rehearsal / Production restore Human Gate |
-| Performance | Local query-plan smoke / quota-aware manual Preview benchmark |
+| Performance | D1 / frontend / bounded HTTP load evidence |
 | Supply-chain | lockfile / vulnerability / secret / SBOM / license checks + Dependabot proposal policy |
+| Developer enablement | Project Bootstrap Profile / Full-stack Recipes / undecided decision validation |
 
 `example_resources`、`viewer`、`editor` はTemplateを実行可能にするための中立的な**Example**です。ProductのDomain modelやRole vocabularyとして固定するものではありません。
 
@@ -72,7 +75,10 @@ npm run dev
 # TypeScript compile + Node standard test runnerだけを素早く実行
 npm run test:unit
 
-# Unit + Recovery safety + Performance safety + Local D1 performance smoke
+# Bootstrap Profile validatorのself-test
+npm run bootstrap:profile:validate
+
+# Unit + bootstrap + Recovery safety + Performance safety + Local D1 performance smoke
 npm run validate:local
 
 # 後方互換のFull local validation入口
@@ -95,32 +101,51 @@ Dependabotはnpm / GitHub Actionsの更新**提案PRを作る役割**として�
 Remote D1を利用する操作は通常CIから分離しています。
 
 - Preview recovery rehearsal: manual `workflow_dispatch`
-- Preview performance benchmark: manual `workflow_dispatch`
+- Preview performance benchmark / load evidence: manual `workflow_dispatch`
 - Preview / Production resource分離を必須化
 - placeholder resourceではfail closed
 - Production restoreは自動workflow化せずRunbook + Human Gate
-- Production benchmark targetは提供しない
+- Production load/stress targetは提供しない
 
 実Previewでの復旧・性能確認は、Projectが実Resourceを設定してHumanが明示実行した時点で初めてRemote evidenceとして扱います。
 
 ## Project adoption
 
-このTemplateからProjectを始める場合は、少なくとも次をProject側で決め直します。
+Project開始時のFull-stack固有判断は `docs/PROJECT_BOOTSTRAP_PROFILE.md` を入口にします。Generic TemplateのRequirement / Design / Change Contractを正本としたまま、認証・権限・データ・環境・性能・運用などの未決定項目を明示します。
+
+```bash
+cp config/project-bootstrap-profile.example.json config/project-bootstrap-profile.json
+
+# 構造確認
+node scripts/validate-project-bootstrap-profile.mjs \
+  --file config/project-bootstrap-profile.json
+
+# Project開始Gateとして未決定も検出する場合
+node scripts/validate-project-bootstrap-profile.mjs \
+  --file config/project-bootstrap-profile.json \
+  --require-decided
+```
+
+このTemplateからProjectを始める場合は、少なくとも次をProject側で行います。
 
 1. Generic Templateの最新Governance / Golden Path / Convergence / Playbookを確認する
 2. Project固有のRequirement / Architecture / Change Contractを作る
-3. D1のPreview / Production placeholderを実Resourceへ置き換える
-4. Google / LINE / GitHub等の具体的なIdentity Providerを選ぶ
-5. `example_resources` とExample RoleをProduct Domainへ置き換える
-6. Project固有のNFR、SLO、RPO/RTO、Release / Production Verificationを決める
-7. Repository protectionや公開条件をProjectとして確認する
-8. dependency update cadence、security advisory response、major updateのrelease/rollback方針を決める
+3. Bootstrap Profileをコピーし、`undecided` を暗黙defaultで埋めずにProject判断を記録する
+4. `example_resources` とExample RoleをProduct Domainへ置き換える計画を決める
+5. concrete Identity Provider、Resource Scope、Role Policyを決める
+6. Preview / Production resource、NFR、SLO、RPO/RTO、retention、Release / Production Verificationを決める
+7. dependency update cadence、security advisory response、major updateのrelease/rollback方針を決める
+8. `--require-decided` で未決定を確認し、必要な `docs/recipes/` を選んでIssueへ分解する
+
+ProfileにはSecret値を保存しません。Remote / Production / destructive operationはProfileが埋まっていてもHuman Gate対象です。
 
 Generic Templateの文書をこのRepositoryへ丸ごとコピーして、二つのSource of Truthを作らないでください。
 
 ## Documentation
 
 Full-stack固有の設計書と推奨読順は `docs/README.md` を参照してください。
+
+Project開始時の追加判断は `docs/PROJECT_BOOTSTRAP_PROFILE.md`、繰り返し作業の安全な実行手順は `docs/recipes/README.md` を参照してください。
 
 Upstreamとの責務境界と確認済みbaselineは `docs/UPSTREAM_TEMPLATE.md` を参照してください。
 

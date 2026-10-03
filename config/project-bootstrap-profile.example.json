@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": { "status": "undecided", "value": null, "rationale": null },
+    "owner": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "requirement": {
+    "primaryActors": { "status": "undecided", "value": null, "rationale": null },
+    "resourceScope": { "status": "undecided", "value": null, "rationale": null },
+    "dataSensitivity": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "architecture": {
+    "runtimeBoundary": { "status": "undecided", "value": null, "rationale": null },
+    "domainReplacementPlan": { "status": "undecided", "value": null, "rationale": null },
+    "externalServices": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "identityAndAccess": {
+    "identityProvider": { "status": "undecided", "value": null, "rationale": null },
+    "resourceScopes": { "status": "undecided", "value": null, "rationale": null },
+    "rolePolicy": { "status": "undecided", "value": null, "rationale": null },
+    "privilegedOperations": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "data": {
+    "schemaOwnership": { "status": "undecided", "value": null, "rationale": null },
+    "migrationSequence": { "status": "undecided", "value": null, "rationale": null },
+    "retentionAndDeletion": { "status": "undecided", "value": null, "rationale": null },
+    "backupAndRecovery": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "api": {
+    "collectionContract": { "status": "undecided", "value": null, "rationale": null },
+    "versioningMechanism": { "status": "undecided", "value": null, "rationale": null },
+    "externalConsumers": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "environments": {
+    "previewResources": { "status": "undecided", "value": null, "rationale": null },
+    "productionResources": { "status": "undecided", "value": null, "rationale": null },
+    "originSeparation": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "operations": {
+    "slo": { "status": "undecided", "value": null, "rationale": null },
+    "rpoRto": { "status": "undecided", "value": null, "rationale": null },
+    "auditRetention": { "status": "undecided", "value": null, "rationale": null },
+    "releaseAndProductionVerification": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "performance": {
+    "frontendBudget": { "status": "undecided", "value": null, "rationale": null },
+    "apiLoadBudget": { "status": "undecided", "value": null, "rationale": null }
+  },
+  "supplyChain": {
+    "dependencyUpdateCadence": { "status": "undecided", "value": null, "rationale": null },
+    "securityAdvisoryResponse": { "status": "undecided", "value": null, "rationale": null }
+  }
+}
