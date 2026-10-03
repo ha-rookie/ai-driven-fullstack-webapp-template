@@ -106,7 +106,10 @@ class FakeD1 {
     }
 
     if (sql.includes("UPDATE local_credentials") && sql.includes("WHERE user_id = ? AND password_hash = ?")) {
-      const [newHash, passwordChangedAt, _updatedAt, userId, oldHash] = args as [string, string, string, string, string];
+      const newHash = args[0] as string;
+      const passwordChangedAt = args[1] as string;
+      const userId = args[3] as string;
+      const oldHash = args[4] as string;
       const credential = this.credentials.get(userId);
       const matches = credential?.passwordHash === oldHash;
       if (credential && matches) {
@@ -125,9 +128,12 @@ class FakeD1 {
       const { sql, args } = statement;
 
       if (sql.includes("UPDATE local_credentials") && sql.includes("password_reset_tokens")) {
-        const [newHash, changedAt, _updatedAt, userId, tokenHash, tokenUserId, now] = args as [
-          string, string, string, string, string, string, string,
-        ];
+        const newHash = args[0] as string;
+        const changedAt = args[1] as string;
+        const userId = args[3] as string;
+        const tokenHash = args[4] as string;
+        const tokenUserId = args[5] as string;
+        const now = args[6] as string;
         const reset = this.resetTokens.get(tokenHash);
         const allowed = !!reset
           && reset.userId === tokenUserId
@@ -136,7 +142,8 @@ class FakeD1 {
           && reset.expiresAt > now
           && this.credentials.has(userId);
         if (allowed) {
-          const credential = this.credentials.get(userId)!;
+          const credential = this.credentials.get(userId);
+          assert.ok(credential);
           credential.passwordHash = newHash;
           credential.passwordChangedAt = changedAt;
         }
@@ -145,7 +152,10 @@ class FakeD1 {
       }
 
       if (sql.includes("UPDATE local_credentials") && sql.includes("WHERE user_id = ? AND password_hash = ?")) {
-        const [newHash, changedAt, _updatedAt, userId, oldHash] = args as [string, string, string, string, string];
+        const newHash = args[0] as string;
+        const changedAt = args[1] as string;
+        const userId = args[3] as string;
+        const oldHash = args[4] as string;
         const credential = this.credentials.get(userId);
         const allowed = credential?.passwordHash === oldHash;
         if (credential && allowed) {
@@ -170,7 +180,7 @@ class FakeD1 {
       }
 
       if (sql.includes("INSERT INTO password_reset_tokens")) {
-        const [id, tokenHash, userId, expiresAt] = args as [string, string, string, string, string];
+        const [id, tokenHash, userId, expiresAt] = args as [string, string, string, string];
         this.resetTokens.set(tokenHash, { id, tokenHash, userId, expiresAt, consumedAt: null });
         results.push({ meta: { changes: 1 } } as D1Result<unknown>);
         continue;
@@ -298,7 +308,9 @@ test("authentication does not reveal whether an identifier exists and disabled u
   assert.equal(await service.authenticate("missing@example.com", "wrong password"), null);
   assert.equal(hasher.burned.length, 1);
 
-  fake.users.get("user-1")!.status = "disabled";
+  const user = fake.users.get("user-1");
+  assert.ok(user);
+  user.status = "disabled";
   assert.equal(await service.authenticate("user@example.com", "a sufficiently long password"), null);
   assert.equal(hasher.burned.length, 2);
 });
