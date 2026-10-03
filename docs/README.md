@@ -60,6 +60,7 @@ Worker HTTP Boundary / Composition
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
 | `RUNTIME_INTEGRITY.md` | optimistic concurrency、state transition、atomicity、DB constraints |
 | `AUDIT_OBSERVABILITY.md` | Correlation ID、structured Audit、安全なfield境界 |
+| `DURABLE_AUDIT_STORAGE.md` | 監査記録のD1永続化、検索、retention、整合性検知、失敗モードとProduction境界 |
 | `APPLICATION_LOGGING.md` | Application LogのJSON契約、request scope、安全なcontextとAuditとの差分 |
 | `OBSERVABILITY_METRICS_ALERTS.md` | low-cardinality runtime metrics、correlation分離、provider-neutral Alert Policy |
 | `ORIGIN_CORS.md` | same-origin / cross-origin / preflight / environment-specific allowlist境界 |
@@ -122,6 +123,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - Project開始時のFull-stack固有decision profile / validator
 - Full-stack固有の繰り返し作業Recipe
 - data lifecycle / retention / long-term backup policy and metadata-only evidence
+- structured Audit / D1 durable Audit storage / bounded search / retention purge
 - request-scoped structured Application Log
 - low-cardinality runtime metrics / provider-neutral alert evaluation
 - dependency update proposal / validation / Human review boundary
@@ -161,6 +163,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - Production release condition
 - Project固有のSecurity / Privacy / retention requirement
 - concrete backup provider / retention period / deletion schedule
+- Project固有Audit retention / export / stronger tamper-resistance requirement
 - Project固有Feature Flag key / rollout condition
 - Project固有のdependency update cadence / support matrix / release window
 
