@@ -6,6 +6,7 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 
 - [Quick Start / Local development](#local-development)
 - [Implementation design](docs/README.md)
+- [Dependency update policy](docs/DEPENDENCY_UPDATE_POLICY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy / vulnerability reporting](SECURITY.md)
 - [MIT License](LICENSE)
@@ -47,8 +48,10 @@ GitHub Template Repositoryは、作成元の後続変更を自動継承しませ
 | Runtime Integrity | optimistic concurrency / state transition / atomic multi-write / DB constraints |
 | Audit & Correlation | request ID / structured audit / bounded fields / failure isolation |
 | Protected Boundary | Authn → Authz → Validation → Integrity → Audit のExample API |
+| Observability | health / structured logs / low-cardinality runtime metrics / provider-neutral alert policy |
 | Recovery | Preview D1 recovery rehearsal / Production restore Human Gate |
 | Performance | Local query-plan smoke / quota-aware manual Preview benchmark |
+| Supply-chain | lockfile / vulnerability / secret / SBOM / license checks + Dependabot proposal policy |
 
 `example_resources`、`viewer`、`editor` はTemplateを実行可能にするための中立的な**Example**です。ProductのDomain modelやRole vocabularyとして固定するものではありません。
 
@@ -81,6 +84,12 @@ npm run build
 
 `validate:local` と通常PR CIはRemote D1を使用しません。
 
+## Dependency maintenance
+
+Dependabotはnpm / GitHub Actionsの更新**提案PRを作る役割**として利用します。Template baselineではdependency auto-mergeを行いません。
+
+更新PRは通常のCI・vulnerability・license・lockfile等の検証を通し、Human reviewでmerge / defer / rejectを判断します。security advisoryは通常のversion update cadenceとは別にtriageします。詳細は `docs/DEPENDENCY_UPDATE_POLICY.md` を参照してください。
+
 ## Remote operations
 
 Remote D1を利用する操作は通常CIから分離しています。
@@ -105,6 +114,7 @@ Remote D1を利用する操作は通常CIから分離しています。
 5. `example_resources` とExample RoleをProduct Domainへ置き換える
 6. Project固有のNFR、SLO、RPO/RTO、Release / Production Verificationを決める
 7. Repository protectionや公開条件をProjectとして確認する
+8. dependency update cadence、security advisory response、major updateのrelease/rollback方針を決める
 
 Generic Templateの文書をこのRepositoryへ丸ごとコピーして、二つのSource of Truthを作らないでください。
 
@@ -113,6 +123,8 @@ Generic Templateの文書をこのRepositoryへ丸ごとコピーして、二つ
 Full-stack固有の設計書と推奨読順は `docs/README.md` を参照してください。
 
 Upstreamとの責務境界と確認済みbaselineは `docs/UPSTREAM_TEMPLATE.md` を参照してください。
+
+Dependency更新の提案・検証・Human review境界は `docs/DEPENDENCY_UPDATE_POLICY.md` を参照してください。
 
 ## License
 
