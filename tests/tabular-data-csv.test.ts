@@ -274,7 +274,7 @@ test("CSV export streams selected fields and neutralizes spreadsheet formula inj
   const text = await readStreamText(stream);
   assert.equal(
     text,
-    "id,name,comment\r\n1,Alice,\'=HYPERLINK(\"\"https://evil.test\"\")\r\n2,\"Bob, Jr.\",normal\r\n",
+    "id,name,comment\r\n1,Alice,\"'=HYPERLINK(\"\"https://evil.test\"\")\"\r\n2,\"Bob, Jr.\",normal\r\n",
   );
   assert.equal(text.includes("internalSecret"), false);
   assert.equal(text.includes("never-export"), false);
