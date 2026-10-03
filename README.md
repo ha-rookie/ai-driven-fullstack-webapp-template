@@ -8,6 +8,7 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 - [Project Bootstrap Profile](docs/PROJECT_BOOTSTRAP_PROFILE.md)
 - [Full-stack Recipes](docs/recipes/README.md)
 - [Feature Flag Foundation](docs/FEATURE_FLAGS.md)
+- [Durable Audit Storage](docs/DURABLE_AUDIT_STORAGE.md)
 - [Data Lifecycle / Long-term Backup](docs/DATA_LIFECYCLE_BACKUP.md)
 - [Implementation design](docs/README.md)
 - [Dependency update policy](docs/DEPENDENCY_UPDATE_POLICY.md)
@@ -51,6 +52,7 @@ GitHub Template Repositoryは、作成元の後続変更を自動継承しませ
 | Authorization | Resource Scope / Membership / Project-defined Role Policy / fail closed |
 | Runtime Integrity | optimistic concurrency / state transition / atomic multi-write / DB constraints |
 | Audit & Correlation | request ID / structured audit / bounded fields / failure isolation |
+| Durable Audit | D1 append-only-style storage / environment separation / bounded search / retention purge / SHA-256 integrity check |
 | Protected Boundary | Authn → Authz → Validation → Integrity → Audit のExample API |
 | Feature rollout | environment別boolean Feature Flag / Preview→Production段階公開 / server-side判定 |
 | Observability | health / structured logs / low-cardinality runtime metrics / provider-neutral alert policy |
@@ -115,9 +117,10 @@ Remote D1を利用する操作は通常CIから分離しています。
 - Production restoreは自動workflow化せずRunbook + Human Gate
 - Production load/stress targetは提供しない
 - Production long-term backup/exportはProject固有Human Gate。通常PR CIから実行しない
+- Production Audit export / purge / retention変更もProject固有Human Gate。通常PR CIから実行しない
 - Production Feature Flag変更も通常PR mergeとは分離し、Project側Human Gateで扱う
 
-実Previewでの復旧・性能確認やProject固有Backupは、Projectが実Resourceを設定してHumanが明示実行した時点で初めてRemote evidenceとして扱います。
+実Previewでの復旧・性能確認やProject固有Backup/Audit運用は、Projectが実Resourceを設定してHumanが明示実行した時点で初めてRemote evidenceとして扱います。
 
 ## Project adoption
 
@@ -144,10 +147,11 @@ node scripts/validate-project-bootstrap-profile.mjs \
 4. `example_resources` とExample RoleをProduct Domainへ置き換える計画を決める
 5. concrete Identity Provider、Resource Scope、Role Policyを決める
 6. Preview / Production resource、NFR、SLO、RPO/RTO、retention、Release / Production Verificationを決める
-7. 段階公開が必要なら `FEATURE_FLAGS.md` と `FEATURE_FLAG_ROLLOUT.md` に沿ってFlag key・default・Preview/Production rollout条件を決める
-8. 長期Backupが必要なら `DATA_LIFECYCLE_BACKUP.md` と `LONG_TERM_BACKUP.md` に沿って保存先・retention・restore rehearsalを決める
-9. dependency update cadence、security advisory response、major updateのrelease/rollback方針を決める
-10. `--require-decided` で未決定を確認し、必要な `docs/recipes/` を選んでIssueへ分解する
+7. 監査記録を長期保存する場合は `DURABLE_AUDIT_STORAGE.md` に沿って保存対象・retention・検索権限・export条件・失敗モードを決める
+8. 段階公開が必要なら `FEATURE_FLAGS.md` と `FEATURE_FLAG_ROLLOUT.md` に沿ってFlag key・default・Preview/Production rollout条件を決める
+9. 長期Backupが必要なら `DATA_LIFECYCLE_BACKUP.md` と `LONG_TERM_BACKUP.md` に沿って保存先・retention・restore rehearsalを決める
+10. dependency update cadence、security advisory response、major updateのrelease/rollback方針を決める
+11. `--require-decided` で未決定を確認し、必要な `docs/recipes/` を選んでIssueへ分解する
 
 ProfileやLifecycle PolicyにはSecret値を保存しません。Remote / Production / destructive operationはProfileが埋まっていてもHuman Gate対象です。
 
@@ -157,7 +161,7 @@ Generic Templateの文書をこのRepositoryへ丸ごとコピーして、二つ
 
 Full-stack固有の設計書と推奨読順は `docs/README.md` を参照してください。
 
-Project開始時の追加判断は `docs/PROJECT_BOOTSTRAP_PROFILE.md`、段階公開は `docs/FEATURE_FLAGS.md`、長期Backup/retentionは `docs/DATA_LIFECYCLE_BACKUP.md`、繰り返し作業の安全な実行手順は `docs/recipes/README.md` を参照してください。
+Project開始時の追加判断は `docs/PROJECT_BOOTSTRAP_PROFILE.md`、監査記録の永続化は `docs/DURABLE_AUDIT_STORAGE.md`、段階公開は `docs/FEATURE_FLAGS.md`、長期Backup/retentionは `docs/DATA_LIFECYCLE_BACKUP.md`、繰り返し作業の安全な実行手順は `docs/recipes/README.md` を参照してください。
 
 Upstreamとの責務境界と確認済みbaselineは `docs/UPSTREAM_TEMPLATE.md` を参照してください。
 
