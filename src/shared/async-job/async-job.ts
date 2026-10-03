@@ -233,11 +233,21 @@ const assertJobType = (value: string): void => {
   }
 };
 
+const containsControlCharacter = (value: string): boolean => {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const assertBoundedCode = (value: string, name: string, maximum: number): void => {
   if (
     value.length === 0
     || value.length > maximum
-    || /[\u0000-\u001f\u007f]/u.test(value)
+    || containsControlCharacter(value)
   ) {
     throw new TypeError(`${name} must be a bounded non-control string`);
   }
