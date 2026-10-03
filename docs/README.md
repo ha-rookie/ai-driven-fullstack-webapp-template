@@ -46,7 +46,9 @@ Worker HTTP Boundary / Composition
 | --- | --- |
 | `UPSTREAM_TEMPLATE.md` | Generic Templateとの責務境界、reviewed baseline、重複禁止ルール |
 | `FULLSTACK_ARCHITECTURE.md` | Full-stack runtime全体像、baseline layer model、各Foundationの配置 |
+| `PROJECT_BOOTSTRAP_PROFILE.md` | Generic Requirement/Design/PlanをFull-stack固有のProject決定へ接続する開始時Profile |
 | `instructions/README.md` | Full-stack固有Scoped Instructionsの選択方法と責務境界 |
+| `recipes/README.md` | DB/Auth/Recovery/Performance/Production等の繰り返し作業を安全に実行するRecipe索引 |
 | `RUNTIME_PRIMITIVES.md` | Clock / IdGenerator / Runtime Config / Environmentの最小共通境界 |
 | `RUNTIME_EVIDENCE_STATUS.md` | Repository / CI / Preview / Production evidenceを分離したread-only Capability Status |
 | `OPERATION_MODE.md` | environment別の運用状態Store、version付き更新、取得不能時のfail-safe契約 |
@@ -71,6 +73,32 @@ Worker HTTP Boundary / Composition
 | `FRONTEND_PERFORMANCE.md` | Production build size、Local browser LCP/CLS/request count、Project-defined frontend budget |
 | `LOAD_STRESS_SOAK.md` | Local concurrent HTTP smoke、Human-triggered Preview load/stress/soak、安全上限とEvidence |
 
+## Project bootstrap and Recipes
+
+`PROJECT_BOOTSTRAP_PROFILE.md` は、新しいProjectでFull-stack固有に決め直す項目を一覧化します。これはProject RequirementやArchitectureの代替ではなく、**未決定を見える状態にする補助Profile**です。
+
+- Example Profileはすべて明示的な `undecided` から始める
+- `decided / undecided / not-applicable` を区別する
+- `not-applicable` は理由を残す
+- `--require-decided` を使えばProject開始Gateとして未決定を検出できる
+- Secret値はProfileへ保存しない
+
+`recipes/` は決定後のFull-stack固有作業を再利用する層です。RecipeはDesign SourceやScoped Instructionを複製せず、Inputs / Stop Conditions / Steps / Validation / Evidence / Do Notを短くつなぎます。
+
+```text
+Generic Requirement / Design / Change Contract
+        ↓
+Project Bootstrap Profile
+        ↓
+Issue + Scoped Instructions + Design Sources
+        ↓
+Full-stack Recipe
+        ↓
+Implementation / Validation / Evidence
+```
+
+RecipeはHuman Gateを解除しません。Remote / Production / destructive operationはRecipeに手順が書かれていても別途Human判断が必要です。
+
 ## Scoped Instructions
 
 `docs/instructions/` は、IssueのPlanned Files / Impact Flags /作業意図に応じて必要なFull-stack固有制約だけを追加で読むための層です。
@@ -88,6 +116,8 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 
 例:
 - shared Clock / IdGenerator / Runtime Config / Environment boundary
+- Project開始時のFull-stack固有decision profile / validator
+- Full-stack固有の繰り返し作業Recipe
 - request-scoped structured Application Log
 - low-cardinality runtime metrics / provider-neutral alert evaluation
 - dependency update proposal / validation / Human review boundary
