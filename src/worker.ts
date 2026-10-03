@@ -1,4 +1,5 @@
 import { StructuredApplicationLogger } from "./shared/logging";
+import { ApplicationMetricsRecorder, toMetricsEnvironment } from "./shared/observability";
 import {
   clearSessionCookie,
   createSessionPolicy,
@@ -32,6 +33,8 @@ interface Env {
   CORS_ALLOWED_ORIGINS?: string;
   SESSION_IDLE_TIMEOUT_SECONDS?: string;
   SESSION_TOUCH_INTERVAL_SECONDS?: string;
+  /** Set explicitly to local/test/preview/production for trustworthy metric environment labels. */
+  RUNTIME_ENVIRONMENT?: string;
 }
 
 type RequestAuditFields = Omit<AuditEvent, "requestId" | "method" | "path">;
@@ -45,6 +48,20 @@ const json = (body: unknown, init: ResponseInit = {}) =>
     },
   });
 
+const metricRouteFor = (method: string, pathname: string): string => {
+  if (method === "GET" && (pathname === "/api/health" || pathname === "/api/health/live")) {
+    return "health_live";
+  }
+  if (method === "GET" && (pathname === "/api/health/database" || pathname === "/api/health/ready")) {
+    return "health_ready";
+  }
+  if (method === "GET" && pathname === "/api/auth/me") return "auth_me";
+  if (method === "GET" && pathname === "/api/auth/csrf") return "auth_csrf";
+  if (method === "POST" && pathname === "/api/auth/logout") return "auth_logout";
+  if (pathname.startsWith("/api/scopes/")) return "scoped_resource";
+  return "api_other";
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -57,11 +74,28 @@ export default {
     const appLogger = new StructuredApplicationLogger("worker.http").withContext({
       requestId: requestContext.requestId,
     });
-    const secure = (response: Response) =>
-      applySecurityHeaders(
+    const metrics = new ApplicationMetricsRecorder({
+      environment: toMetricsEnvironment(env.RUNTIME_ENVIRONMENT),
+      component: "worker.http",
+    });
+    const requestMetric = metrics.startRequest({
+      route: metricRouteFor(request.method, url.pathname),
+      method: request.method,
+      requestId: requestContext.requestId,
+    });
+    const dependencyFailure = (operation: string) =>
+      metrics.recordDependencyFailure({
+        dependency: "d1",
+        operation,
+        requestId: requestContext.requestId,
+      });
+    const secure = (response: Response) => {
+      requestMetric.complete(response.status);
+      return applySecurityHeaders(
         attachRequestId(response, requestContext.requestId),
         request,
       );
+    };
 
     let corsPolicy;
     let sessionPolicy;
@@ -123,6 +157,7 @@ export default {
       return api(
         await handleReadiness(env.DB, () => {
           appLogger.warn("database_readiness_unavailable");
+          dependencyFailure("health_readiness");
         }),
       );
     }
@@ -147,6 +182,7 @@ export default {
 
         return api(json({ authenticated: true, user: session.user }));
       } catch {
+        dependencyFailure("auth_session_resolve");
         audit({
           category: "authentication",
           action: "session_resolve",
@@ -200,6 +236,7 @@ export default {
 
         return api(json({ csrfToken }));
       } catch {
+        dependencyFailure("auth_csrf_issue");
         audit({
           category: "authentication",
           action: "csrf_token_issue",
@@ -247,6 +284,7 @@ export default {
           }),
         );
       } catch {
+        dependencyFailure("auth_logout");
         audit({
           category: "authentication",
           action: "logout",
