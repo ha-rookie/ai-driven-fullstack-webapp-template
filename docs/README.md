@@ -54,6 +54,7 @@ Worker HTTP Boundary / Composition
 | `OPERATION_MODE.md` | environment別の運用状態Store、version付き更新、取得不能時のfail-safe契約 |
 | `FRONTEND_SHELL_SAFETY.md` | Operation Mode表示、Permission Guard、Error BoundaryのFrontend安全境界 |
 | `DATA_DESIGN.md` | D1 binding、migration、schema、Local / Preview / Production境界 |
+| `DATA_LIFECYCLE_BACKUP.md` | 長期Backup、retention/deletion、private storage、Backup Evidence、restore rehearsal境界 |
 | `AUTH_DESIGN.md` | Provider-independent identityとapplication session |
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
 | `RUNTIME_INTEGRITY.md` | optimistic concurrency、state transition、atomicity、DB constraints |
@@ -118,6 +119,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - shared Clock / IdGenerator / Runtime Config / Environment boundary
 - Project開始時のFull-stack固有decision profile / validator
 - Full-stack固有の繰り返し作業Recipe
+- data lifecycle / retention / long-term backup policy and metadata-only evidence
 - request-scoped structured Application Log
 - low-cardinality runtime metrics / provider-neutral alert evaluation
 - dependency update proposal / validation / Human review boundary
@@ -156,6 +158,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - SLA / SLO / RPO / RTO
 - Production release condition
 - Project固有のSecurity / Privacy / retention requirement
+- concrete backup provider / retention period / deletion schedule
 - Project固有のdependency update cadence / support matrix / release window
 
 ## Example code policy

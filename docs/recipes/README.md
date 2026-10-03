@@ -28,6 +28,7 @@ Recipeを使うこと自体は承認ではありません。
 | `RUNTIME_INTEGRITY.md` | optimistic concurrency / state transition / atomicityを変更する | `../RUNTIME_INTEGRITY.md`, `../instructions/runtime-integrity.md` |
 | `AUDIT_EVENT.md` | accountabilityが必要な操作へAudit eventを追加する | `../AUDIT_OBSERVABILITY.md`, `../instructions/audit-correlation.md` |
 | `PREVIEW_RECOVERY_REHEARSAL.md` | Preview D1 recovery rehearsalを実行する | `../RECOVERY_OPERATIONS.md`, `../instructions/recovery-remote-operation.md` |
+| `LONG_TERM_BACKUP.md` | provider recovery windowを超える長期Backup / retention / restore evidenceを設計する | `../DATA_LIFECYCLE_BACKUP.md`, `../RECOVERY_OPERATIONS.md` |
 | `PERFORMANCE_EVIDENCE.md` | D1 / Frontend / HTTP load evidenceを追加・更新する | `../PERFORMANCE_CAPACITY.md`, `../FRONTEND_PERFORMANCE.md`, `../LOAD_STRESS_SOAK.md` |
 | `PRODUCTION_PREFLIGHT.md` | Production migration / deploy前の確認を整理する | `../operations/PRODUCTION_MIGRATION_PREFLIGHT.md`, `../operations/PRODUCTION_DEPLOY_WORKFLOW.md` |
 
@@ -51,6 +52,7 @@ Recipeを使うこと自体は承認ではありません。
 - Auth Provider追加 + user provisioning schema変更 → `AUTH_PROVIDER_ADAPTER` + `D1_MIGRATION`
 - Protected mutation追加 → `AUTHORIZATION_BOUNDARY` + `RUNTIME_INTEGRITY` + 必要なら`AUDIT_EVENT`
 - Production migrationを含むrelease → `D1_MIGRATION` + `PRODUCTION_PREFLIGHT`
+- 長期保全を含むdata変更 → `D1_MIGRATION` + `LONG_TERM_BACKUP`
 
 すべてのRecipeを毎回読む必要はありません。関係する境界を落とさないことを優先します。
 
@@ -65,5 +67,6 @@ Recipe実行前にProject固有の判断が未決定なら、`../PROJECT_BOOTSTR
 - Domain model
 - SLA / SLO / RPO / RTO
 - retention期間
+- backup provider / storage location
 - Production resource / origin
 - dependency update cadence
