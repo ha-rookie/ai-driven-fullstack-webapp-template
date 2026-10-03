@@ -1,0 +1,20 @@
+version: 2
+
+# Dependabot proposes updates only. Template baseline deliberately has no dependency auto-merge workflow.
+# Projects may change cadence after documenting their own maintenance/release policy.
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps-actions"
