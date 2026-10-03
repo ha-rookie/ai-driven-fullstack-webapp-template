@@ -22,6 +22,18 @@ Do not publish secrets, exploit steps, proof-of-concept payloads or abuse-enabli
 
 A private report should identify the affected revision and file or behavior, impact, reproduction conditions, template versus derived-project scope and any mitigation. Include only necessary information, and redact credentials and unrelated personal data.
 
+## Dependency security updates
+
+Routine dependency version proposals and security advisories are related but are not the same signal.
+
+- Dependabot version-update PRs follow `docs/DEPENDENCY_UPDATE_POLICY.md`
+- a weekly version-update schedule does not prove GitHub Dependabot security alerts/updates are enabled
+- relevant security advisories should be triaged outside the normal maintenance cadence when necessary
+- a dependency update still requires the repository's CI, vulnerability, license and lockfile checks plus Human review
+- temporary ignore/defer decisions must record the compatibility/security rationale and a re-evaluation condition
+
+Template baseline does not auto-merge dependency updates solely because they are created by automation or labeled as security-related.
+
 ## Handling and disclosure
 
 Assess reports against the actual affected code and revision. A documentation update or passing CI alone does not prove a vulnerability is fixed; verify the relevant behavior. Keep sensitive details private until disclosure is safe.
