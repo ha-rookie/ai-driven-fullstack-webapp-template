@@ -17,7 +17,7 @@ test("worker API boundary emits runtime request metrics with declared route/envi
       }),
       {
         DB: {} as D1Database,
-        ASSETS: { fetch: async () => new Response("asset") } as Fetcher,
+        ASSETS: { fetch: async () => new Response("asset") } as unknown as Fetcher,
         RUNTIME_ENVIRONMENT: "test",
       },
     );
