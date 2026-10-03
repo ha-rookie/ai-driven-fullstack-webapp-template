@@ -9,7 +9,17 @@ import type { IdGenerator } from "../../shared/runtime";
 
 const DEFAULT_MAX_FILENAME_LENGTH = 180;
 const MEDIA_TYPE_PATTERN = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+*-]+$/;
-const UNSAFE_FILENAME_PATTERN = /[\/\\\u0000-\u001f\u007f]/u;
+
+const hasUnsafeFilenameCharacter = (value: string): boolean =>
+  Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return (
+      character === "/" ||
+      character === "\\" ||
+      codePoint <= 0x1f ||
+      codePoint === 0x7f
+    );
+  });
 
 export interface FileTransferPolicy {
   readonly maxRequestBytes: number;
@@ -156,7 +166,7 @@ export const normalizeDisplayFilename = (
     normalized.length > maxLength ||
     normalized === "." ||
     normalized === ".." ||
-    UNSAFE_FILENAME_PATTERN.test(normalized)
+    hasUnsafeFilenameCharacter(normalized)
   ) {
     return null;
   }
