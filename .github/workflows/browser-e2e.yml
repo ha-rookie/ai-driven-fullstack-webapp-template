@@ -6,9 +6,15 @@ on:
     branches:
       - main
     paths:
-      - 'src/frontend/**'
+      - 'src/**'
       - 'e2e/**'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
       - 'playwright.config.ts'
+      - 'playwright.performance.config.ts'
+      - 'scripts/frontend-performance-evidence.mjs'
       - '.github/workflows/browser-e2e.yml'
 
 permissions:
@@ -21,7 +27,7 @@ concurrency:
 jobs:
   chromium:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,11 +50,31 @@ jobs:
       - name: Run representative browser scenarios
         run: npx playwright test
 
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Capture frontend build performance evidence
+        run: npm run performance:frontend:bundle
+
+      - name: Run production-build browser performance evidence
+        run: npm run performance:frontend:browser
+
+      - name: Upload browser performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-performance-${{ github.run_id }}
+          path: artifacts/performance/frontend-*
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: browser-e2e-failure-${{ github.run_id }}
-          path: test-results/browser-e2e
+          path: |
+            test-results/browser-e2e
+            test-results/frontend-performance
           if-no-files-found: ignore
           retention-days: 7

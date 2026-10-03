@@ -67,7 +67,9 @@ Worker HTTP Boundary / Composition
 | `RECOVERY_OPERATIONS.md` | Preview recovery rehearsal、Production restore Human Gate、RPO/RTO境界 |
 | `operations/RELEASE_EVIDENCE_BUNDLE.md` | Release単位のread-only Workflow / Artifact証跡生成、SHAと検証状態の関連付け |
 | `security/SECURITY_INCIDENT_RESPONSE.md` | Security incident triage、Session revoke / Mode containment、private evidence、復旧判断とLocal/tabletop rehearsal |
-| `PERFORMANCE_CAPACITY.md` | Local / Preview benchmark、query plan、resource budget、計測単位 |
+| `PERFORMANCE_CAPACITY.md` | Local / Preview D1 benchmark、query plan、resource budget、計測単位 |
+| `FRONTEND_PERFORMANCE.md` | Production build size、Local browser LCP/CLS/request count、Project-defined frontend budget |
+| `LOAD_STRESS_SOAK.md` | Local concurrent HTTP smoke、Human-triggered Preview load/stress/soak、安全上限とEvidence |
 
 ## Scoped Instructions
 
@@ -100,6 +102,8 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - Worker / Static AssetsのSecurity Headers
 - Preview D1 Time Travel rehearsal
 - D1 query-plan benchmark
+- frontend build / browser performance evidence
+- bounded Local / Preview HTTP load evidence
 
 ## What does not belong here
 
