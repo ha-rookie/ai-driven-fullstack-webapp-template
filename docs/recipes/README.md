@@ -34,6 +34,7 @@ Recipeを使うこと自体は承認ではありません。
 | `FILE_TRANSFER_HTTP.md` | ブラウザから添付ファイルを安全にUpload / Downloadする | `../FILE_TRANSFER_HTTP.md`, `../OBJECT_STORAGE.md`, `../AUTHORIZATION_DESIGN.md` |
 | `DATA_IMPORT_EXPORT.md` | CSVで業務データをDry-run / commit / streaming exportする | `../DATA_IMPORT_EXPORT.md`, `../RUNTIME_INTEGRITY.md`, `../AUTHORIZATION_DESIGN.md` |
 | `ASYNC_JOB.md` | 時間のかかる処理・Retry・定期処理をHTTPから切り離す | `../ASYNC_JOB.md`, `../RUNTIME_INTEGRITY.md`, `../AUDIT_OBSERVABILITY.md` |
+| `EMAIL_DELIVERY.md` | 認証・Invitation・通知等のtransactional emailを送る | `../EMAIL_DELIVERY.md`, `../AUTH_DESIGN.md`, `../AUDIT_OBSERVABILITY.md` |
 | `FEATURE_FLAG_ROLLOUT.md` | 新機能をPreviewからProductionへ段階的にON/OFFする | `../FEATURE_FLAGS.md`, `../AUTHORIZATION_DESIGN.md`, `../OPERATION_MODE.md` |
 | `PERFORMANCE_EVIDENCE.md` | D1 / Frontend / HTTP load evidenceを追加・更新する | `../PERFORMANCE_CAPACITY.md`, `../FRONTEND_PERFORMANCE.md`, `../LOAD_STRESS_SOAK.md` |
 | `PRODUCTION_PREFLIGHT.md` | Production migration / deploy前の確認を整理する | `../operations/PRODUCTION_MIGRATION_PREFLIGHT.md`, `../operations/PRODUCTION_DEPLOY_WORKFLOW.md` |
@@ -65,6 +66,8 @@ Recipeを使うこと自体は承認ではありません。
 - CSV出力で個人情報を扱う → `DATA_IMPORT_EXPORT` + `AUTHORIZATION_BOUNDARY` + Data Masking
 - 大量CSVを裏側で処理 → `DATA_IMPORT_EXPORT` + `ASYNC_JOB` + `RUNTIME_INTEGRITY`
 - 定期Jobで業務更新 → `ASYNC_JOB` + `RUNTIME_INTEGRITY` + 必要なら`AUDIT_EVENT`
+- Invitation / Password Reset通知 → `EMAIL_DELIVERY` + 対応するAuth/Invitation境界
+- Retry可能な通知Job → `EMAIL_DELIVERY` + `ASYNC_JOB` + 必要なら`AUDIT_EVENT`
 - 新機能を段階公開しつつ権限制御も必要 → `FEATURE_FLAG_ROLLOUT` + `AUTHORIZATION_BOUNDARY`
 
 すべてのRecipeを毎回読む必要はありません。関係する境界を落とさないことを優先します。
@@ -85,6 +88,7 @@ Recipe実行前にProject固有の判断が未決定なら、`../PROJECT_BOOTSTR
 - File Transferのsize / count / MIME allowlist / forbidden disclosure / scan policy
 - CSV Import / Exportのcolumn schema / max bytes / max rows / commit mode / formula protection / async threshold
 - Async Jobのprovider / payload / lease / retry / concurrency / schedule / DLQ / Queue binding
+- Email Provider / sender domain / sender / reply-to / binding / quota / retry / duplicate-delivery policy
 - durable Audit対象 / search-export access policy / write mode
 - Feature Flag key / rollout condition
 - Production resource / origin
