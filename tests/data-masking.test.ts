@@ -38,10 +38,12 @@ test("maskEmail reveals only a small local prefix and keeps the domain", () => {
   assert.equal(maskEmail("a@example.com"), "***@example.com");
 });
 
-test("maskEmail never returns invalid input unchanged", () => {
+test("maskEmail never returns malformed input unchanged", () => {
   assert.equal(maskEmail("not-an-email"), "***");
   assert.equal(maskEmail("@example.com"), "***");
   assert.equal(maskEmail("alice@"), "***");
+  assert.equal(maskEmail("alice@example@internal"), "***");
+  assert.equal(maskEmail("alice@secret internal"), "***");
 });
 
 test("maskPhone keeps only the final four digits for normal numbers", () => {
@@ -49,9 +51,10 @@ test("maskPhone keeps only the final four digits for normal numbers", () => {
   assert.equal(maskPhone("+81 90 1234 5678"), "+** ** **** 5678");
 });
 
-test("maskPhone fully masks short numbers and does not echo digit-free input", () => {
+test("maskPhone fully masks short or malformed input", () => {
   assert.equal(maskPhone("1234"), "****");
   assert.equal(maskPhone("abc"), "***");
+  assert.equal(maskPhone("call-me-09012345678"), "***");
 });
 
 test("only an explicit reveal decision returns the original value", () => {
