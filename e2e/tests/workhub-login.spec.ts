@@ -58,7 +58,11 @@ test("invalid credential uses a generic error and does not reveal account existe
 
   expect(known.status()).toBe(401);
   expect(unknown.status()).toBe(401);
-  const knownBody = await known.json() as unknown;
-  const unknownBody = await unknown.json() as unknown;
-  expect(JSON.stringify(knownBody)).toBe(JSON.stringify(unknownBody));
+  const knownBody = await known.json() as { error?: { code?: string; message?: string } };
+  const unknownBody = await unknown.json() as { error?: { code?: string; message?: string } };
+  expect(knownBody.error).toEqual(unknownBody.error);
+  expect(knownBody.error).toEqual({
+    code: "authentication_failed",
+    message: "User ID or password is incorrect",
+  });
 });
