@@ -114,8 +114,9 @@ test("unknown flag keys fail fast so typos do not become implicit flags", () => 
     definitions,
   });
 
+  const unknownKey = "missing_feature" as unknown as keyof typeof definitions;
   assert.throws(
-    () => provider.isEnabled("missing_feature" as keyof typeof definitions),
+    () => provider.isEnabled(unknownKey),
     (error: unknown) =>
       error instanceof FeatureFlagError && error.code === "unknown_key",
   );
