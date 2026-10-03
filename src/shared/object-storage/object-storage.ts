@@ -76,16 +76,16 @@ export class ObjectStorageError extends Error {
   }
 }
 
-export const assertObjectIdentifier = (
+export function assertObjectIdentifier(
   identifier: string,
-): asserts identifier is ObjectIdentifier => {
+): asserts identifier is ObjectIdentifier {
   if (!OBJECT_IDENTIFIER_PATTERN.test(identifier)) {
     throw new ObjectStorageError(
       "invalid_identifier",
       "Object identifier must be a generated opaque identifier without path separators",
     );
   }
-};
+}
 
 export const createObjectIdentifier = (idGenerator: IdGenerator): ObjectIdentifier => {
   const identifier = idGenerator.generate();
