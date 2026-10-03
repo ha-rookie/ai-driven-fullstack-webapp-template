@@ -21,7 +21,8 @@
     "scope_memberships": ["scope_id", "user_id", "role", "created_at", "updated_at"],
     "scope_invitations": ["id", "token_hash", "scope_id", "invitee_identifier", "intended_role", "issued_by", "issued_at", "expires_at", "redeemed_at", "revoked_at"],
     "idempotency_records": ["idempotency_key", "actor_id", "scope_id", "action", "fingerprint", "state", "created_at", "updated_at", "expires_at", "replay_status", "replay_content_type", "replay_body"],
-    "durable_audit_events": ["id", "environment", "occurred_at", "request_id", "category", "action", "outcome", "actor_id", "scope_id", "resource_type", "resource_id", "record_json", "record_sha256", "created_at"]
+    "durable_audit_events": ["id", "environment", "occurred_at", "request_id", "category", "action", "outcome", "actor_id", "scope_id", "resource_type", "resource_id", "record_json", "record_sha256", "created_at"],
+    "saml_assertion_replays": ["environment", "provider", "assertion_id", "expires_at", "consumed_at"]
   },
   "requiredIndexes": [
     "idx_example_resources_created_at",
@@ -40,6 +41,7 @@
     "idx_durable_audit_environment_time",
     "idx_durable_audit_actor_time",
     "idx_durable_audit_scope_time",
-    "idx_durable_audit_resource_time"
+    "idx_durable_audit_resource_time",
+    "idx_saml_assertion_replays_expiry"
   ]
 }
