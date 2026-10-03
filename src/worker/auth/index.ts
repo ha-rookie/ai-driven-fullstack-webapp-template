@@ -3,6 +3,7 @@ export * from "./active-session-query";
 export * from "./auth-provider";
 export * from "./google-oidc-provider";
 export * from "./oidc-provider";
+export * from "./saml-provider";
 export * from "./session-revocation";
 export * from "./session-rotation";
 export * from "./user-lifecycle";
