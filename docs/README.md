@@ -48,6 +48,7 @@ Worker HTTP Boundary / Composition
 | `FULLSTACK_ARCHITECTURE.md` | Full-stack runtime全体像、baseline layer model、各Foundationの配置 |
 | `instructions/README.md` | Full-stack固有Scoped Instructionsの選択方法と責務境界 |
 | `RUNTIME_PRIMITIVES.md` | Clock / IdGenerator / Runtime Config / Environmentの最小共通境界 |
+| `RUNTIME_EVIDENCE_STATUS.md` | Repository / CI / Preview / Production evidenceを分離したread-only Capability Status |
 | `OPERATION_MODE.md` | environment別の運用状態Store、version付き更新、取得不能時のfail-safe契約 |
 | `FRONTEND_SHELL_SAFETY.md` | Operation Mode表示、Permission Guard、Error BoundaryのFrontend安全境界 |
 | `DATA_DESIGN.md` | D1 binding、migration、schema、Local / Preview / Production境界 |
