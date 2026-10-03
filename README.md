@@ -9,6 +9,7 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 - [Full-stack Recipes](docs/recipes/README.md)
 - [Feature Flag Foundation](docs/FEATURE_FLAGS.md)
 - [Data Masking](docs/DATA_MASKING.md)
+- [Private Object Storage](docs/OBJECT_STORAGE.md)
 - [Durable Audit Storage](docs/DURABLE_AUDIT_STORAGE.md)
 - [Data Lifecycle / Long-term Backup](docs/DATA_LIFECYCLE_BACKUP.md)
 - [Implementation design](docs/README.md)
@@ -52,6 +53,7 @@ GitHub Template Repositoryは、作成元の後続変更を自動継承しませ
 | Authentication | Provider-neutral identity / opaque application session / revoke / logout |
 | Authorization | Resource Scope / Membership / Project-defined Role Policy / fail closed |
 | Data Masking | API responseのsensitive fieldをreveal / mask / omit / email・phone pure masker / fail closed |
+| Object Storage | private binary storage contract / Local in-memory adapter / Cloudflare R2 Reference Adapter / generated object ID / environment separation |
 | Runtime Integrity | optimistic concurrency / state transition / atomic multi-write / DB constraints |
 | Audit & Correlation | request ID / structured audit / bounded fields / failure isolation |
 | Durable Audit | D1 append-only-style storage / environment separation / bounded search / retention purge / SHA-256 integrity check |
@@ -100,7 +102,7 @@ npm run lint
 npm run build
 ```
 
-`validate:local` と通常PR CIはRemote D1を使用しません。Data Lifecycle validationも実BackupやPrivate Storageへ接続せず、Policy/Evidence utilityのLocal self-testだけを実行します。
+`validate:local` と通常PR CIはRemote D1やRemote Object Storageを使用しません。Object Storageの共通契約は `InMemoryObjectStorage` で検証し、R2 Adapterは型・unit testで検証します。Data Lifecycle validationも実BackupやPrivate Storageへ接続せず、Policy/Evidence utilityのLocal self-testだけを実行します。
 
 ## Dependency maintenance
 
@@ -110,7 +112,7 @@ Dependabotはnpm / GitHub Actionsの更新**提案PRを作る役割**として�
 
 ## Remote operations
 
-Remote D1を利用する操作は通常CIから分離しています。
+Remote D1 / Object Storageを利用する操作は通常CIから分離しています。
 
 - Preview recovery rehearsal: manual `workflow_dispatch`
 - Preview performance benchmark / load evidence: manual `workflow_dispatch`
@@ -121,8 +123,9 @@ Remote D1を利用する操作は通常CIから分離しています。
 - Production long-term backup/exportはProject固有Human Gate。通常PR CIから実行しない
 - Production Audit export / purge / retention変更もProject固有Human Gate。通常PR CIから実行しない
 - Production Feature Flag変更も通常PR mergeとは分離し、Project側Human Gateで扱う
+- Production Object Storage bucket作成・binding・lifecycle rule・bulk delete・Public access変更はProject側Human Gate
 
-実Previewでの復旧・性能確認やProject固有Backup/Audit運用は、Projectが実Resourceを設定してHumanが明示実行した時点で初めてRemote evidenceとして扱います。
+実Previewでの復旧・性能確認やProject固有Backup/Audit/Object Storage運用は、Projectが実Resourceを設定してHumanが明示実行した時点で初めてRemote evidenceとして扱います。
 
 ## Project adoption
 
@@ -149,12 +152,13 @@ node scripts/validate-project-bootstrap-profile.mjs \
 4. `example_resources` とExample RoleをProduct Domainへ置き換える計画を決める
 5. concrete Identity Provider、Resource Scope、Role Policyを決める
 6. 個人情報・機微情報として扱うFieldと、誰に `reveal / mask / omit` するかを `DATA_MASKING.md` に沿って決める
-7. Preview / Production resource、NFR、SLO、RPO/RTO、retention、Release / Production Verificationを決める
-8. 監査記録を長期保存する場合は `DURABLE_AUDIT_STORAGE.md` に沿って保存対象・retention・検索権限・export条件・失敗モードを決める
-9. 段階公開が必要なら `FEATURE_FLAGS.md` と `FEATURE_FLAG_ROLLOUT.md` に沿ってFlag key・default・Preview/Production rollout条件を決める
-10. 長期Backupが必要なら `DATA_LIFECYCLE_BACKUP.md` と `LONG_TERM_BACKUP.md` に沿って保存先・retention・restore rehearsalを決める
-11. dependency update cadence、security advisory response、major updateのrelease/rollback方針を決める
-12. `--require-decided` で未決定を確認し、必要な `docs/recipes/` を選んでIssueへ分解する
+7. 添付ファイル等を扱う場合は `OBJECT_STORAGE.md` に沿ってbucket / binding / retention / versioning / quota / malware scan / temporary accessを決める
+8. Preview / Production resource、NFR、SLO、RPO/RTO、retention、Release / Production Verificationを決める
+9. 監査記録を長期保存する場合は `DURABLE_AUDIT_STORAGE.md` に沿って保存対象・retention・検索権限・export条件・失敗モードを決める
+10. 段階公開が必要なら `FEATURE_FLAGS.md` と `FEATURE_FLAG_ROLLOUT.md` に沿ってFlag key・default・Preview/Production rollout条件を決める
+11. 長期Backupが必要なら `DATA_LIFECYCLE_BACKUP.md` と `LONG_TERM_BACKUP.md` に沿って保存先・retention・restore rehearsalを決める
+12. dependency update cadence、security advisory response、major updateのrelease/rollback方針を決める
+13. `--require-decided` で未決定を確認し、必要な `docs/recipes/` を選んでIssueへ分解する
 
 ProfileやLifecycle PolicyにはSecret値を保存しません。Remote / Production / destructive operationはProfileが埋まっていてもHuman Gate対象です。
 
@@ -164,7 +168,7 @@ Generic Templateの文書をこのRepositoryへ丸ごとコピーして、二つ
 
 Full-stack固有の設計書と推奨読順は `docs/README.md` を参照してください。
 
-Project開始時の追加判断は `docs/PROJECT_BOOTSTRAP_PROFILE.md`、個人情報などの表示制御は `docs/DATA_MASKING.md`、監査記録の永続化は `docs/DURABLE_AUDIT_STORAGE.md`、段階公開は `docs/FEATURE_FLAGS.md`、長期Backup/retentionは `docs/DATA_LIFECYCLE_BACKUP.md`、繰り返し作業の安全な実行手順は `docs/recipes/README.md` を参照してください。
+Project開始時の追加判断は `docs/PROJECT_BOOTSTRAP_PROFILE.md`、個人情報などの表示制御は `docs/DATA_MASKING.md`、private Object Storageは `docs/OBJECT_STORAGE.md`、監査記録の永続化は `docs/DURABLE_AUDIT_STORAGE.md`、段階公開は `docs/FEATURE_FLAGS.md`、長期Backup/retentionは `docs/DATA_LIFECYCLE_BACKUP.md`、繰り返し作業の安全な実行手順は `docs/recipes/README.md` を参照してください。
 
 Upstreamとの責務境界と確認済みbaselineは `docs/UPSTREAM_TEMPLATE.md` を参照してください。
 
