@@ -31,6 +31,7 @@ Recipeを使うこと自体は承認ではありません。
 | `PREVIEW_RECOVERY_REHEARSAL.md` | Preview D1 recovery rehearsalを実行する | `../RECOVERY_OPERATIONS.md`, `../instructions/recovery-remote-operation.md` |
 | `LONG_TERM_BACKUP.md` | provider recovery windowを超える長期Backup / retention / restore evidenceを設計する | `../DATA_LIFECYCLE_BACKUP.md`, `../RECOVERY_OPERATIONS.md` |
 | `OBJECT_STORAGE.md` | 添付PDF・画像等をprivate Object Storageへ分離する | `../OBJECT_STORAGE.md`, `../DATA_LIFECYCLE_BACKUP.md`, `../AUTHORIZATION_DESIGN.md` |
+| `FILE_TRANSFER_HTTP.md` | ブラウザから添付ファイルを安全にUpload / Downloadする | `../FILE_TRANSFER_HTTP.md`, `../OBJECT_STORAGE.md`, `../AUTHORIZATION_DESIGN.md` |
 | `FEATURE_FLAG_ROLLOUT.md` | 新機能をPreviewからProductionへ段階的にON/OFFする | `../FEATURE_FLAGS.md`, `../AUTHORIZATION_DESIGN.md`, `../OPERATION_MODE.md` |
 | `PERFORMANCE_EVIDENCE.md` | D1 / Frontend / HTTP load evidenceを追加・更新する | `../PERFORMANCE_CAPACITY.md`, `../FRONTEND_PERFORMANCE.md`, `../LOAD_STRESS_SOAK.md` |
 | `PRODUCTION_PREFLIGHT.md` | Production migration / deploy前の確認を整理する | `../operations/PRODUCTION_MIGRATION_PREFLIGHT.md`, `../operations/PRODUCTION_DEPLOY_WORKFLOW.md` |
@@ -57,7 +58,7 @@ Recipeを使うこと自体は承認ではありません。
 - 長期保存するAuditを追加 → `AUDIT_EVENT` + `DURABLE_AUDIT_STORAGE`
 - Production migrationを含むrelease → `D1_MIGRATION` + `PRODUCTION_PREFLIGHT`
 - 長期保全を含むdata変更 → `D1_MIGRATION` + `LONG_TERM_BACKUP`
-- 添付ファイル保存を追加 → `OBJECT_STORAGE` + `AUTHORIZATION_BOUNDARY` + 必要なら#261 File Transfer HTTP Boundary
+- 添付ファイル保存を追加 → `OBJECT_STORAGE` + `FILE_TRANSFER_HTTP` + `AUTHORIZATION_BOUNDARY`
 - 新機能を段階公開しつつ権限制御も必要 → `FEATURE_FLAG_ROLLOUT` + `AUTHORIZATION_BOUNDARY`
 
 すべてのRecipeを毎回読む必要はありません。関係する境界を落とさないことを優先します。
@@ -75,6 +76,7 @@ Recipe実行前にProject固有の判断が未決定なら、`../PROJECT_BOOTSTR
 - retention期間
 - backup provider / storage location
 - Object Storage provider / bucket / binding / quota / versioning / signed access
+- File Transferのsize / count / MIME allowlist / forbidden disclosure / scan policy
 - durable Audit対象 / search-export access policy / write mode
 - Feature Flag key / rollout condition
 - Production resource / origin
