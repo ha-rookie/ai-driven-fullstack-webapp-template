@@ -25,6 +25,7 @@ Recipeを使うこと自体は承認ではありません。
 | `D1_MIGRATION.md` | D1 schema / migrationを追加・変更する | `../DATA_DESIGN.md`, `../instructions/database-migration.md` |
 | `AUTH_PROVIDER_ADAPTER.md` | concrete Identity Provider adapterをProjectへ追加する | `../AUTH_DESIGN.md`, `../instructions/authentication-session.md` |
 | `LOCAL_CREDENTIAL_AUTH.md` | ID / Password認証・Password変更・Resetを追加する | `../AUTH_LOCAL_CREDENTIAL.md`, `../AUTH_DESIGN.md`, `../instructions/authentication-session.md` |
+| `CREDENTIAL_ATTACK_HARDENING.md` | 公開Login / Recoveryで総当たり・credential stuffing・Account探索を抑える | `../CREDENTIAL_ATTACK_HARDENING.md`, `../AUTH_LOCAL_CREDENTIAL.md`, `../RATE_LIMITING.md` |
 | `AUTHORIZATION_BOUNDARY.md` | Resource Scope / Membership / Role Policyを追加・変更する | `../AUTHORIZATION_DESIGN.md`, `../instructions/authorization-resource-scope.md` |
 | `RUNTIME_INTEGRITY.md` | optimistic concurrency / state transition / atomicityを変更する | `../RUNTIME_INTEGRITY.md`, `../instructions/runtime-integrity.md` |
 | `AUDIT_EVENT.md` | accountabilityが必要な操作へAudit eventを追加する | `../AUDIT_OBSERVABILITY.md`, `../instructions/audit-correlation.md` |
@@ -58,8 +59,9 @@ Recipeを使うこと自体は承認ではありません。
 例:
 
 - Auth Provider追加 + user provisioning schema変更 → `AUTH_PROVIDER_ADAPTER` + `D1_MIGRATION`
-- Local Credential追加 → `LOCAL_CREDENTIAL_AUTH` + `D1_MIGRATION` + 公開Login endpointではCredential Attack Hardening
+- Local Credential追加 → `LOCAL_CREDENTIAL_AUTH` + `D1_MIGRATION` + 公開Login endpointでは`CREDENTIAL_ATTACK_HARDENING`
 - Password Reset通知 → `LOCAL_CREDENTIAL_AUTH` + `EMAIL_DELIVERY`
+- 公開ID / Password Login → `LOCAL_CREDENTIAL_AUTH` + `CREDENTIAL_ATTACK_HARDENING` + Rate Limit
 - Protected mutation追加 → `AUTHORIZATION_BOUNDARY` + `RUNTIME_INTEGRITY` + 必要なら`AUDIT_EVENT`
 - 長期保存するAuditを追加 → `AUDIT_EVENT` + `DURABLE_AUDIT_STORAGE`
 - Production migrationを含むrelease → `D1_MIGRATION` + `PRODUCTION_PREFLIGHT`
@@ -83,6 +85,7 @@ Recipe実行前にProject固有の判断が未決定なら、`../PROJECT_BOOTSTR
 
 - concrete Identity Provider
 - Local Credential identifier semantics / Password blocklist / Reset notification / public endpoint attack controls
+- Credential Attack threshold / window / lock duration / network subject / store failure semantics
 - Product Role名 / permission
 - Domain model
 - SLA / SLO / RPO / RTO
