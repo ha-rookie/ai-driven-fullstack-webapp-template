@@ -102,6 +102,12 @@ const fromBase64Url = (value: string): Uint8Array => {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 };
 
+const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+};
+
 const parseJsonSegment = <T>(value: string): T => {
   try {
     return JSON.parse(new TextDecoder().decode(fromBase64Url(value))) as T;
@@ -379,8 +385,8 @@ export class OidcAuthProvider implements AuthProvider<OidcAuthorizationCodeCrede
     const verified = await crypto.subtle.verify(
       "RSASSA-PKCS1-v1_5",
       key,
-      fromBase64Url(encodedSignature),
-      textEncoder.encode(`${encodedHeader}.${encodedClaims}`),
+      toArrayBuffer(fromBase64Url(encodedSignature)),
+      toArrayBuffer(textEncoder.encode(`${encodedHeader}.${encodedClaims}`)),
     );
     if (!verified) {
       throw new OidcProviderError("id_token_invalid", "OIDC ID token signature is invalid");
