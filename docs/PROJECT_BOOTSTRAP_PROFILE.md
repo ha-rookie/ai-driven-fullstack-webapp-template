@@ -93,7 +93,7 @@ Profileで追加確認する項目:
 - `performance.*`
 - `supplyChain.*`
 
-Preview / Production resource IDやoriginはProject固有値ですが、秘密情報ではありません。実Resourceへ接続する操作はHuman Gateを維持します。
+ProfileにはSecret値を入れず、Preview / Production resourceについてはProjectでRepository記録を許可したnon-secret identifierまたは参照名だけを記録します。実Resourceへ接続する操作はHuman Gateを維持します。
 
 ### Tasks
 
