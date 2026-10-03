@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Create fork notification issue
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fork = context.payload.fork;
