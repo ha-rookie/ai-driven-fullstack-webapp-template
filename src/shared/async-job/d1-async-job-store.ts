@@ -164,6 +164,8 @@ export class D1AsyncJobStateStore implements AsyncJobStateStore {
           lease_token = ?,
           lease_expires_at = ?,
           next_attempt_at = NULL,
+          progress_percent = NULL,
+          progress_code = NULL,
           failure_code = NULL
         WHERE environment = ?
           AND idempotency_key = ?
