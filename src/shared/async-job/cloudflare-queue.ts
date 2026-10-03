@@ -95,8 +95,8 @@ export const consumeCloudflareQueueMessage = async <TPayload>(
     case "dead_letter":
     case "terminal_duplicate":
     case "conflict":
-      options.onTerminal?.(result);
       message.ack();
+      options.onTerminal?.(result);
       break;
   }
 
