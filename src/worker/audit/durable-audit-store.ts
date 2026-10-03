@@ -242,7 +242,7 @@ export class D1DurableAuditStore implements DurableAuditSink {
   async search(query: AuditSearchQuery = {}): Promise<DurableAuditSearchResult> {
     const limit = validateSearchQuery(query);
     const where = ["environment = ?"];
-    const values: unknown[] = [this.options.environment];
+    const values: (string | number | null)[] = [this.options.environment];
 
     if (query.startAt !== undefined) {
       where.push("occurred_at >= ?");
