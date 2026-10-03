@@ -160,7 +160,11 @@ const validateConfig = (config: OidcProviderConfig): void => {
   if (config.allowedIssuers.length === 0) {
     throw new OidcProviderError("configuration_invalid", "At least one allowed issuer is required");
   }
-  for (const issuer of config.allowedIssuers) requireHttpsUrl(issuer, "allowed issuer");
+  for (const issuer of config.allowedIssuers) {
+    if (!issuer.trim() || /\s/u.test(issuer)) {
+      throw new OidcProviderError("configuration_invalid", "Allowed issuer must be an exact non-empty identifier");
+    }
+  }
 };
 
 const readJsonResponse = async <T>(response: Response, code: OidcProviderError["code"]): Promise<T> => {
