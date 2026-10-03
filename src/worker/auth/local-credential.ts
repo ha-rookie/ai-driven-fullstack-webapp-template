@@ -92,6 +92,12 @@ const fromBase64Url = (value: string): Uint8Array => {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 };
 
+const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+};
+
 const constantTimeEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   if (left.byteLength !== right.byteLength) return false;
   let difference = 0;
@@ -110,7 +116,7 @@ const derivePbkdf2 = async (
 ): Promise<Uint8Array> => {
   const material = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(normalizePasswordForHashing(password)),
+    toArrayBuffer(new TextEncoder().encode(normalizePasswordForHashing(password))),
     PBKDF2_ALGORITHM,
     false,
     ["deriveBits"],
@@ -119,7 +125,7 @@ const derivePbkdf2 = async (
     {
       name: PBKDF2_ALGORITHM,
       hash: PBKDF2_HASH,
-      salt,
+      salt: toArrayBuffer(salt),
       iterations,
     },
     material,
@@ -218,7 +224,10 @@ export const validateNewPassword = async (
 };
 
 const sha256Text = async (value: string): Promise<string> => {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    toArrayBuffer(new TextEncoder().encode(value)),
+  );
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 };
 
