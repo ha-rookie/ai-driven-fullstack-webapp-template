@@ -29,7 +29,7 @@ Recipeを使うこと自体は承認ではありません。
 | `AUDIT_EVENT.md` | accountabilityが必要な操作へAudit eventを追加する | `../AUDIT_OBSERVABILITY.md`, `../instructions/audit-correlation.md` |
 | `PREVIEW_RECOVERY_REHEARSAL.md` | Preview D1 recovery rehearsalを実行する | `../RECOVERY_OPERATIONS.md`, `../instructions/recovery-remote-operation.md` |
 | `PERFORMANCE_EVIDENCE.md` | D1 / Frontend / HTTP load evidenceを追加・更新する | `../PERFORMANCE_CAPACITY.md`, `../FRONTEND_PERFORMANCE.md`, `../LOAD_STRESS_SOAK.md` |
-| `PRODUCTION_PREFLIGHT.md` | Production migration / deploy前の確認を整理する | `../PRODUCTION_DELIVERY.md`, `../operations/RELEASE_EVIDENCE_BUNDLE.md` |
+| `PRODUCTION_PREFLIGHT.md` | Production migration / deploy前の確認を整理する | `../operations/PRODUCTION_MIGRATION_PREFLIGHT.md`, `../operations/PRODUCTION_DEPLOY_WORKFLOW.md` |
 
 ## Common recipe contract
 
