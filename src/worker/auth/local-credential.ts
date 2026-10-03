@@ -107,7 +107,7 @@ const constantTimeEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   return difference === 0;
 };
 
-const normalizePasswordForHashing = (password: string): string => password.normalize("NFKC");
+const normalizePasswordForHashing = (password: string): string => password.normalize("NFC");
 
 const derivePbkdf2 = async (
   password: string,
