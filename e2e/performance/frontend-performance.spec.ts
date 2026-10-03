@@ -61,7 +61,7 @@ test("records production-build browser performance evidence", async ({ page }, t
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(/API health:/)).toContainText("ok");
+  await expect(page.getByRole("heading", { name: "WORKHUBにログイン" })).toBeVisible();
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(100);
 
@@ -133,7 +133,7 @@ test("records production-build browser performance evidence", async ({ page }, t
     sameOriginRequestCount,
     inp: {
       status: "not-measured",
-      reason: "Template root page has no representative Product interaction; Project scenarios must define INP evidence.",
+      reason: "WORKHUB login page is measured for initial rendering only; Project interaction scenarios must define INP evidence.",
     },
     thresholdAssessment: {
       configured: checks.some(check => check.configured),
