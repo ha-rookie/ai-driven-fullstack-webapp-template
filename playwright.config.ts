@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const harnessUrl = "/e2e/harness/index.html?view=home";
+const harnessUrl = "/e2e/harness/?view=home";
 
 export default defineConfig({
   testDir: "./e2e/tests",
