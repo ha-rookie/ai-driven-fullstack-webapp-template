@@ -5,12 +5,14 @@ import type { PrivilegedMembershipSafetyError } from "../administration/privileg
 import type { CsrfGuardFailure } from "../http/csrf";
 import type { CorsRejectReason } from "../http/origin-cors";
 import type { RateLimitCheckInput, RateLimitRejectDecision } from "../http/rate-limit";
+import type { CredentialAttackDecision } from "./credential-attack";
 
 export type SecurityRejectionEventType =
   | "authentication_rejected"
   | "authorization_rejected"
   | "administration_rejected"
   | "rate_limit_rejected"
+  | "credential_attack_rejected"
   | "csrf_rejected"
   | "origin_rejected";
 
@@ -20,6 +22,7 @@ export type SecurityRejectionReasonCode =
   | "self_privileged_membership_change_denied"
   | "last_privileged_membership"
   | "rate_limited"
+  | "credential_attempt_throttled"
   | "csrf_proof_missing_or_invalid"
   | "invalid_origin"
   | "origin_not_allowed"
@@ -121,6 +124,25 @@ export const fromRateLimitRejection = (
     "rate_limited",
   );
 
+/**
+ * Credential throttling never includes the submitted identifier, IP/network
+ * subject, or their hashes. Those values are security-control inputs, not log data.
+ */
+export const fromCredentialAttackRejection = (
+  _decision: Extract<CredentialAttackDecision, { kind: "reject" }>,
+  endpointId: string,
+  context: SecurityRejectionContext,
+): SecurityRejectionEvent =>
+  createEvent(
+    {
+      ...context,
+      resourceType: context.resourceType ?? "credential_endpoint",
+      resourceId: context.resourceId ?? endpointId,
+    },
+    "credential_attack_rejected",
+    "credential_attempt_throttled",
+  );
+
 export const securityRejectionAuditEvent = (
   event: SecurityRejectionEvent,
 ): AuditEvent => ({
@@ -128,7 +150,7 @@ export const securityRejectionAuditEvent = (
   method: event.method,
   path: event.path,
   category:
-    event.eventType === "authentication_rejected"
+    event.eventType === "authentication_rejected" || event.eventType === "credential_attack_rejected"
       ? "authentication"
       : event.eventType === "authorization_rejected" || event.eventType === "administration_rejected"
         ? "authorization"
