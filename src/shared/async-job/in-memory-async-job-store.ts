@@ -92,6 +92,7 @@ export class InMemoryAsyncJobStateStore implements AsyncJobStateStore {
       leaseToken: input.leaseToken,
       leaseExpiresAt,
       nextAttemptAt: undefined,
+      progress: undefined,
       failureCode: undefined,
     };
     this.records.set(envelope.idempotencyKey, acquired);
