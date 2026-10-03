@@ -1,5 +1,6 @@
-const EMAIL_MASK = "***";
+const FIXED_MASK = "***";
 const PHONE_VISIBLE_SUFFIX_DIGITS = 4;
+const PHONE_ALLOWED_CHARACTER_PATTERN = /^[0-9+().\-\s]+$/;
 
 export type DataExposureDecision = "reveal" | "mask" | "omit";
 
@@ -28,13 +29,18 @@ const isDataExposureDecision = (value: unknown): value is DataExposureDecision =
 
 /**
  * Masks an email address for display while keeping the domain recognizable.
- * Invalid or incomplete input is replaced with a fixed mask instead of being
- * returned unchanged.
+ * Malformed or incomplete input is replaced with a fixed mask instead of being
+ * partially echoed.
  */
 export const maskEmail = (value: string): string => {
-  const separatorIndex = value.lastIndexOf("@");
-  if (separatorIndex <= 0 || separatorIndex >= value.length - 1) {
-    return EMAIL_MASK;
+  const separatorIndex = value.indexOf("@");
+  const hasSingleSeparator =
+    separatorIndex > 0
+    && separatorIndex === value.lastIndexOf("@")
+    && separatorIndex < value.length - 1;
+
+  if (!hasSingleSeparator || /\s/.test(value)) {
+    return FIXED_MASK;
   }
 
   const localPart = value.slice(0, separatorIndex);
@@ -42,17 +48,19 @@ export const maskEmail = (value: string): string => {
   const localCharacters = Array.from(localPart);
   const visiblePrefix = localCharacters.length >= 2 ? localCharacters[0] : "";
 
-  return `${visiblePrefix}${EMAIL_MASK}@${domainPart}`;
+  return `${visiblePrefix}${FIXED_MASK}@${domainPart}`;
 };
 
 /**
- * Masks all phone-number digits except the final four digits. Separators are
- * preserved to keep the display readable. Very short or digit-free input is
- * never returned unchanged.
+ * Masks all phone-number digits except the final four digits. Common phone
+ * separators are preserved for readability. Unexpected characters cause a
+ * fixed mask so malformed input is never partially echoed.
  */
 export const maskPhone = (value: string): string => {
+  if (!PHONE_ALLOWED_CHARACTER_PATTERN.test(value)) return FIXED_MASK;
+
   const digitCount = Array.from(value).filter((character) => /[0-9]/.test(character)).length;
-  if (digitCount === 0) return EMAIL_MASK;
+  if (digitCount === 0) return FIXED_MASK;
 
   const visibleSuffixDigits =
     digitCount > PHONE_VISIBLE_SUFFIX_DIGITS ? PHONE_VISIBLE_SUFFIX_DIGITS : 0;
