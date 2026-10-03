@@ -103,7 +103,7 @@ if (featureFlags.isEnabled("example_feature")) {
 }
 ```
 
-実Projectでは使用するFlag分だけ`Env` bindingを宣言し、Secretではなく通常設定として管理します。
+実Projectでは使用するFlag分だけ`Env` bindingを宣言し、通常設定として管理します。Flag値そのものは認証Secretではありませんが、未公開機能の存在が機密に当たるProjectでは設定名・運用記録もProject policyに従います。
 
 ## 推奨Rollout
 
@@ -160,7 +160,6 @@ Flagで画面を隠していても、互換性のないDB migrationを安全に�
 
 - PreviewとProductionを同じ設定キーにしない
 - Productionが未設定ならPreview値を引き継がない
-- Flag値をSecretとして扱わない
 - Feature FlagをAuthorizationの代替にしない
 - Remote / Production設定変更は通常PR mergeとは別のHuman Gateとして扱う
 - Production rollout成功後は不要なFlagを放置しない
@@ -171,5 +170,5 @@ Flagで画面を隠していても、互換性のないDB migrationを安全に�
 - `src/shared/runtime/config.ts`
 - `src/shared/runtime/environment.ts`
 - `docs/OPERATION_MODE.md`
-- `docs/PRODUCTION_DELIVERY.md`（存在する場合はRelease手順を正本とする）
+- `docs/operations/PRODUCTION_DEPLOY_WORKFLOW.md`
 - `docs/recipes/FEATURE_FLAG_ROLLOUT.md`
