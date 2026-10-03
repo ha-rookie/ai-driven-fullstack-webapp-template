@@ -33,7 +33,7 @@ Worker HTTP Boundary / Composition
    ├─ Domain rules
    └─ Infrastructure adapters
           ↓
-         D1
+         D1 / Object Storage
 ```
 
 `Application / Use Case` layerはBaseline必須ではありません。複数Repositoryや外部Serviceを跨ぐ業務オーケストレーション、HTTP以外のentrypointからの再利用、route handlerの肥大化など、Project側で明確な必要性が出た場合に追加します。
@@ -56,6 +56,7 @@ Worker HTTP Boundary / Composition
 | `FRONTEND_SHELL_SAFETY.md` | Operation Mode表示、Permission Guard、Error BoundaryのFrontend安全境界 |
 | `DATA_DESIGN.md` | D1 binding、migration、schema、Local / Preview / Production境界 |
 | `DATA_LIFECYCLE_BACKUP.md` | 長期Backup、retention/deletion、private storage、Backup Evidence、restore rehearsal境界 |
+| `OBJECT_STORAGE.md` | 添付PDF・画像等のprivate binary storage、generated object ID、R2 Reference Adapter、lifecycle / orphan境界 |
 | `AUTH_DESIGN.md` | Provider-independent identityとapplication session |
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
 | `DATA_MASKING.md` | 個人情報などの表示値をAPI responseでreveal / mask / omitするField Policyとfail-closed境界 |
@@ -124,6 +125,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - Project開始時のFull-stack固有decision profile / validator
 - Full-stack固有の繰り返し作業Recipe
 - data lifecycle / retention / long-term backup policy and metadata-only evidence
+- private binary Object Storage contract / Local adapter / Cloudflare R2 Reference Adapter
 - structured Audit / D1 durable Audit storage / bounded search / retention purge
 - API responseのsensitive field reveal / mask / omit policyとpure masking utility
 - request-scoped structured Application Log
@@ -165,6 +167,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - Production release condition
 - Project固有のSecurity / Privacy / retention requirement
 - 個人情報・機微情報として扱うField一覧と、reveal / mask / omitを決めるRole・permission・利用目的
+- Object Storageを使う場合のbucket / binding / quota / retention / versioning / malware scan / signed access方針
 - concrete backup provider / retention period / deletion schedule
 - Project固有Audit retention / export / stronger tamper-resistance requirement
 - Project固有Feature Flag key / rollout condition
