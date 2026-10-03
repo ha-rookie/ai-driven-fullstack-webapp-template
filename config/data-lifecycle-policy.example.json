@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "safety": {
+    "allowPublicBackupArtifacts": false,
+    "allowProductionBackupInPrCi": false
+  },
+  "decisions": {
+    "retentionPolicy": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "deletionPolicy": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "longTermBackup": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "backupStorage": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "backupEncryption": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "backupAccessControl": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "backupEnvironmentSeparation": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "restoreRehearsal": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "backupEvidenceRetention": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    },
+    "deletedDataInBackups": {
+      "state": "undecided",
+      "value": null,
+      "rationale": ""
+    }
+  }
+}
