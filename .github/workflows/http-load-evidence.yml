@@ -125,12 +125,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate explicit Preview confirmation
+      - name: Validate explicit Preview confirmation and environment separation
         shell: bash
         run: |
           set -euo pipefail
           test "$LOAD_TEST_CONFIRMATION" = "LOAD_TEST_PREVIEW"
           test -n "$PREVIEW_BASE_URL"
+          test -n "$PRODUCTION_BASE_URL"
+          test "$PREVIEW_BASE_URL" != "$PRODUCTION_BASE_URL"
 
       - name: Run bounded Preview load evidence
         run: >-
