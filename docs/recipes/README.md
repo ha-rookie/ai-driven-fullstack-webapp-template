@@ -27,6 +27,7 @@ Recipeを使うこと自体は承認ではありません。
 | `AUTHORIZATION_BOUNDARY.md` | Resource Scope / Membership / Role Policyを追加・変更する | `../AUTHORIZATION_DESIGN.md`, `../instructions/authorization-resource-scope.md` |
 | `RUNTIME_INTEGRITY.md` | optimistic concurrency / state transition / atomicityを変更する | `../RUNTIME_INTEGRITY.md`, `../instructions/runtime-integrity.md` |
 | `AUDIT_EVENT.md` | accountabilityが必要な操作へAudit eventを追加する | `../AUDIT_OBSERVABILITY.md`, `../instructions/audit-correlation.md` |
+| `DURABLE_AUDIT_STORAGE.md` | Audit Eventをprivateな永続Storeへ保存し、検索・retentionを設計する | `../DURABLE_AUDIT_STORAGE.md`, `../AUDIT_OBSERVABILITY.md`, `../AUTHORIZATION_DESIGN.md` |
 | `PREVIEW_RECOVERY_REHEARSAL.md` | Preview D1 recovery rehearsalを実行する | `../RECOVERY_OPERATIONS.md`, `../instructions/recovery-remote-operation.md` |
 | `LONG_TERM_BACKUP.md` | provider recovery windowを超える長期Backup / retention / restore evidenceを設計する | `../DATA_LIFECYCLE_BACKUP.md`, `../RECOVERY_OPERATIONS.md` |
 | `FEATURE_FLAG_ROLLOUT.md` | 新機能をPreviewからProductionへ段階的にON/OFFする | `../FEATURE_FLAGS.md`, `../AUTHORIZATION_DESIGN.md`, `../OPERATION_MODE.md` |
@@ -52,6 +53,7 @@ Recipeを使うこと自体は承認ではありません。
 
 - Auth Provider追加 + user provisioning schema変更 → `AUTH_PROVIDER_ADAPTER` + `D1_MIGRATION`
 - Protected mutation追加 → `AUTHORIZATION_BOUNDARY` + `RUNTIME_INTEGRITY` + 必要なら`AUDIT_EVENT`
+- 長期保存するAuditを追加 → `AUDIT_EVENT` + `DURABLE_AUDIT_STORAGE`
 - Production migrationを含むrelease → `D1_MIGRATION` + `PRODUCTION_PREFLIGHT`
 - 長期保全を含むdata変更 → `D1_MIGRATION` + `LONG_TERM_BACKUP`
 - 新機能を段階公開しつつ権限制御も必要 → `FEATURE_FLAG_ROLLOUT` + `AUTHORIZATION_BOUNDARY`
@@ -70,6 +72,7 @@ Recipe実行前にProject固有の判断が未決定なら、`../PROJECT_BOOTSTR
 - SLA / SLO / RPO / RTO
 - retention期間
 - backup provider / storage location
+- durable Audit対象 / search-export access policy / write mode
 - Feature Flag key / rollout condition
 - Production resource / origin
 - dependency update cadence
