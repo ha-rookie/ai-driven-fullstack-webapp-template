@@ -49,7 +49,7 @@ Reference defaults:
 - 最大128 code points
 - 文字種の組み合わせルールを要求しない
 - Project supplied blocklistで既知の弱い/漏えいPasswordを拒否する
-- Passwordはhash前にNFKC normalizationする
+- Passwordはhash前にNFC normalizationする
 - 定期的な強制Password変更をTemplate標準にしない
 
 ProjectはBlocklistの入手元・更新方法・Privacy boundaryを決める。外部breached-password APIはBaseline依存にしない。
