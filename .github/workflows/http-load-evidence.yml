@@ -1,0 +1,160 @@
+name: HTTP Load Evidence
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/worker/**'
+      - 'src/shared/**'
+      - 'migrations/**'
+      - 'scripts/http-load-test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/http-load-evidence.yml'
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type LOAD_TEST_PREVIEW to run against the configured Preview origin
+        required: true
+        type: string
+      profile:
+        description: Bounded load profile
+        required: true
+        default: load
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+          - soak
+      scenario:
+        description: Read-only scenario
+        required: true
+        default: mixed
+        type: choice
+        options:
+          - health
+          - auth-boundary
+          - mixed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: http-load-evidence-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  local-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Migrate Local D1
+        run: npm run db:migrate:local
+
+      - name: Run bounded Local HTTP load smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev -- --host 127.0.0.1 --port 4175 > /tmp/http-load-vite.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:4175/api/health/database > /dev/null; then
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              cat /tmp/http-load-vite.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          npm run performance:http:local -- \
+            --base-url http://127.0.0.1:4175 \
+            --profile smoke \
+            --scenario mixed \
+            --output artifacts/performance/http-load-local.json
+
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Upload Local load evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: http-load-local-${{ github.run_id }}
+          path: artifacts/performance/http-load-local.*
+          if-no-files-found: warn
+          retention-days: 30
+
+  preview-load:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      LOAD_TEST_CONFIRMATION: ${{ inputs.confirmation }}
+      PREVIEW_BASE_URL: ${{ vars.PREVIEW_BASE_URL }}
+      PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate explicit Preview confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$LOAD_TEST_CONFIRMATION" = "LOAD_TEST_PREVIEW"
+          test -n "$PREVIEW_BASE_URL"
+
+      - name: Run bounded Preview load evidence
+        run: >-
+          npm run performance:http:preview --
+          --base-url "$PREVIEW_BASE_URL"
+          --profile "${{ inputs.profile }}"
+          --scenario "${{ inputs.scenario }}"
+          --output artifacts/performance/http-load-preview.json
+
+      - name: Publish load summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f artifacts/performance/http-load-preview.md ]]; then
+            cat artifacts/performance/http-load-preview.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Preview load evidence was not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Preview load evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: http-load-preview-${{ github.run_id }}
+          path: artifacts/performance/http-load-preview.*
+          if-no-files-found: warn
+          retention-days: 30
