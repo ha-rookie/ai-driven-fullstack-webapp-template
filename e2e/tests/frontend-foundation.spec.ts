@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const harness = "/e2e/harness/index.html?view=home";
+const harness = "/e2e/harness/?view=home";
 
 const waitForAuthenticated = async (page: import("@playwright/test").Page) => {
   await expect(page.getByTestId("auth-status")).toHaveText("authenticated");
@@ -34,7 +34,7 @@ test("major navigation participates in browser Back/Forward while filters do not
 });
 
 test("deep link and reload keep one canonical application view", async ({ page }) => {
-  await page.goto("/e2e/harness/index.html?view=detail");
+  await page.goto("/e2e/harness/?view=detail");
   await waitForAuthenticated(page);
   await expect(page.getByTestId("current-view")).toHaveText("detail");
   const historyLength = await page.evaluate(() => window.history.length);
