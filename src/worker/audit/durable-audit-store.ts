@@ -111,12 +111,22 @@ const assertIsoTimestamp = (value: string, name: string): void => {
   }
 };
 
+const containsControlCharacter = (value: string): boolean => {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && (codePoint < 32 || codePoint === 127)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const assertBoundedFilter = (value: string | undefined, name: string): void => {
   if (value === undefined) return;
   if (
     value.length === 0
     || value.length > MAX_FILTER_LENGTH
-    || /[\u0000-\u001f\u007f]/.test(value)
+    || containsControlCharacter(value)
   ) {
     throw new TypeError(`${name} must be a bounded non-control string`);
   }
