@@ -22,7 +22,7 @@ import {
 type View = "home" | "list" | "detail";
 type MutationMode = "success" | "delay" | "conflict" | "auth";
 
-const HARNESS_PATH = "/e2e/harness/index.html";
+const HARNESS_PATH = "/e2e/harness/";
 
 const codec: NavigationCodec<View> = {
   encode(view) {
