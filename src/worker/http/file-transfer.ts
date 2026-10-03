@@ -291,7 +291,10 @@ export const readMultipartUpload = async (
   const parsed = await parseMultipartForm(request, policy.maxRequestBytes);
   if (!parsed.ok) return parsed;
 
-  const entries = Array.from(parsed.form.values());
+  const entries: Array<string | File> = [];
+  parsed.form.forEach((entry) => {
+    entries.push(entry);
+  });
   if (entries.some((entry) => typeof entry === "string")) {
     return failure(400, "malformed_multipart", "Only file parts are accepted by the shared upload boundary");
   }
