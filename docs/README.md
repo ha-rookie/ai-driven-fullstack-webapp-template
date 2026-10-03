@@ -50,6 +50,7 @@ Worker HTTP Boundary / Composition
 | `instructions/README.md` | Full-stack固有Scoped Instructionsの選択方法と責務境界 |
 | `recipes/README.md` | DB/Auth/Recovery/Performance/Production等の繰り返し作業を安全に実行するRecipe索引 |
 | `RUNTIME_PRIMITIVES.md` | Clock / IdGenerator / Runtime Config / Environmentの最小共通境界 |
+| `FEATURE_FLAGS.md` | environment別boolean Feature Flag、段階公開、server-side判定、Authorizationとの責務分離 |
 | `RUNTIME_EVIDENCE_STATUS.md` | Repository / CI / Preview / Production evidenceを分離したread-only Capability Status |
 | `OPERATION_MODE.md` | environment別の運用状態Store、version付き更新、取得不能時のfail-safe契約 |
 | `FRONTEND_SHELL_SAFETY.md` | Operation Mode表示、Permission Guard、Error BoundaryのFrontend安全境界 |
@@ -117,6 +118,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 
 例:
 - shared Clock / IdGenerator / Runtime Config / Environment boundary
+- environment-scoped boolean Feature Flag provider / rollout boundary
 - Project開始時のFull-stack固有decision profile / validator
 - Full-stack固有の繰り返し作業Recipe
 - data lifecycle / retention / long-term backup policy and metadata-only evidence
@@ -159,6 +161,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - Production release condition
 - Project固有のSecurity / Privacy / retention requirement
 - concrete backup provider / retention period / deletion schedule
+- Project固有Feature Flag key / rollout condition
 - Project固有のdependency update cadence / support matrix / release window
 
 ## Example code policy
