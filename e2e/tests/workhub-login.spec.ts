@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const demoPassword = "Workhub-Demo-2026!";
+const invalidPassword = "incorrect-password-value";
 const personas = [
   ["haru", "Haru Newcomer"],
   ["aoi", "Aoi Employee"],
@@ -50,10 +51,10 @@ test("all six WORKHUB personas can authenticate through the server-side credenti
 
 test("invalid credential uses a generic error and does not reveal account existence", async ({ request }) => {
   const known = await request.post("/api/auth/login", {
-    data: { userId: "aoi", password: "incorrect-password-value", remember: false },
+    data: { userId: "aoi", password: invalidPassword, remember: false },
   });
   const unknown = await request.post("/api/auth/login", {
-    data: { userId: "not-a-workhub-user", password: "incorrect-password-value", remember: false },
+    data: { userId: "not-a-workhub-user", password: invalidPassword, remember: false },
   });
 
   expect(known.status()).toBe(401);
