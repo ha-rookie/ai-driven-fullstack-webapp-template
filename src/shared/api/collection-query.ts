@@ -208,8 +208,12 @@ export const parseCollectionQuery = <
   }
 
   const filters: Partial<Record<TFilterKey, readonly string[]>> = {};
-  for (const key of new Set(params.keys())) {
-    if (!key.startsWith("filter.")) continue;
+  const filterParameterKeys = new Set<string>();
+  params.forEach((_value, key) => {
+    if (key.startsWith("filter.")) filterParameterKeys.add(key);
+  });
+
+  for (const key of filterParameterKeys) {
     const publicFilterKey = key.slice("filter.".length);
     if (publicFilterKey.length === 0 || !contract.allowedFilterKeys.includes(publicFilterKey as TFilterKey)) {
       issues.push(issue(
