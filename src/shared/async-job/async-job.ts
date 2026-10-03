@@ -9,7 +9,16 @@ const JOB_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
 const JOB_TYPE_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/;
 const SCHEDULE_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
-const SENSITIVE_PAYLOAD_KEY_PATTERN = /(^|[_-])(authorization|cookie|credential|password|secret|session|token|signed[_-]?url)([_-]|$)/i;
+const SENSITIVE_PAYLOAD_TERMS = [
+  "authorization",
+  "cookie",
+  "credential",
+  "password",
+  "secret",
+  "session",
+  "token",
+  "signedurl",
+] as const;
 const DEFAULT_MAX_PAYLOAD_BYTES = 64 * 1024;
 const MAX_PAYLOAD_BYTES = 1024 * 1024;
 const MAX_PAYLOAD_DEPTH = 24;
@@ -240,6 +249,11 @@ const normalizePayloadLimit = (policy?: AsyncJobPayloadPolicy): number => {
   return maxPayloadBytes;
 };
 
+const isSensitivePayloadKey = (key: string): boolean => {
+  const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return SENSITIVE_PAYLOAD_TERMS.some((term) => normalized.includes(term));
+};
+
 const assertJsonPayloadValue = (
   value: unknown,
   path: string,
@@ -258,7 +272,12 @@ const assertJsonPayloadValue = (
   }
 
   if (Array.isArray(value)) {
-    value.forEach((item, index) => assertJsonPayloadValue(item, `${path}[${index}]`, depth + 1));
+    for (let index = 0; index < value.length; index += 1) {
+      if (!(index in value)) {
+        throw new TypeError(`${path} must not contain sparse array entries`);
+      }
+      assertJsonPayloadValue(value[index], `${path}[${index}]`, depth + 1);
+    }
     return;
   }
 
@@ -272,7 +291,7 @@ const assertJsonPayloadValue = (
   }
 
   for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-    if (SENSITIVE_PAYLOAD_KEY_PATTERN.test(key)) {
+    if (isSensitivePayloadKey(key)) {
       throw new TypeError(`Async job payload must not contain sensitive field '${key}'`);
     }
     assertJsonPayloadValue(nested, `${path}.${key}`, depth + 1);
