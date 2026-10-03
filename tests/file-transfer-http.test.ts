@@ -84,21 +84,11 @@ test("valid multipart upload accepts bounded files and preserves safe Unicode di
   assert.equal(await new Response(result.files[0]!.body).text(), "pdf-body");
 });
 
-test("authorization is evaluated before upload body is read", async () => {
-  let bodyPulled = false;
-  const body = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      bodyPulled = true;
-      controller.enqueue(new TextEncoder().encode("should-not-be-read"));
-      controller.close();
-    },
-  });
-  const request = new Request("https://example.test/api/files", {
-    method: "POST",
-    headers: { "content-type": "multipart/form-data; boundary=never-read" },
-    body,
-    duplex: "half",
-  } as RequestInit & { duplex: "half" });
+test("authorization is evaluated before upload body is consumed", async () => {
+  const request = createUploadRequest([
+    new File(["secret-body"], "secret.txt", { type: "text/plain" }),
+  ]);
+  assert.equal(request.bodyUsed, false);
 
   const result = await readAuthorizedMultipartUpload(request, policy, async () => ({
     allowed: false,
@@ -109,7 +99,9 @@ test("authorization is evaluated before upload body is read", async () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.ok ? undefined : result.code, "forbidden");
-  assert.equal(bodyPulled, false);
+  assert.equal(request.bodyUsed, false);
+  const untouchedBody = await request.arrayBuffer();
+  assert.ok(untouchedBody.byteLength > 0);
 });
 
 test("actual streamed bytes are bounded even without Content-Length", async () => {
