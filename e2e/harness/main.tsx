@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ApiClientError } from "../../src/frontend/api";
@@ -256,9 +256,7 @@ const root = document.getElementById("root");
 if (!root) throw new Error("root element missing");
 
 createRoot(root).render(
-  <StrictMode>
-    <AuthProvider controller={authController}>
-      <Harness />
-    </AuthProvider>
-  </StrictMode>,
+  <AuthProvider controller={authController}>
+    <Harness />
+  </AuthProvider>,
 );
