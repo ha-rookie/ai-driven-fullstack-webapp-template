@@ -1,0 +1,54 @@
+name: Browser E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/frontend/**'
+      - 'e2e/**'
+      - 'playwright.config.ts'
+      - '.github/workflows/browser-e2e.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install repository dependencies
+        run: npm ci
+
+      - name: Install pinned Playwright test runner
+        run: npm install --no-save --package-lock=false @playwright/test@1.63.0
+
+      - name: Install Chromium only
+        run: npx playwright install --with-deps chromium
+
+      - name: Run representative browser scenarios
+        run: npx playwright test
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-failure-${{ github.run_id }}
+          path: test-results/browser-e2e
+          if-no-files-found: ignore
+          retention-days: 7
