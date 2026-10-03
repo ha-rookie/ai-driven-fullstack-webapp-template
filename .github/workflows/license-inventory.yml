@@ -25,7 +25,7 @@ jobs:
         run: npm run supply-chain:licenses
       - name: Upload license inventory evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: license-inventory-${{ github.sha }}
           path: license-inventory.json

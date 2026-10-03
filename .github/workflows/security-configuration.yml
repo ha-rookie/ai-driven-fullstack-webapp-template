@@ -20,7 +20,7 @@ jobs:
       - name: Validator self-test
         run: node scripts/validate-security-config.mjs --self-test
       - name: Upload validation policy evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-configuration-policy
           path: |

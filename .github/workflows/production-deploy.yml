@@ -121,7 +121,7 @@ jobs:
           node -e 'const fs=require("fs"); fs.writeFileSync("evidence/production-deploy.json", JSON.stringify({targetSha:process.argv[1], workflowRunId:process.argv[2], environment:"production", status:"deployed"}, null, 2)+"\n")' "${{ inputs.target_sha }}" "${{ github.run_id }}"
 
       - name: Upload deploy evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: production-deploy-evidence-${{ inputs.target_sha }}
           path: evidence/production-deploy.json
