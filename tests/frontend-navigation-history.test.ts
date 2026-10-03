@@ -73,7 +73,7 @@ const flush = async () => {
 
 test("bootstrap preserves a valid deep link and replaces rather than pushing a duplicate entry", () => {
   const history = new FakeHistory("https://example.test/detail?ignored=true");
-  const controller = createNavigationController({ codec, history, fallbackView: "home" });
+  const controller = createNavigationController<View>({ codec, history, fallbackView: "home" });
 
   const result = controller.bootstrap();
 
@@ -85,7 +85,7 @@ test("bootstrap preserves a valid deep link and replaces rather than pushing a d
 
 test("unknown direct access canonicalizes to the fallback without adding browser history", () => {
   const history = new FakeHistory("/not-a-route");
-  const controller = createNavigationController({ codec, history, fallbackView: "home" });
+  const controller = createNavigationController<View>({ codec, history, fallbackView: "home" });
 
   controller.bootstrap();
 
@@ -95,7 +95,7 @@ test("unknown direct access canonicalizes to the fallback without adding browser
 
 test("user navigation pushes each major view and browser back restores the intermediate view", async () => {
   const history = new FakeHistory("/");
-  const controller = createNavigationController({ codec, history, fallbackView: "home" });
+  const controller = createNavigationController<View>({ codec, history, fallbackView: "home" });
   controller.bootstrap();
 
   assert.equal(await controller.navigate("list"), true);
@@ -117,7 +117,7 @@ test("user navigation pushes each major view and browser back restores the inter
 
 test("replace changes the current view without adding a browser history entry", async () => {
   const history = new FakeHistory("/");
-  const controller = createNavigationController({ codec, history, fallbackView: "home" });
+  const controller = createNavigationController<View>({ codec, history, fallbackView: "home" });
   controller.bootstrap();
   await controller.navigate("list");
 
@@ -132,7 +132,7 @@ test("replace changes the current view without adding a browser history entry", 
 test("unsaved-state guard can block user-originated navigation before history changes", async () => {
   const history = new FakeHistory("/");
   let dirty = true;
-  const controller = createNavigationController({
+  const controller = createNavigationController<View>({
     codec,
     history,
     fallbackView: "home",
@@ -152,7 +152,7 @@ test("unsaved-state guard can block user-originated navigation before history ch
 test("recognized browser back is restored when unsaved-state guard denies leaving", async () => {
   const history = new FakeHistory("/");
   let dirty = false;
-  const controller = createNavigationController({
+  const controller = createNavigationController<View>({
     codec,
     history,
     fallbackView: "home",
@@ -177,7 +177,7 @@ test("recognized browser back is restored when unsaved-state guard denies leavin
 
 test("history state contains only the navigation marker and index, not the application view", async () => {
   const history = new FakeHistory("/");
-  const controller = createNavigationController({ codec, history, fallbackView: "home" });
+  const controller = createNavigationController<View>({ codec, history, fallbackView: "home" });
   controller.bootstrap();
   await controller.navigate("detail");
 
