@@ -151,9 +151,11 @@ Failure records may use only controlled reasons from the Session Rotation contra
 
 The rotation helper intentionally receives `userId`, `outcome`, and controlled `reason` separately. It does **not** receive the Rotation service result because that result contains the browser `Set-Cookie` value.
 
-## Output sink
+## Output sinks
 
-The baseline sink writes one JSON record per event through Worker `console.info`.
+### Console sink
+
+The lightweight baseline sink writes one JSON record per event through Worker `console.info`.
 
 ```text
 AuditEvent
@@ -167,35 +169,48 @@ console.info
 
 Issue #65 shares the same pure `src/shared/logging/redaction.ts` utility with the Application Logger. It masks known secret/cookie/token and PII-candidate **keys**, recursively handles nested plain data and applies fixed limits (depth 4; string length 256; key length 64; collection entries 20; visited nodes 128). Excess or cyclic data uses `[TRUNCATED]`; known sensitive keys use `[REDACTED]`.
 
-The Audit contract stays explicitly allowlisted, and `toStructuredAuditRecord` still returns the original bounded **unredacted** projection for internal composition. **Only the `ConsoleAuditLogger.write` sink is the documented redacted output boundary.** Do not serialize intermediate records or pass an arbitrary AuditEvent to an alternative sink without applying the same redactor. `writeAuditSafely` continues isolating sink failures.
+The Audit contract stays explicitly allowlisted, and `toStructuredAuditRecord` still returns the original bounded **unredacted** projection for internal composition. **Only a documented output sink may serialize the record, and that sink must apply the same redaction boundary.** Do not serialize an arbitrary AuditEvent directly.
 
 Key-based redaction is not complete PII/DLP detection. Use controlled `action`, `reason`, `resourceId` and `path` values. Do not put tokens, email addresses or user-generated text inside permitted string fields. For Application Logger guidance, see `APPLICATION_LOGGING.md`.
 
-This keeps the template deployable without provisioning another service or D1 table.
+### Durable D1 sink (#44)
 
-Durable Audit storage is an Operations decision because it requires explicit choices for:
+`D1DurableAuditStore` adds a searchable, environment-scoped D1 persistence option.
 
-- retention
-- access control
-- searchability
-- export
-- cost/quota
-- privacy
-- deletion policy
+It keeps the same bounded Audit contract and applies shared redaction before storing `record_json`. A SHA-256 digest is stored as `record_sha256` and verified when records are read.
+
+The durable store is **available Foundation, not automatic Worker wiring**. Projects decide which Audit events require durable persistence and whether writes are `best_effort` or `required`.
+
+The D1 implementation is a reference/default implementation for this Workers + D1 Template. The upper `DurableAuditSink` contract may be adapted to R2, Logpush, SIEM, or another private store without changing the Audit event vocabulary.
+
+Detailed retention, search, integrity, access-control and Production boundaries are documented in `DURABLE_AUDIT_STORAGE.md`.
 
 ## Failure isolation
 
-Audit writing is best-effort in the baseline.
+Console Audit writing remains best-effort in the baseline. `writeAuditSafely(...)` catches sink failures so console logging failure does not turn a valid Core operation into a business failure.
 
-A sink failure must not turn an otherwise valid Core operation into a business failure. `writeAuditSafely(...)` catches sink failures at the boundary.
+Durable Audit adds an explicit `writeDurableAudit(...)` policy:
+
+- `best_effort`: durable storage failure is reported as `false` but not thrown
+- `required`: durable storage failure throws `DurableAuditWriteError`
+
+`required` **does not mean atomic with the business mutation**. If a Project needs “business update and Audit persistence succeed or fail together,” it must design a Project-specific transactional/outbox boundary. The Template does not claim that guarantee.
+
+## Durable search / retention boundary
+
+Durable search does not accept arbitrary SQL. It supports bounded exact filters for time range, category, outcome, action, actor, scope and resource identifiers, plus a stable time/id cursor and a maximum page size of 100.
+
+Every query and retention purge is scoped to the Store's configured Runtime Environment. Preview does not fall back to or read Production Audit data.
+
+Retention is a Project decision. `purgeExpired()` requires an explicit positive `retentionDays` and deletes in bounded batches. Normal PR CI never purges Production data.
+
+The SHA-256 digest detects record-json mismatch, but it is not WORM, signing, or complete tamper resistance. Stronger regulatory requirements remain Project-specific.
 
 ## Operation mode change projection (#117)
 
 `AuditEvent.operationModeChange` is an optional, explicitly projected accountability payload for `operation_mode.update`: environment, beforeMode, afterMode, beforeVersion, afterVersion and operator reason. Modes/environments must be from the shared contracts; versions must be positive safe integers with afterVersion exactly beforeVersion + 1. The reason is bounded to 200 non-control characters. Invalid payloads are omitted; arbitrary extra fields are never serialized. This is a narrow operational metadata exception to the general prohibition on copying user text into Audit: reasons must contain no credentials, request bodies or unnecessary personal information, and shared redaction still applies.
 
-The actor/scope/request context remains in standard fields. Failed changes use controlled reasons without the operator input or exception text. The baseline sink remains best-effort and isolated from mutation results; this field does not claim durable or atomic Audit persistence (see #44).
-
-This does **not** mean Audit reliability is unimportant. A project with regulatory or contractual requirements may deliberately choose a stronger transactional Audit design, but that is outside the generic baseline.
+The actor/scope/request context remains in standard fields. Failed changes use controlled reasons without the operator input or exception text. Console Audit remains best-effort. Projects that adopt Durable Audit can persist the same projected record, but this still does not make Operation Mode mutation and Audit persistence automatically atomic.
 
 ## Current Worker integration
 
@@ -218,6 +233,8 @@ Issue #71 adds a reusable Audit builder for successful user-level bulk Session R
 
 Successful read-only `/api/auth/me` requests are not audited by default to avoid producing low-value high-volume logs.
 
+Durable Audit is intentionally not wired automatically to every event in `src/worker.ts`. A Project must decide which events justify durable retention, what retention period applies, and who may search/export those records.
+
 ## Testing
 
 Unit tests verify:
@@ -233,8 +250,13 @@ Unit tests verify:
 - generic authentication / authorization / mutation categories
 - Session Revocation event shape without token/Cookie fields
 - Session Rotation success/failure event shape without token/hash/Cookie fields
-- Audit sink failure isolation
+- Console Audit sink failure isolation
+- Durable Audit environment separation
+- Durable Audit query values are bound instead of concatenated
+- Durable Audit SHA-256 mismatch fails closed
+- retention purge is environment-scoped and batch-bounded
+- best-effort / required durable write behavior
 
-Runtime smoke tests also verify `x-request-id` propagation on success, authentication failure, logout, and API 404 responses.
+Local CI applies `0016_durable_audit_storage.sql` and verifies the required Production schema baseline. It does not run a remote Production migration, export, or purge.
 
-Remote log ingestion is not part of baseline CI.
+Remote log/Audit ingestion verification is not part of baseline PR CI.
