@@ -2,6 +2,7 @@ export * from "./application-session";
 export * from "./active-session-query";
 export * from "./auth-provider";
 export * from "./google-oidc-provider";
+export * from "./local-credential";
 export * from "./oidc-provider";
 export * from "./saml-provider";
 export * from "./session-revocation";
