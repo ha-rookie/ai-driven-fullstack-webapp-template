@@ -58,6 +58,7 @@ Worker HTTP Boundary / Composition
 | `DATA_LIFECYCLE_BACKUP.md` | 長期Backup、retention/deletion、private storage、Backup Evidence、restore rehearsal境界 |
 | `AUTH_DESIGN.md` | Provider-independent identityとapplication session |
 | `AUTHORIZATION_DESIGN.md` | Resource Scope / Membership / Role Policy / Guard |
+| `DATA_MASKING.md` | 個人情報などの表示値をAPI responseでreveal / mask / omitするField Policyとfail-closed境界 |
 | `RUNTIME_INTEGRITY.md` | optimistic concurrency、state transition、atomicity、DB constraints |
 | `AUDIT_OBSERVABILITY.md` | Correlation ID、structured Audit、安全なfield境界 |
 | `DURABLE_AUDIT_STORAGE.md` | 監査記録のD1永続化、検索、retention、整合性検知、失敗モードとProduction境界 |
@@ -124,6 +125,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - Full-stack固有の繰り返し作業Recipe
 - data lifecycle / retention / long-term backup policy and metadata-only evidence
 - structured Audit / D1 durable Audit storage / bounded search / retention purge
+- API responseのsensitive field reveal / mask / omit policyとpure masking utility
 - request-scoped structured Application Log
 - low-cardinality runtime metrics / provider-neutral alert evaluation
 - dependency update proposal / validation / Human review boundary
@@ -162,6 +164,7 @@ Full-stack固有で、実際のコード・migration・Worker・D1 operationと�
 - SLA / SLO / RPO / RTO
 - Production release condition
 - Project固有のSecurity / Privacy / retention requirement
+- 個人情報・機微情報として扱うField一覧と、reveal / mask / omitを決めるRole・permission・利用目的
 - concrete backup provider / retention period / deletion schedule
 - Project固有Audit retention / export / stronger tamper-resistance requirement
 - Project固有Feature Flag key / rollout condition
