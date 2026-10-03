@@ -1,0 +1,95 @@
+name: Runtime Evidence Status
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact commit SHA to derive the read-only evidence view for
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: runtime-evidence-status-${{ inputs.target_sha }}
+  cancel-in-progress: true
+
+jobs:
+  derive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Validate requested SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[a-f0-9]{40}$ ]]
+
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 2
+
+      - name: Verify checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate status generator
+        run: npm run runtime-evidence:validate
+
+      - name: Derive read-only runtime evidence status
+        run: |
+          npm run runtime-evidence:status -- \
+            --repository "$GITHUB_REPOSITORY" \
+            --target-sha "$TARGET_SHA" \
+            --output artifacts/runtime-evidence/status.json
+
+      - name: Publish concise summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const status = JSON.parse(fs.readFileSync('artifacts/runtime-evidence/status.json', 'utf8'));
+          const lines = [
+            '# Runtime Evidence Status',
+            '',
+            `- authoritative: ${status.authoritative}`,
+            `- target SHA: ${status.targetSha}`,
+            `- evidence SHA: ${status.evidenceSha}`,
+            `- package: ${status.packageVersion ?? 'unknown'}`,
+            `- baseline implementation: ${status.summary.baselineImplementation}`,
+            `- exact-SHA CI: ${status.summary.exactShaCi}`,
+            `- browser E2E: ${status.summary.browserE2E}`,
+            `- Preview remote: ${status.summary.previewRemote}`,
+            `- Production: ${status.summary.production}`,
+            `- unverified checks: ${status.unverifiedChecks.length}`,
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          NODE
+
+      - name: Upload derived evidence view
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-evidence-status-${{ inputs.target_sha }}
+          path: artifacts/runtime-evidence/status.json
+          if-no-files-found: error
+          retention-days: 30
