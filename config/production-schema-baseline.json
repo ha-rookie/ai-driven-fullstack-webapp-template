@@ -24,7 +24,8 @@
     "durable_audit_events": ["id", "environment", "occurred_at", "request_id", "category", "action", "outcome", "actor_id", "scope_id", "resource_type", "resource_id", "record_json", "record_sha256", "created_at"],
     "saml_assertion_replays": ["environment", "provider", "assertion_id", "expires_at", "consumed_at"],
     "local_credentials": ["user_id", "identifier_normalized", "password_hash", "password_changed_at", "created_at", "updated_at"],
-    "password_reset_tokens": ["id", "token_hash", "user_id", "expires_at", "consumed_at", "created_at"]
+    "password_reset_tokens": ["id", "token_hash", "user_id", "expires_at", "consumed_at", "created_at"],
+    "credential_attack_states": ["environment", "endpoint_id", "dimension", "subject_hash", "failure_count", "window_started_at", "locked_until", "updated_at"]
   },
   "requiredIndexes": [
     "idx_example_resources_created_at",
@@ -47,6 +48,8 @@
     "idx_saml_assertion_replays_expiry",
     "idx_local_credentials_identifier",
     "idx_password_reset_tokens_user_state",
-    "idx_password_reset_tokens_expiry"
+    "idx_password_reset_tokens_expiry",
+    "idx_credential_attack_updated",
+    "idx_credential_attack_locked"
   ]
 }
