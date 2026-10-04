@@ -1,3 +1,8 @@
+import {
+  createSearchCursorBinding,
+  sameSearchCursorBinding,
+  type SearchCursorCodec,
+} from "./cursor";
 import type {
   SearchAuthorizationDecision,
   SearchAuthorizationService,
@@ -71,14 +76,33 @@ export class SearchApplicationService {
     private readonly provider: SearchProvider,
     private readonly authorization: SearchAuthorizationService,
     private readonly hydrator: SearchResultHydrator,
+    private readonly cursorCodec: SearchCursorCodec,
   ) {}
 
   async search(principal: SearchPrincipal, query: SearchQuery): Promise<SearchResponse> {
     const normalized = normalizeQuery(query);
-    const providerResult = await this.provider.search({ query: normalized, principal });
+    const binding = createSearchCursorBinding(principal, normalized);
+    let providerCursor: string | undefined;
+
+    if (normalized.cursor) {
+      const decoded = await this.cursorCodec.decode(normalized.cursor);
+      if (!decoded || !sameSearchCursorBinding(decoded.binding, binding)) {
+        throw new SearchRequestError("invalid_cursor");
+      }
+      providerCursor = decoded.providerCursor;
+    }
+
+    const providerQuery: SearchQuery = {
+      ...normalized,
+      ...(providerCursor ? { cursor: providerCursor } : { cursor: undefined }),
+    };
+    const providerResult = await this.provider.search({ query: providerQuery, principal });
+    const nextCursor = providerResult.nextCursor
+      ? await this.cursorCodec.encode({ providerCursor: providerResult.nextCursor, binding })
+      : null;
 
     if (providerResult.candidates.length === 0) {
-      return { results: [], nextCursor: providerResult.nextCursor };
+      return { results: [], nextCursor };
     }
 
     const decisions = await this.authorization.authorizeBatch({
@@ -91,7 +115,7 @@ export class SearchApplicationService {
     const authorizedCandidates = providerResult.candidates.filter((candidate) => allowed.has(candidateKey(candidate)));
 
     if (authorizedCandidates.length === 0) {
-      return { results: [], nextCursor: providerResult.nextCursor };
+      return { results: [], nextCursor };
     }
 
     const hydrated = await this.hydrator.hydrateBatch({
@@ -103,7 +127,7 @@ export class SearchApplicationService {
 
     return {
       results: safeResults.slice(0, normalized.limit ?? DEFAULT_LIMIT),
-      nextCursor: providerResult.nextCursor,
+      nextCursor,
     };
   }
 }
