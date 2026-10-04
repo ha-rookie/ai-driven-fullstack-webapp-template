@@ -120,9 +120,9 @@ export class D1WorkflowStore implements WorkflowStore {
           INSERT INTO workflow_instances (
             id, environment, resource_type, resource_id, definition_key, definition_version,
             requester_id, state, current_step_key, returned_step_key, version,
-            next_work_item_sequence, next_transition_sequence, submission_key,
+            next_work_item_sequence, next_transition_sequence, submission_key, last_mutation_id,
             created_at, updated_at, completed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           instance.id,
           instance.environment,
@@ -138,6 +138,7 @@ export class D1WorkflowStore implements WorkflowStore {
           instance.nextWorkItemSequence,
           instance.nextTransitionSequence,
           instance.submissionKey,
+          transition.id,
           instance.createdAt,
           instance.updatedAt,
           instance.completedAt,
@@ -187,7 +188,7 @@ export class D1WorkflowStore implements WorkflowStore {
     const instanceUpdate = this.db.prepare(`
       UPDATE workflow_instances
       SET state = ?, current_step_key = ?, returned_step_key = ?, version = ?,
-          next_work_item_sequence = ?, next_transition_sequence = ?,
+          next_work_item_sequence = ?, next_transition_sequence = ?, last_mutation_id = ?,
           updated_at = ?, completed_at = ?
       WHERE id = ? AND environment = ? AND version = ?
         AND (
@@ -217,6 +218,7 @@ export class D1WorkflowStore implements WorkflowStore {
       instance.version,
       instance.nextWorkItemSequence,
       instance.nextTransitionSequence,
+      transition.id,
       instance.updatedAt,
       instance.completedAt,
       instance.id,
@@ -239,7 +241,7 @@ export class D1WorkflowStore implements WorkflowStore {
             SELECT 1 FROM workflow_instances i
             WHERE i.id = workflow_work_items.workflow_instance_id
               AND i.environment = workflow_work_items.environment
-              AND i.version = ?
+              AND i.last_mutation_id = ?
           )
       `).bind(
         completedWorkItem.status,
@@ -250,16 +252,22 @@ export class D1WorkflowStore implements WorkflowStore {
         completedWorkItem.environment,
         completedWorkItem.workflowInstanceId,
         bundle.expectedWorkItemVersion,
-        instance.version,
+        transition.id,
       ));
     }
-    if (nextWorkItem) statements.push(insertWorkItemStatement(this.db, nextWorkItem));
-    statements.push(this.insertTransition(transition));
+    if (nextWorkItem) {
+      statements.push(this.insertWorkItemAfterMutation(nextWorkItem, transition.id));
+    }
+    statements.push(this.insertTransitionAfterMutation(
+      transition,
+      completedWorkItem,
+      nextWorkItem,
+    ));
 
     try {
       const results = await this.db.batch(statements);
-      const firstChanges = changesOf(results[0] as D1Result<unknown>);
-      if (firstChanges === 0) return false;
+      const first = results[0];
+      if (!first || changesOf(first) === 0) return false;
       if (results.length !== statements.length || results.some((result) => changesOf(result) !== 1)) {
         throw new WorkflowStoreIntegrityError("workflow mutation batch persisted an unexpected number of rows");
       }
@@ -284,6 +292,108 @@ export class D1WorkflowStore implements WorkflowStore {
       LIMIT ?
     `).bind(environment, assigneePrincipal, limit).all<WorkItemRow>();
     return (result.results ?? []).map(mapWorkItem);
+  }
+
+  private insertWorkItemAfterMutation(item: WorkflowWorkItemRecord, mutationId: string) {
+    return this.db.prepare(`
+      INSERT INTO workflow_work_items (
+        id, environment, workflow_instance_id, step_key, assignee_principal,
+        status, sequence, version, created_at, due_at, completed_at, completed_by
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM workflow_instances i
+        WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ?
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM workflow_work_items wi
+        WHERE wi.workflow_instance_id = ? AND wi.environment = ? AND wi.status = 'open'
+      )
+    `).bind(
+      item.id,
+      item.environment,
+      item.workflowInstanceId,
+      item.stepKey,
+      item.assigneePrincipal,
+      item.status,
+      item.sequence,
+      item.version,
+      item.createdAt,
+      item.dueAt,
+      item.completedAt,
+      item.completedBy,
+      item.workflowInstanceId,
+      item.environment,
+      mutationId,
+      item.workflowInstanceId,
+      item.environment,
+    );
+  }
+
+  private insertTransitionAfterMutation(
+    transition: WorkflowMutationBundle["transition"],
+    completedWorkItem: WorkflowWorkItemRecord | undefined,
+    nextWorkItem: WorkflowWorkItemRecord | undefined,
+  ) {
+    return this.db.prepare(`
+      INSERT INTO workflow_transitions (
+        id, environment, workflow_instance_id, work_item_id, sequence, transition,
+        actor_id, from_state, to_state, from_step_key, to_step_key,
+        definition_version, reason_code, comment, request_id, correlation_id, occurred_at
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM workflow_instances i
+        WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ?
+      )
+      AND (
+        ? IS NULL
+        OR EXISTS (
+          SELECT 1 FROM workflow_work_items wi
+          WHERE wi.id = ? AND wi.workflow_instance_id = ? AND wi.environment = ?
+            AND wi.status = ? AND wi.version = ?
+        )
+      )
+      AND (
+        ? IS NULL
+        OR EXISTS (
+          SELECT 1 FROM workflow_work_items wi2
+          WHERE wi2.id = ? AND wi2.workflow_instance_id = ? AND wi2.environment = ?
+            AND wi2.status = 'open'
+        )
+      )
+    `).bind(
+      transition.id,
+      transition.environment,
+      transition.workflowInstanceId,
+      transition.workItemId,
+      transition.sequence,
+      transition.transition,
+      transition.actorId,
+      transition.fromState,
+      transition.toState,
+      transition.fromStepKey,
+      transition.toStepKey,
+      transition.definitionVersion,
+      transition.reasonCode,
+      transition.comment,
+      transition.requestId,
+      transition.correlationId,
+      transition.occurredAt,
+      transition.workflowInstanceId,
+      transition.environment,
+      transition.id,
+      completedWorkItem?.id ?? null,
+      completedWorkItem?.id ?? null,
+      transition.workflowInstanceId,
+      transition.environment,
+      completedWorkItem?.status ?? null,
+      completedWorkItem?.version ?? null,
+      nextWorkItem?.id ?? null,
+      nextWorkItem?.id ?? null,
+      transition.workflowInstanceId,
+      transition.environment,
+    );
   }
 
   private insertTransition(transition: WorkflowMutationBundle["transition"] | WorkflowStartBundle["transition"]) {
