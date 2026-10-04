@@ -33,9 +33,11 @@ const registry = (endpoint: string, enabled = true): WebhookDestinationRegistry 
   },
 });
 
+const responseHeaders = (headers: Record<string, string> = {}): Readonly<Record<string, string>> => headers;
+
 const successTransport = (): WebhookTransport => ({
   async post() {
-    return { status: 204, headers: {} };
+    return { status: 204, headers: responseHeaders() };
   },
 });
 
@@ -97,17 +99,17 @@ test("rejects loopback, private, link-local, metadata-range, malformed, and mixe
 });
 
 test("passes only validated DNS answers to transport so transport can pin the connection", async () => {
-  let captured: Parameters<WebhookTransport["post"]>[0] | null = null;
+  const captured: Array<Parameters<WebhookTransport["post"]>[0]> = [];
   const transport: WebhookTransport = {
     async post(input) {
-      captured = input;
-      return { status: 204, headers: {} };
+      captured.push(input);
+      return { status: 204, headers: responseHeaders() };
     },
   };
   const result = await adapter({ addresses: ["93.184.216.34"], transport }).deliver(request);
   assert.equal(result.kind, "delivered");
-  assert.deepEqual(captured?.resolvedAddresses, ["93.184.216.34"]);
-  assert.equal(captured?.redirect, "manual");
+  assert.deepEqual(captured[0]?.resolvedAddresses, ["93.184.216.34"]);
+  assert.equal(captured[0]?.redirect, "manual");
 });
 
 test("307/308 redirects are revalidated and private redirect targets are blocked", async () => {
@@ -115,8 +117,13 @@ test("307/308 redirects are revalidated and private redirect targets are blocked
   const transport: WebhookTransport = {
     async post() {
       calls += 1;
-      if (calls === 1) return { status: 307, headers: { location: "https://internal.example.com/hook" } };
-      return { status: 204, headers: {} };
+      if (calls === 1) {
+        return {
+          status: 307,
+          headers: responseHeaders({ location: "https://internal.example.com/hook" }),
+        };
+      }
+      return { status: 204, headers: responseHeaders() };
     },
   };
   const delivery = new SecureWebhookDeliveryAdapter({
@@ -139,7 +146,14 @@ test("307/308 redirects are revalidated and private redirect targets are blocked
 
 test("does not follow POST-changing redirects and classifies retryable/permanent statuses", async () => {
   const response = async (status: number) => adapter({
-    transport: { async post() { return { status, headers: { location: "https://hooks.example.com/next" } }; } },
+    transport: {
+      async post() {
+        return {
+          status,
+          headers: responseHeaders({ location: "https://hooks.example.com/next" }),
+        };
+      },
+    },
   }).deliver(request);
 
   assert.deepEqual(await response(302), { kind: "permanent_failure", failureCode: "http_302" });
@@ -165,7 +179,7 @@ test("signer receives bounded signing inputs and returned headers are sent witho
       async post(input) {
         authorizationHeader = input.headers.authorization;
         assert.equal(input.headers["x-webhook-signature"], "reference-signature");
-        return { status: 204, headers: {} };
+        return { status: 204, headers: responseHeaders() };
       },
     },
     now: () => new Date("2026-10-04T12:00:00.000Z"),
