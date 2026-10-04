@@ -1,4 +1,5 @@
 import {
+  InMemorySearchCursorCodec,
   InMemorySearchProvider,
   SearchApplicationService,
   type SearchAuthorizationService,
@@ -70,6 +71,7 @@ export const createWorkhubReferenceSearch = (): SearchApplicationService =>
     new InMemorySearchProvider(WORKHUB_SEARCH_DOCUMENTS),
     authorization,
     hydrator,
+    new InMemorySearchCursorCodec(),
   );
 
 export const workhubSearchPrincipal = (principalId: "aoi" | "ren"): SearchPrincipal => ({
