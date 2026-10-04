@@ -49,10 +49,7 @@ export interface NotificationSourceEvent {
   readonly attributes?: Readonly<Record<string, NotificationPresentationValue>>;
 }
 
-export interface NotificationRecipientContext {
-  readonly event: NotificationSourceEvent;
-}
-
+export interface NotificationRecipientContext { readonly event: NotificationSourceEvent; }
 export interface NotificationRecipientResolver {
   resolve(resolverKey: string, context: NotificationRecipientContext): Promise<readonly string[]>;
 }
@@ -84,19 +81,7 @@ export interface TransactionalNotificationStore {
     readonly limit: number;
     readonly cursor?: string;
   }): Promise<readonly TransactionalNotificationRecord[]>;
-  markRead(input: {
-    readonly id: string;
-    readonly environment: string;
-    readonly recipientPrincipal: string;
-    readonly expectedVersion: number;
-    readonly readAt: string;
-  }): Promise<boolean>;
-  archive(input: {
-    readonly id: string;
-    readonly environment: string;
-    readonly recipientPrincipal: string;
-    readonly expectedVersion: number;
-    readonly archivedAt: string;
-  }): Promise<boolean>;
+  markRead(input: { readonly id: string; readonly environment: string; readonly recipientPrincipal: string; readonly expectedVersion: number; readonly readAt: string }): Promise<boolean>;
+  archive(input: { readonly id: string; readonly environment: string; readonly recipientPrincipal: string; readonly expectedVersion: number; readonly archivedAt: string }): Promise<boolean>;
   countUnread(environment: string, recipientPrincipal: string): Promise<number>;
 }
