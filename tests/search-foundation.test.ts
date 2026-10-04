@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createWorkhubReferenceSearch,
+  workhubSearchPrincipal,
+} from "../src/reference/workhub/search";
+import {
   InMemorySearchProvider,
   SearchApplicationService,
   SearchRequestError,
@@ -119,4 +123,17 @@ test("in-memory provider applies category filter deterministically", async () =>
   });
 
   assert.deepEqual(result.candidates.map((candidate) => candidate.resourceId), ["doc-1"]);
+});
+
+test("WORKHUB reference search applies current principal authorization", async () => {
+  const service = createWorkhubReferenceSearch();
+
+  const aoi = await service.search(workhubSearchPrincipal("aoi"), { text: "Tokyo" });
+  const ren = await service.search(workhubSearchPrincipal("ren"), { text: "Tokyo" });
+
+  assert.deepEqual(aoi.results.map((result) => result.resourceId), ["travel-aoi-tokyo"]);
+  assert.deepEqual(
+    ren.results.map((result) => result.resourceId).sort(),
+    ["travel-aoi-tokyo", "travel-other-tokyo"],
+  );
 });
