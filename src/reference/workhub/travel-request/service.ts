@@ -43,7 +43,7 @@ export interface TravelRequestServiceOptions {
   readonly environment: string;
   readonly store: TravelRequestStore;
   readonly masterData: Pick<MasterDataService, "listSelectable" | "resolveAsOf">;
-  readonly workflow: Pick<WorkflowService, "start" | "resubmit">;
+  readonly workflow: Pick<WorkflowService, "start"> & Partial<Pick<WorkflowService, "resubmit">>;
   readonly workflowState?: TravelRequestWorkflowStateReader;
   readonly mutationGate?: TravelRequestMutationGate;
   readonly now?: () => Date;
@@ -332,8 +332,13 @@ export class TravelRequestService {
       }
     }
 
+    const resubmitWorkflow = this.options.workflow.resubmit;
+    if (!resubmitWorkflow) {
+      throw new TravelRequestError("invalid_state", "workflow resubmission is not available");
+    }
+
     try {
-      const workflow = await this.options.workflow.resubmit({
+      const workflow = await resubmitWorkflow.call(this.options.workflow, {
         instanceId: instance.id,
         actorId: command.principalId,
         expectedInstanceVersion: command.expectedWorkflowVersion,
