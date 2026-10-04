@@ -24,6 +24,8 @@
     "src/worker/audit/**/*.ts",
     "src/worker/workflow/**/*.ts",
     "src/worker/master-data/**/*.ts",
+    "src/worker/business-activity/**/*.ts",
+    "src/worker/transactional-notification/**/*.ts",
     "tests/**/*.ts"
   ]
 }
