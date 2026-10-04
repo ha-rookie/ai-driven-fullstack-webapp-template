@@ -60,7 +60,7 @@ export interface SubmitTravelRequestCommand {
   readonly correlationId?: string;
 }
 
-export interface UpdateReturnedTravelRequestCommand extends UpdateTravelRequestCommand {}
+export type UpdateReturnedTravelRequestCommand = UpdateTravelRequestCommand;
 
 export interface ResubmitTravelRequestCommand {
   readonly id: string;
