@@ -1,5 +1,10 @@
 import type { Clock, IdGenerator } from "../../shared/runtime";
 import {
+  fromWebhookVerificationRejection,
+  type SecurityRejectionContext,
+  type SecurityRejectionEvent,
+} from "../security";
+import {
   InboundWebhookProcessingError,
   InboundWebhookVerificationError,
   type InboundWebhookBusinessHandler,
@@ -20,6 +25,10 @@ export type InboundWebhookHandleResult =
   | { readonly kind: "processed" | "ignored"; readonly receipt: InboundWebhookReceiptRecord }
   | { readonly kind: "duplicate"; readonly receipt: InboundWebhookReceiptRecord };
 
+export interface InboundWebhookSecurityRejectionSink {
+  record(event: SecurityRejectionEvent): Promise<void> | void;
+}
+
 export interface InboundWebhookServiceOptions<TCommand> {
   readonly environment: string;
   readonly store: InboundWebhookReceiptStore;
@@ -28,6 +37,7 @@ export interface InboundWebhookServiceOptions<TCommand> {
   readonly handler: InboundWebhookBusinessHandler<TCommand>;
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
+  readonly securityRejectionSink?: InboundWebhookSecurityRejectionSink;
   readonly maxBodyBytes?: number;
   readonly maxProcessingAttempts?: number;
 }
@@ -36,6 +46,7 @@ export interface HandleInboundWebhookInput {
   readonly providerKey: string;
   readonly headers: InboundWebhookHeaders;
   readonly rawBody: Uint8Array;
+  readonly securityContext?: SecurityRejectionContext;
 }
 
 const assertVerifiedEvent = (
@@ -66,22 +77,35 @@ export class InboundWebhookService<TCommand> {
   }
 
   async handle(input: HandleInboundWebhookInput): Promise<InboundWebhookHandleResult> {
-    if (!PROVIDER_KEY_PATTERN.test(input.providerKey)) {
-      throw new InboundWebhookVerificationError("invalid_provider");
-    }
-    if (input.rawBody.byteLength === 0 || input.rawBody.byteLength > this.maxBodyBytes) {
-      throw new InboundWebhookVerificationError("invalid_body_size");
-    }
+    try {
+      if (!PROVIDER_KEY_PATTERN.test(input.providerKey)) {
+        throw new InboundWebhookVerificationError("invalid_provider");
+      }
+      if (input.rawBody.byteLength === 0 || input.rawBody.byteLength > this.maxBodyBytes) {
+        throw new InboundWebhookVerificationError("invalid_body_size");
+      }
 
-    const receivedAt = this.options.clock.now().toISOString();
-    const event = await this.options.verifier.verify({
-      providerKey: input.providerKey,
-      headers: input.headers,
-      rawBody: input.rawBody,
-      receivedAt,
-    });
-    assertVerifiedEvent(input.providerKey, event);
+      const receivedAt = this.options.clock.now().toISOString();
+      const event = await this.options.verifier.verify({
+        providerKey: input.providerKey,
+        headers: input.headers,
+        rawBody: input.rawBody,
+        receivedAt,
+      });
+      assertVerifiedEvent(input.providerKey, event);
+      return this.acceptVerifiedEvent(event, receivedAt);
+    } catch (error) {
+      if (error instanceof InboundWebhookVerificationError) {
+        await this.recordSecurityRejection(error, input.securityContext);
+      }
+      throw error;
+    }
+  }
 
+  private async acceptVerifiedEvent(
+    event: VerifiedInboundWebhookEvent,
+    receivedAt: string,
+  ): Promise<InboundWebhookHandleResult> {
     const receipt: InboundWebhookReceiptRecord = {
       id: this.options.idGenerator.generate(),
       environment: this.options.environment,
@@ -114,6 +138,15 @@ export class InboundWebhookService<TCommand> {
       return this.process(existing, event);
     }
     return { kind: "duplicate", receipt: existing };
+  }
+
+  private async recordSecurityRejection(
+    error: InboundWebhookVerificationError,
+    context: SecurityRejectionContext | undefined,
+  ): Promise<void> {
+    if (!context || !this.options.securityRejectionSink) return;
+    const event = fromWebhookVerificationRejection(error.code, context);
+    await Promise.resolve(this.options.securityRejectionSink.record(event)).catch(() => undefined);
   }
 
   private async process(
