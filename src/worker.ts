@@ -26,6 +26,10 @@ import {
   issueCsrfTokenForRequest,
   requireCsrfProtection,
 } from "./worker/http";
+import {
+  handleWorkhubDemoConfig,
+  handleWorkhubLogin,
+} from "./worker/workhub-login";
 
 interface Env {
   DB: D1Database;
@@ -33,6 +37,7 @@ interface Env {
   CORS_ALLOWED_ORIGINS?: string;
   SESSION_IDLE_TIMEOUT_SECONDS?: string;
   SESSION_TOUCH_INTERVAL_SECONDS?: string;
+  WORKHUB_DEMO_MODE?: string;
   /** Set explicitly to local/test/preview/production for trustworthy metric environment labels. */
   RUNTIME_ENVIRONMENT?: string;
 }
@@ -55,9 +60,11 @@ const metricRouteFor = (method: string, pathname: string): string => {
   if (method === "GET" && (pathname === "/api/health/database" || pathname === "/api/health/ready")) {
     return "health_ready";
   }
+  if (method === "POST" && pathname === "/api/auth/login") return "auth_login";
   if (method === "GET" && pathname === "/api/auth/me") return "auth_me";
   if (method === "GET" && pathname === "/api/auth/csrf") return "auth_csrf";
   if (method === "POST" && pathname === "/api/auth/logout") return "auth_logout";
+  if (method === "GET" && pathname === "/api/workhub/demo-config") return "workhub_demo_config";
   if (pathname.startsWith("/api/scopes/")) return "scoped_resource";
   return "api_other";
 };
@@ -161,6 +168,21 @@ export default {
         }),
       );
     }
+
+    const demoConfigResponse = handleWorkhubDemoConfig(
+      request,
+      env,
+      requestContext.requestId,
+    );
+    if (demoConfigResponse) return api(demoConfigResponse);
+
+    const loginResponse = await handleWorkhubLogin(
+      request,
+      env,
+      requestContext.requestId,
+      audit,
+    );
+    if (loginResponse) return api(loginResponse);
 
     if (request.method === "GET" && url.pathname === "/api/auth/me") {
       try {

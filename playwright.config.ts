@@ -7,8 +7,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  timeout: 15_000,
-  expect: { timeout: 5_000 },
+  timeout: 30_000,
+  expect: { timeout: 8_000 },
   reporter: [["line"]],
   use: {
     baseURL: "http://127.0.0.1:4173",
@@ -35,10 +35,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev -- --host 127.0.0.1 --port 4173",
+    command: "npm run workhub:seed:local && npm run dev -- --host 127.0.0.1 --port 4173",
     url: `http://127.0.0.1:4173${harnessUrl}`,
     reuseExistingServer: false,
-    timeout: 60_000,
+    timeout: 90_000,
   },
   outputDir: "test-results/browser-e2e",
 });

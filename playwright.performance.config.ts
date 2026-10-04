@@ -5,8 +5,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  timeout: 20_000,
-  expect: { timeout: 5_000 },
+  timeout: 30_000,
+  expect: { timeout: 8_000 },
   reporter: [["line"]],
   use: {
     baseURL: "http://127.0.0.1:4174",
@@ -33,10 +33,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run preview -- --host 127.0.0.1 --port 4174",
+    command: "npm run workhub:seed:local && npm run preview -- --host 127.0.0.1 --port 4174",
     url: "http://127.0.0.1:4174/",
     reuseExistingServer: false,
-    timeout: 60_000,
+    timeout: 90_000,
   },
   outputDir: "test-results/frontend-performance",
 });

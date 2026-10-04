@@ -36,6 +36,7 @@
     "session-rotation:local": "bash scripts/session-rotation-local-test.sh",
     "local-credential:local": "bash scripts/local-credential-local-test.sh",
     "credential-attack:local": "bash scripts/credential-attack-local-test.sh",
+    "workhub:seed:local": "node scripts/workhub-demo-seed-local.mjs",
     "db:recovery:validate-config": "node scripts/validate-d1-recovery-config.mjs",
     "db:recovery:preview": "bash scripts/d1-recovery-rehearsal.sh",
     "recovery:validate": "bash -n scripts/d1-recovery-rehearsal.sh && node scripts/validate-recovery-safety.mjs",

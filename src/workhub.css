@@ -1,0 +1,715 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #162331;
+  background: #f4f7f8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  background: #f4f7f8;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.workhub-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workhub-logo {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 12px;
+  color: white;
+  background: linear-gradient(145deg, #173851, #176e72);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  box-shadow: 0 8px 22px rgb(23 56 81 / 18%);
+}
+
+.workhub-brand-name {
+  color: #15344c;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.workhub-brand-subtitle {
+  margin-top: 1px;
+  color: #667986;
+  font-size: 11px;
+  letter-spacing: 0.035em;
+}
+
+.workhub-login-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(420px, 1.08fr) minmax(420px, 0.92fr);
+  background: #f8fafb;
+}
+
+.workhub-login-story {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  overflow: hidden;
+  padding: 64px clamp(44px, 7vw, 104px);
+  color: #f5fbfb;
+  background:
+    radial-gradient(circle at 78% 18%, rgb(43 154 156 / 30%), transparent 31%),
+    radial-gradient(circle at 18% 85%, rgb(72 124 157 / 24%), transparent 34%),
+    linear-gradient(145deg, #102b41 0%, #163b53 48%, #125b61 100%);
+}
+
+.workhub-login-story::after {
+  position: absolute;
+  right: -96px;
+  bottom: -126px;
+  width: 390px;
+  height: 390px;
+  border: 1px solid rgb(255 255 255 / 11%);
+  border-radius: 50%;
+  content: "";
+  box-shadow:
+    0 0 0 64px rgb(255 255 255 / 2.5%),
+    0 0 0 130px rgb(255 255 255 / 2%);
+}
+
+.workhub-story-content {
+  position: relative;
+  z-index: 1;
+  width: min(610px, 100%);
+}
+
+.workhub-login-story .workhub-logo {
+  background: rgb(255 255 255 / 14%);
+  border: 1px solid rgb(255 255 255 / 18%);
+  box-shadow: none;
+}
+
+.workhub-login-story .workhub-brand-name,
+.workhub-login-story .workhub-brand-subtitle {
+  color: #f5fbfb;
+}
+
+.workhub-login-story .workhub-brand-subtitle {
+  opacity: 0.76;
+}
+
+.workhub-story-kicker,
+.workhub-eyebrow {
+  margin: 0 0 10px;
+  color: #187278;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.workhub-story-kicker {
+  margin-top: 92px;
+  color: #93d7d5;
+}
+
+.workhub-login-story h1 {
+  max-width: 520px;
+  margin: 0;
+  color: white;
+  font-size: clamp(40px, 4.7vw, 68px);
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.workhub-story-lead {
+  max-width: 540px;
+  margin: 28px 0 0;
+  color: rgb(238 248 249 / 78%);
+  font-size: 16px;
+  line-height: 1.9;
+}
+
+.workhub-story-grid {
+  display: grid;
+  max-width: 520px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 48px;
+}
+
+.workhub-story-grid span {
+  padding: 14px 16px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 10px;
+  color: rgb(255 255 255 / 72%);
+  background: rgb(255 255 255 / 4%);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.workhub-login-panel {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 44px clamp(28px, 6vw, 84px);
+  background: #fbfcfd;
+}
+
+.workhub-login-card {
+  width: min(430px, 100%);
+}
+
+.workhub-mobile-brand {
+  display: none;
+  margin-bottom: 46px;
+}
+
+.workhub-login-card h2,
+.workhub-dialog h2,
+.workhub-home-main h1,
+.workhub-home-card h2,
+.workhub-loading h1 {
+  margin: 0;
+  color: #142d40;
+  letter-spacing: -0.025em;
+}
+
+.workhub-login-card h2 {
+  font-size: 30px;
+}
+
+.workhub-muted {
+  margin: 10px 0 0;
+  color: #71818c;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.workhub-demo-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 28px;
+  padding: 13px 15px;
+  border: 1px solid #cae6e4;
+  border-radius: 10px;
+  color: #315961;
+  background: #f1f9f8;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.workhub-demo-note strong {
+  color: #176c70;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workhub-login-form {
+  display: grid;
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.workhub-login-form > label:not(.workhub-remember-row) {
+  display: grid;
+  gap: 7px;
+  color: #334a5a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workhub-login-form input[type="text"],
+.workhub-login-form input[type="password"],
+.workhub-login-form input:not([type]) {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #ccd6dc;
+  border-radius: 9px;
+  outline: none;
+  padding: 0 14px;
+  color: #172f40;
+  background: white;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.workhub-login-form input:focus {
+  border-color: #1b777b;
+  box-shadow: 0 0 0 3px rgb(27 119 123 / 11%);
+}
+
+.workhub-remember-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: #415766;
+  font-size: 13px;
+}
+
+.workhub-remember-row input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: #176f74;
+}
+
+.workhub-remember-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.workhub-remember-row small {
+  color: #7f8d96;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.workhub-primary-button,
+.workhub-secondary-button {
+  min-height: 48px;
+  border-radius: 9px;
+  padding: 0 18px;
+  font-weight: 750;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.workhub-primary-button {
+  border: 1px solid #165d65;
+  color: white;
+  background: linear-gradient(135deg, #183c55, #176f74);
+  box-shadow: 0 8px 20px rgb(19 78 89 / 18%);
+}
+
+.workhub-primary-button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgb(19 78 89 / 24%);
+}
+
+.workhub-secondary-button {
+  border: 1px solid #b8c8ce;
+  color: #294b5a;
+  background: white;
+}
+
+.workhub-secondary-button:not(:disabled):hover {
+  border-color: #5e848a;
+  background: #f7fbfb;
+}
+
+.workhub-login-error {
+  padding: 11px 13px;
+  border-left: 3px solid #b14d4d;
+  border-radius: 6px;
+  color: #7b3838;
+  background: #fff5f5;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.workhub-login-footer {
+  margin: 32px 0 0;
+  color: #97a2a9;
+  font-size: 11px;
+  text-align: center;
+}
+
+.workhub-dialog-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(8 23 34 / 56%);
+  backdrop-filter: blur(5px);
+}
+
+.workhub-dialog {
+  width: min(620px, 100%);
+  max-height: min(740px, calc(100vh - 48px));
+  overflow-y: auto;
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: 18px;
+  padding: 28px;
+  background: white;
+  box-shadow: 0 28px 80px rgb(8 31 43 / 28%);
+}
+
+.workhub-dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.workhub-dialog h2 {
+  font-size: 24px;
+}
+
+.workhub-icon-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #d5dde1;
+  border-radius: 9px;
+  color: #556a76;
+  background: #fafcfc;
+  font-size: 22px;
+}
+
+.workhub-persona-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.workhub-persona-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 86px;
+  border: 1px solid #dbe3e6;
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  color: #263f4e;
+  background: #fbfcfc;
+}
+
+.workhub-persona-card:hover {
+  border-color: #8db3b5;
+  background: #f2f9f8;
+}
+
+.workhub-persona-avatar {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 10px;
+  color: #17676c;
+  background: #dfeeee;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.workhub-persona-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.workhub-persona-copy strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workhub-persona-copy span,
+.workhub-persona-copy small,
+.workhub-persona-id {
+  color: #758791;
+  font-size: 10px;
+}
+
+.workhub-persona-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workhub-persona-id {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #eef2f3;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.workhub-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  align-content: center;
+  gap: 18px;
+  padding: 32px;
+  color: #647782;
+  text-align: center;
+  background: #f6f9fa;
+}
+
+.workhub-loading-bar {
+  width: 160px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #d8e2e5;
+}
+
+.workhub-loading-bar::after {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: #1c7479;
+  content: "";
+  animation: workhub-loading 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes workhub-loading {
+  from { transform: translateX(0); }
+  to { transform: translateX(140%); }
+}
+
+.workhub-retry-button {
+  min-width: 180px;
+}
+
+.workhub-home-shell {
+  min-height: 100vh;
+  background: #f2f5f6;
+}
+
+.workhub-home-header {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid #dce4e7;
+  padding: 12px clamp(20px, 5vw, 72px);
+  background: rgb(255 255 255 / 94%);
+}
+
+.workhub-user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #344f5e;
+}
+
+.workhub-user-chip > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.workhub-user-chip strong {
+  font-size: 12px;
+}
+
+.workhub-user-chip small {
+  color: #7e8c94;
+  font-size: 10px;
+}
+
+.workhub-user-dot {
+  width: 9px;
+  height: 9px;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #36a071;
+  box-shadow: 0 0 0 1px #a8cbbb;
+}
+
+.workhub-home-main {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 64px 0 80px;
+}
+
+.workhub-home-main > h1 {
+  font-size: clamp(30px, 4vw, 48px);
+}
+
+.workhub-home-lead {
+  margin: 12px 0 0;
+  color: #6f8089;
+}
+
+.workhub-home-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 18px;
+  margin-top: 40px;
+}
+
+.workhub-home-card {
+  min-height: 190px;
+  border: 1px solid #dbe3e5;
+  border-radius: 15px;
+  padding: 26px;
+  background: white;
+  box-shadow: 0 8px 28px rgb(29 58 72 / 5%);
+}
+
+.workhub-home-card-primary {
+  color: white;
+  border-color: transparent;
+  background: linear-gradient(140deg, #173b54, #176d72);
+}
+
+.workhub-home-card:last-child {
+  grid-column: 1 / -1;
+}
+
+.workhub-card-label {
+  display: block;
+  margin-bottom: 12px;
+  color: #6e858f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.workhub-home-card-primary .workhub-card-label,
+.workhub-home-card-primary h2,
+.workhub-home-card-primary p {
+  color: white;
+}
+
+.workhub-home-card h2 {
+  font-size: 23px;
+}
+
+.workhub-home-card p {
+  max-width: 670px;
+  margin: 12px 0 0;
+  color: #687a84;
+  line-height: 1.7;
+}
+
+.workhub-action-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.workhub-action-chips span {
+  padding: 8px 11px;
+  border: 1px solid #dbe5e6;
+  border-radius: 99px;
+  color: #42616c;
+  background: #f8fbfb;
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .workhub-login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .workhub-login-story {
+    display: none;
+  }
+
+  .workhub-login-panel {
+    min-height: 100vh;
+    padding: 36px 24px;
+  }
+
+  .workhub-mobile-brand {
+    display: block;
+  }
+}
+
+@media (max-width: 600px) {
+  .workhub-login-panel {
+    align-items: start;
+    padding: 28px 20px 40px;
+  }
+
+  .workhub-login-card h2 {
+    font-size: 27px;
+  }
+
+  .workhub-dialog-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .workhub-dialog {
+    width: 100%;
+    max-height: 82vh;
+    border-radius: 18px 18px 0 0;
+    padding: 22px 18px 28px;
+  }
+
+  .workhub-persona-list {
+    grid-template-columns: 1fr;
+  }
+
+  .workhub-home-header {
+    align-items: flex-start;
+    padding: 14px 18px;
+  }
+
+  .workhub-home-header .workhub-brand-subtitle {
+    display: none;
+  }
+
+  .workhub-user-chip strong {
+    max-width: 116px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workhub-home-main {
+    width: calc(100% - 32px);
+    padding-top: 44px;
+  }
+
+  .workhub-home-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workhub-home-card:last-child {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
