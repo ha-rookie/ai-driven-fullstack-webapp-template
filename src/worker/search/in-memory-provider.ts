@@ -1,4 +1,10 @@
-import type { SearchCandidate, SearchProvider, SearchProviderResult, SearchQuery } from "./types";
+import type {
+  SearchCandidate,
+  SearchPrincipal,
+  SearchProvider,
+  SearchProviderResult,
+  SearchQuery,
+} from "./types";
 
 export interface InMemorySearchDocument {
   readonly resourceType: string;
@@ -21,7 +27,10 @@ const matches = (document: InMemorySearchDocument, query: SearchQuery): boolean 
 export class InMemorySearchProvider implements SearchProvider {
   constructor(private readonly documents: readonly InMemorySearchDocument[]) {}
 
-  async search(input: { readonly query: SearchQuery }): Promise<SearchProviderResult> {
+  async search(input: {
+    readonly query: SearchQuery;
+    readonly principal: SearchPrincipal;
+  }): Promise<SearchProviderResult> {
     const limit = input.query.limit ?? 20;
     const candidates: SearchCandidate[] = this.documents
       .filter((document) => matches(document, input.query))
