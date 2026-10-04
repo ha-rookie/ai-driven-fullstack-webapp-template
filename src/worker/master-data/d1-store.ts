@@ -38,8 +38,6 @@ interface MasterRevisionRow {
   created_by: string;
 }
 
-interface ResolvedRow extends MasterItemRow, MasterRevisionRow {}
-
 const changesOf = (result: D1Result<unknown>): number =>
   typeof result.meta?.changes === "number" ? result.meta.changes : 0;
 
