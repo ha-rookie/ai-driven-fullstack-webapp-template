@@ -30,8 +30,8 @@ test("WORKHUB login exposes the reference-only persona selector and performs rea
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
-  await expect(page.getByText("MY WORK / 申請", { exact: true })).toBeVisible();
-  await expect(page.getByText("Server-side authentication", { exact: true })).toBeVisible();
+  await expect(page.getByText("REQUESTS / 出張したい", { exact: true })).toBeVisible();
+  await expect(page.getByText("NOTIFICATIONS", { exact: true })).toBeVisible();
 
   await expect.poll(() => page.evaluate(() => localStorage.getItem("workhub.rememberedUserId"))).toBe("aoi");
 });
