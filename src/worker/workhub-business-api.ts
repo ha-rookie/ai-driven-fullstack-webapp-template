@@ -106,10 +106,7 @@ const createServices = (db: D1Database, environment: string) => {
 
   const activityStore = new D1BusinessActivityStore(db);
   const activityProjector = new BusinessActivityProjector({ environment, store: activityStore });
-  const workflowActivity = new WorkflowBusinessActivityProjector({
-    workflowStore,
-    projector: activityProjector,
-  });
+  const workflowActivity = new WorkflowBusinessActivityProjector({ workflowStore, projector: activityProjector });
 
   const notificationStore = new D1TransactionalNotificationStore(db);
   const notifications = new TransactionalNotificationService({
@@ -118,10 +115,7 @@ const createServices = (db: D1Database, environment: string) => {
     policy: WORKHUB_TRAVEL_NOTIFICATION_POLICY,
     recipients: WORKHUB_TRAVEL_NOTIFICATION_RECIPIENTS,
   });
-  const workflowNotification = new WorkflowNotificationProjector({
-    workflowStore,
-    notifications,
-  });
+  const workflowNotification = new WorkflowNotificationProjector({ workflowStore, notifications });
 
   const workflow = new WorkflowService({
     environment,
@@ -139,42 +133,21 @@ const createServices = (db: D1Database, environment: string) => {
     workflowState: workflowStore,
   });
 
-  return {
-    workflowStore,
-    travelStore,
-    masterData,
-    activityStore,
-    notifications,
-    workflow,
-    travel,
-  };
+  return { workflowStore, travelStore, masterData, activityStore, notifications, workflow, travel };
 };
 
 const canReadTravelResource = async (
   principalId: string,
   requestIdValue: string,
   services: ReturnType<typeof createServices>,
+  environment: string,
 ): Promise<boolean> => {
-  const travel = await services.travelStore.get(requestIdValue, servicesEnvironment(services));
+  const travel = await services.travelStore.get(requestIdValue, environment);
   if (!travel) return false;
   if (travel.requesterId === principalId) return true;
   if (!travel.workflowInstanceId) return false;
-  const item = await services.workflowStore.getOpenWorkItem(
-    travel.workflowInstanceId,
-    travel.environment,
-  );
+  const item = await services.workflowStore.getOpenWorkItem(travel.workflowInstanceId, environment);
   return item?.assigneePrincipal === principalId;
-};
-
-const servicesEnvironment = (services: ReturnType<typeof createServices>): string => {
-  // Every store query is environment-scoped by the record; the API passes this helper only
-  // after creating all services for one runtime environment.
-  return (services as ReturnType<typeof createServices> & { __environment?: string }).__environment ?? "local";
-};
-
-const withEnvironment = <T extends ReturnType<typeof createServices>>(services: T, environment: string): T => {
-  Object.defineProperty(services, "__environment", { value: environment, enumerable: false });
-  return services;
 };
 
 const timelineFor = (
@@ -187,7 +160,7 @@ const timelineFor = (
   authorizer: {
     async assertCanRead(context) {
       if (context.resourceType !== WORKHUB_TRAVEL_RESOURCE_TYPE) throw new Error("forbidden");
-      if (!await canReadTravelResource(principalId, context.resourceId, services)) {
+      if (!await canReadTravelResource(principalId, context.resourceId, services, environment)) {
         throw new Error("forbidden");
       }
     },
@@ -238,7 +211,7 @@ export const handleWorkhubBusinessApi = async (
   const csrf = await requireCsrfProtection(request);
   if (!csrf.allowed) return csrfGuardFailureResponse(csrf, rid);
 
-  const services = withEnvironment(createServices(env.DB, environment), environment);
+  const services = createServices(env.DB, environment);
   const pathname = url.pathname;
 
   try {
@@ -382,22 +355,21 @@ export const handleWorkhubBusinessApi = async (
       return json({ items: await services.notifications.list(principalId, { limit: 50 }) });
     }
     if (request.method === "GET" && pathname === "/api/workhub/notifications/unread-count") {
-      return json({ unreadCount: await services.notifications.unreadCount(principalId) });
+      return json({ unreadCount: await services.notifications.countUnread(principalId) });
     }
 
     const notificationMatch = pathname.match(/^\/api\/workhub\/notifications\/([^/]+)\/(read|archive)$/u);
     if (notificationMatch && request.method === "POST") {
       const body = await bodyRecord(request);
       if (body instanceof Response) return body;
-      const input = {
-        id: decodeURIComponent(notificationMatch[1]),
-        recipientPrincipal: principalId,
-        expectedVersion: intField(body, "expectedVersion"),
-      };
-      const record = notificationMatch[2] === "read"
-        ? await services.notifications.markRead(input)
-        : await services.notifications.archive(input);
-      return json({ notification: record });
+      const id = decodeURIComponent(notificationMatch[1]);
+      const expectedVersion = intField(body, "expectedVersion");
+      if (notificationMatch[2] === "read") {
+        await services.notifications.markRead(principalId, id, expectedVersion);
+      } else {
+        await services.notifications.archive(principalId, id, expectedVersion);
+      }
+      return json({ ok: true });
     }
 
     return error(404, "not_found", "WORKHUB API route was not found");
@@ -409,7 +381,7 @@ export const handleWorkhubBusinessApi = async (
       return error(statusForWorkflowError(caught.code), `workflow_${caught.code}`, caught.message);
     }
     if (caught instanceof TransactionalNotificationError) {
-      const status = caught.code === "not_found" ? 404 : caught.code === "forbidden" ? 403 : caught.code === "conflict" ? 409 : 400;
+      const status = caught.code === "not_found" ? 404 : caught.code === "conflict" ? 409 : 400;
       return error(status, `notification_${caught.code}`, caught.message);
     }
     return error(500, "workhub_business_error", "WORKHUB business operation failed");
