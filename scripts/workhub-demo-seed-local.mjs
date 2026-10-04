@@ -90,6 +90,15 @@ ON CONFLICT(id) DO UPDATE SET
 const sql = `
 PRAGMA foreign_keys = ON;
 
+INSERT INTO operation_modes (environment, mode, version, updated_at, updated_by, reason)
+VALUES ('local', 'normal', 1, ${quote(timestamp)}, 'workhub-local-fixture', 'WORKHUB deterministic local fixture')
+ON CONFLICT(environment) DO UPDATE SET
+  mode = 'normal',
+  version = operation_modes.version + 1,
+  updated_at = excluded.updated_at,
+  updated_by = excluded.updated_by,
+  reason = excluded.reason;
+
 INSERT INTO resource_scopes (id, name, created_at, updated_at)
 VALUES (${quote(scopeId)}, 'WORKHUB Reference Company', ${quote(timestamp)}, ${quote(timestamp)})
 ON CONFLICT(id) DO UPDATE SET
@@ -112,4 +121,4 @@ const run = (args) => execFileSync("npx", ["wrangler", ...args], {
 run(["d1", "migrations", "apply", "DB", "--local"]);
 run(["d1", "execute", "DB", "--local", "--command", sql]);
 
-console.log("WORKHUB local demo users and Office master seeded. Demo password: Workhub-Demo-2026!");
+console.log("WORKHUB local demo users, Office master, and normal operation mode seeded. Demo password: Workhub-Demo-2026!");
