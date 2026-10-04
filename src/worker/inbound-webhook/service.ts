@@ -1,5 +1,6 @@
 import type { Clock, IdGenerator } from "../../shared/runtime";
 import {
+  InboundWebhookProcessingError,
   InboundWebhookVerificationError,
   type InboundWebhookBusinessHandler,
   type InboundWebhookBusinessMapper,
@@ -13,6 +14,7 @@ import {
 const PROVIDER_KEY_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/;
 const MAX_REPLAY_KEY_LENGTH = 256;
 const DEFAULT_MAX_BODY_BYTES = 256 * 1024;
+const DEFAULT_MAX_PROCESSING_ATTEMPTS = 3;
 
 export type InboundWebhookHandleResult =
   | { readonly kind: "processed" | "ignored"; readonly receipt: InboundWebhookReceiptRecord }
@@ -27,6 +29,7 @@ export interface InboundWebhookServiceOptions<TCommand> {
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
   readonly maxBodyBytes?: number;
+  readonly maxProcessingAttempts?: number;
 }
 
 export interface HandleInboundWebhookInput {
@@ -52,9 +55,14 @@ const assertVerifiedEvent = (
 
 export class InboundWebhookService<TCommand> {
   private readonly maxBodyBytes: number;
+  private readonly maxProcessingAttempts: number;
 
   constructor(private readonly options: InboundWebhookServiceOptions<TCommand>) {
     this.maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+    this.maxProcessingAttempts = options.maxProcessingAttempts ?? DEFAULT_MAX_PROCESSING_ATTEMPTS;
+    if (!Number.isInteger(this.maxProcessingAttempts) || this.maxProcessingAttempts < 1) {
+      throw new RangeError("maxProcessingAttempts must be a positive integer");
+    }
   }
 
   async handle(input: HandleInboundWebhookInput): Promise<InboundWebhookHandleResult> {
@@ -93,16 +101,25 @@ export class InboundWebhookService<TCommand> {
     };
 
     const created = await this.options.store.create(receipt);
-    if (created === "duplicate") {
-      const existing = await this.options.store.getByReplayKey(
-        this.options.environment,
-        event.providerKey,
-        event.replayKey,
-      );
-      if (!existing) throw new Error("duplicate receipt could not be resolved");
-      return { kind: "duplicate", receipt: existing };
-    }
+    if (created === "created") return this.process(receipt, event);
 
+    const existing = await this.options.store.getByReplayKey(
+      this.options.environment,
+      event.providerKey,
+      event.replayKey,
+    );
+    if (!existing) throw new Error("duplicate receipt could not be resolved");
+
+    if (existing.status === "received" || existing.status === "failed") {
+      return this.process(existing, event);
+    }
+    return { kind: "duplicate", receipt: existing };
+  }
+
+  private async process(
+    receipt: InboundWebhookReceiptRecord,
+    event: VerifiedInboundWebhookEvent,
+  ): Promise<InboundWebhookHandleResult> {
     const processing = await this.transition(receipt, "processing", null, false);
     try {
       const command = await this.options.mapper.map(event);
@@ -118,8 +135,16 @@ export class InboundWebhookService<TCommand> {
       const processed = await this.transition(processing, "processed", null, true);
       return { kind: "processed", receipt: processed };
     } catch (error) {
-      const failureCode = error instanceof InboundWebhookVerificationError ? error.code : "business_processing_failed";
-      await this.transition(processing, "failed", failureCode, true);
+      const classified = error instanceof InboundWebhookProcessingError
+        ? error
+        : new InboundWebhookProcessingError("business_processing_failed", false);
+      const exhausted = processing.attemptCount >= this.maxProcessingAttempts;
+      await this.transition(
+        processing,
+        classified.retryable && !exhausted ? "failed" : "dead_letter",
+        classified.code,
+        !classified.retryable || exhausted,
+      );
       throw error;
     }
   }
