@@ -26,6 +26,7 @@ import {
   issueCsrfTokenForRequest,
   requireCsrfProtection,
 } from "./worker/http";
+import { handleWorkhubBusinessApi } from "./worker/workhub-business-api";
 import {
   handleWorkhubDemoConfig,
   handleWorkhubLogin,
@@ -65,6 +66,7 @@ const metricRouteFor = (method: string, pathname: string): string => {
   if (method === "GET" && pathname === "/api/auth/csrf") return "auth_csrf";
   if (method === "POST" && pathname === "/api/auth/logout") return "auth_logout";
   if (method === "GET" && pathname === "/api/workhub/demo-config") return "workhub_demo_config";
+  if (pathname.startsWith("/api/workhub/")) return "workhub_business";
   if (pathname.startsWith("/api/scopes/")) return "scoped_resource";
   return "api_other";
 };
@@ -183,6 +185,9 @@ export default {
       audit,
     );
     if (loginResponse) return api(loginResponse);
+
+    const workhubBusinessResponse = await handleWorkhubBusinessApi(request, env);
+    if (workhubBusinessResponse) return api(workhubBusinessResponse);
 
     if (request.method === "GET" && url.pathname === "/api/auth/me") {
       try {

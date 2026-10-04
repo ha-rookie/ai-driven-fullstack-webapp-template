@@ -1,3 +1,5 @@
+import type { WorkflowMutationResult, WorkflowStore } from "../../../worker/workflow";
+
 export type TravelRequestStatus = "draft" | "submitting" | "submitted";
 
 export interface TravelRequestRecord {
@@ -57,6 +59,24 @@ export interface SubmitTravelRequestCommand {
   readonly requestId?: string;
   readonly correlationId?: string;
 }
+
+export type UpdateReturnedTravelRequestCommand = UpdateTravelRequestCommand;
+
+export interface ResubmitTravelRequestCommand {
+  readonly id: string;
+  readonly principalId: string;
+  readonly expectedRequestVersion: number;
+  readonly expectedWorkflowVersion: number;
+  readonly requestId?: string;
+  readonly correlationId?: string;
+}
+
+export interface ResubmitTravelRequestResult {
+  readonly request: TravelRequestRecord;
+  readonly workflow: WorkflowMutationResult;
+}
+
+export type TravelRequestWorkflowStateReader = Pick<WorkflowStore, "getInstance">;
 
 export interface TravelRequestMutationGate {
   assertMutationAllowed(): Promise<void> | void;
