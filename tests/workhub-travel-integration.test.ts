@@ -9,11 +9,13 @@ import {
 import {
   InMemoryWorkflowStore,
   StaticWorkflowDefinitionRegistry,
+  WorkflowError,
   WorkflowService,
   type WorkflowTransitionRecord,
 } from "../src/worker/workflow";
 import {
   InMemoryTravelRequestStore,
+  TravelRequestError,
   TravelRequestService,
   WORKHUB_OFFICE_MASTER_DEFINITION,
   WORKHUB_OFFICE_MASTER_KEY,
@@ -92,6 +94,16 @@ test("Aoi corrects a returned TravelRequest, resubmits, and Ren approves it", as
   assert.ok(firstInstance);
   assert.equal(firstWorkItem.assigneePrincipal, "workhub-demo-ren");
 
+  await assert.rejects(
+    () => workflow.approve({
+      instanceId: firstInstance.id,
+      actorId: "workhub-demo-aoi",
+      expectedInstanceVersion: firstInstance.version,
+      expectedWorkItemVersion: firstWorkItem.version,
+    }),
+    (caught: unknown) => caught instanceof WorkflowError && caught.code === "forbidden",
+  );
+
   const returned = await workflow.returnForCorrection({
     instanceId: firstInstance.id,
     actorId: "workhub-demo-ren",
@@ -111,7 +123,17 @@ test("Aoi corrects a returned TravelRequest, resubmits, and Ren approves it", as
     endDate: "2026-10-23",
     purpose: "Tokyo customer meeting - corrected",
   });
-  assert.equal(corrected.destinationOfficeRevisionId, null);
+  assert.equal(corrected.destinationOfficeRevisionId, tokyo.revision.id);
+
+  await assert.rejects(
+    () => travel.resubmit({
+      id: corrected.id,
+      principalId: "workhub-demo-aoi",
+      expectedRequestVersion: corrected.version,
+      expectedWorkflowVersion: returned.instance.version - 1,
+    }),
+    (caught: unknown) => caught instanceof TravelRequestError && caught.code === "conflict",
+  );
 
   const resubmitted = await travel.resubmit({
     id: corrected.id,
