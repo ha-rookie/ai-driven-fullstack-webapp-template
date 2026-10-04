@@ -22,9 +22,19 @@ export class SearchRequestError extends Error {
   }
 }
 
+const hasForbiddenControlCharacter = (value: string): boolean => {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if ((code >= 0 && code <= 8) || code === 11 || code === 12 || (code >= 14 && code <= 31) || code === 127) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const normalizeQuery = (query: SearchQuery): SearchQuery => {
   const text = query.text.trim();
-  if (!text || text.length > MAX_QUERY_LENGTH || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(text)) {
+  if (!text || text.length > MAX_QUERY_LENGTH || hasForbiddenControlCharacter(text)) {
     throw new SearchRequestError("invalid_query");
   }
 
