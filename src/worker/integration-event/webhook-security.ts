@@ -34,6 +34,7 @@ export interface WebhookSigner {
 export interface WebhookTransport {
   post(input: {
     readonly url: string;
+    readonly resolvedAddresses: readonly string[];
     readonly headers: Readonly<Record<string, string>>;
     readonly body: Uint8Array;
     readonly redirect: "manual";
@@ -66,22 +67,34 @@ const parseIpv4 = (value: string): readonly number[] | null => {
 const isPublicIpv4 = (value: string): boolean => {
   const octets = parseIpv4(value);
   if (!octets) return false;
-  const [a, b] = octets;
+  const [a, b, c] = octets;
   if (a === 0 || a === 10 || a === 127) return false;
   if (a === 100 && b >= 64 && b <= 127) return false;
   if (a === 169 && b === 254) return false;
   if (a === 172 && b >= 16 && b <= 31) return false;
-  if (a === 192 && (b === 0 || b === 168)) return false;
+  if (a === 192 && b === 0) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 192 && b === 0 && c === 2) return false;
   if (a === 198 && (b === 18 || b === 19)) return false;
+  if (a === 198 && b === 51 && c === 100) return false;
+  if (a === 203 && b === 0 && c === 113) return false;
   if (a >= 224) return false;
   return true;
 };
 
 const normalizeIpv6 = (value: string): string => value.toLowerCase().replace(/^\[|\]$/gu, "");
 
+const isValidIpv6 = (value: string): boolean => {
+  try {
+    return new URL(`https://[${value}]/`).hostname.length > 0;
+  } catch {
+    return false;
+  }
+};
+
 const isPublicIpv6 = (value: string): boolean => {
   const address = normalizeIpv6(value);
-  if (!address.includes(":")) return false;
+  if (!isValidIpv6(address)) return false;
   if (address === "::" || address === "::1") return false;
   if (address.startsWith("fc") || address.startsWith("fd")) return false;
   if (/^fe[89ab]/u.test(address)) return false;
@@ -156,6 +169,7 @@ export class SecureWebhookDeliveryAdapter implements IntegrationDeliveryAdapter 
 
       const response = await this.options.transport.post({
         url: validated.url,
+        resolvedAddresses: validated.addresses,
         headers,
         body,
         redirect: "manual",
@@ -186,7 +200,7 @@ export class SecureWebhookDeliveryAdapter implements IntegrationDeliveryAdapter 
   }
 
   private async validateUrl(rawUrl: string): Promise<
-    | { readonly ok: true; readonly url: string }
+    | { readonly ok: true; readonly url: string; readonly addresses: readonly string[] }
     | { readonly ok: false; readonly failureCode: string }
   > {
     let url: URL;
@@ -207,11 +221,16 @@ export class SecureWebhookDeliveryAdapter implements IntegrationDeliveryAdapter 
       return { ok: false, failureCode: "destination_not_allowlisted" };
     }
 
-    const addresses = await this.options.resolver.resolve(hostname);
+    let addresses: readonly string[];
+    try {
+      addresses = await this.options.resolver.resolve(hostname);
+    } catch {
+      return { ok: false, failureCode: "destination_resolution_failed" };
+    }
     if (addresses.length === 0) return { ok: false, failureCode: "destination_unresolved" };
     if (addresses.some((address) => !isPublicWebhookAddress(address))) {
       return { ok: false, failureCode: "destination_address_not_public" };
     }
-    return { ok: true, url: url.toString() };
+    return { ok: true, url: url.toString(), addresses };
   }
 }
