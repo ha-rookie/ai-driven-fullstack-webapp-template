@@ -25,7 +25,10 @@
     "saml_assertion_replays": ["environment", "provider", "assertion_id", "expires_at", "consumed_at"],
     "local_credentials": ["user_id", "identifier_normalized", "password_hash", "password_changed_at", "created_at", "updated_at"],
     "password_reset_tokens": ["id", "token_hash", "user_id", "expires_at", "consumed_at", "created_at"],
-    "credential_attack_states": ["environment", "endpoint_id", "dimension", "subject_hash", "failure_count", "window_started_at", "locked_until", "updated_at"]
+    "credential_attack_states": ["environment", "endpoint_id", "dimension", "subject_hash", "failure_count", "window_started_at", "locked_until", "updated_at"],
+    "workflow_instances": ["id", "environment", "resource_type", "resource_id", "definition_key", "definition_version", "requester_id", "state", "current_step_key", "returned_step_key", "version", "next_work_item_sequence", "next_transition_sequence", "submission_key", "last_mutation_id", "created_at", "updated_at", "completed_at"],
+    "workflow_work_items": ["id", "environment", "workflow_instance_id", "step_key", "assignee_principal", "status", "sequence", "version", "created_at", "due_at", "completed_at", "completed_by"],
+    "workflow_transitions": ["id", "environment", "workflow_instance_id", "work_item_id", "sequence", "transition", "actor_id", "from_state", "to_state", "from_step_key", "to_step_key", "definition_version", "reason_code", "comment", "request_id", "correlation_id", "occurred_at"]
   },
   "requiredIndexes": [
     "idx_example_resources_created_at",
@@ -50,6 +53,11 @@
     "idx_password_reset_tokens_user_state",
     "idx_password_reset_tokens_expiry",
     "idx_credential_attack_updated",
-    "idx_credential_attack_locked"
+    "idx_credential_attack_locked",
+    "idx_workflow_instances_resource",
+    "idx_workflow_instances_requester_state",
+    "idx_workflow_work_items_one_open",
+    "idx_workflow_work_items_assignee_open",
+    "idx_workflow_transitions_instance_sequence"
   ]
 }
