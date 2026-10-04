@@ -14,7 +14,8 @@ export type SecurityRejectionEventType =
   | "rate_limit_rejected"
   | "credential_attack_rejected"
   | "csrf_rejected"
-  | "origin_rejected";
+  | "origin_rejected"
+  | "webhook_rejected";
 
 export type SecurityRejectionReasonCode =
   | "session_missing_or_invalid"
@@ -27,7 +28,11 @@ export type SecurityRejectionReasonCode =
   | "invalid_origin"
   | "origin_not_allowed"
   | "method_not_allowed"
-  | "header_not_allowed";
+  | "header_not_allowed"
+  | "webhook_signature_invalid"
+  | "webhook_replay_rejected"
+  | "webhook_provider_mismatch"
+  | "webhook_verification_failed";
 
 export interface SecurityRejectionEvent {
   readonly eventType: SecurityRejectionEventType;
@@ -142,6 +147,27 @@ export const fromCredentialAttackRejection = (
     "credential_attack_rejected",
     "credential_attempt_throttled",
   );
+
+export const fromWebhookVerificationRejection = (
+  verificationCode: string,
+  context: SecurityRejectionContext,
+): SecurityRejectionEvent => {
+  const reasonCode: SecurityRejectionReasonCode = verificationCode === "invalid_signature"
+    ? "webhook_signature_invalid"
+    : verificationCode === "replay_rejected"
+      ? "webhook_replay_rejected"
+      : verificationCode === "provider_mismatch"
+        ? "webhook_provider_mismatch"
+        : "webhook_verification_failed";
+  return createEvent(
+    {
+      ...context,
+      resourceType: context.resourceType ?? "webhook_endpoint",
+    },
+    "webhook_rejected",
+    reasonCode,
+  );
+};
 
 export const securityRejectionAuditEvent = (
   event: SecurityRejectionEvent,
