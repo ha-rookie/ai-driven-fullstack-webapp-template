@@ -1,20 +1,16 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "./frontend/auth";
 import "./workhub.css";
 
-interface DemoPersona {
-  readonly key: string;
-  readonly userId: string;
-  readonly displayName: string;
-  readonly roleLabel: string;
-  readonly homeHint: string;
-}
-
-interface DemoConfig {
-  readonly demoEnabled: boolean;
-  readonly personas: DemoPersona[];
-  readonly demoPassword?: string;
-}
+interface DemoPersona { readonly key: string; readonly userId: string; readonly displayName: string; readonly roleLabel: string; readonly homeHint: string; }
+interface DemoConfig { readonly demoEnabled: boolean; readonly personas: DemoPersona[]; readonly demoPassword?: string; }
+interface OfficeOption { readonly itemId: string; readonly revisionId: string; readonly code: string; readonly label: string; }
+interface TravelRequestRecord { readonly id: string; readonly destinationOfficeItemId: string; readonly startDate: string; readonly endDate: string; readonly purpose: string; readonly status: "draft" | "submitting" | "submitted"; readonly version: number; readonly workflowInstanceId: string | null; }
+interface WorkflowRecord { readonly id: string; readonly state: string; readonly version: number; }
+interface WorkItemRecord { readonly id: string; readonly workflowInstanceId: string; readonly version: number; }
+interface MyWorkEntry { readonly workItem: WorkItemRecord; readonly workflow: WorkflowRecord; readonly request: TravelRequestRecord; }
+interface NotificationRecord { readonly id: string; readonly notificationType: string; readonly actionTarget: string | null; readonly version: number; readonly readAt: string | null; readonly createdAt: string; }
+interface TimelineActivity { readonly id: string; readonly activityType: string; readonly occurredAt: string; }
 
 const HOME_HINTS: Record<string, { role: string; hint: string }> = {
   "workhub-demo-haru": { role: "新入社員", hint: "Onboarding / 必須研修" },
@@ -24,368 +20,47 @@ const HOME_HINTS: Record<string, { role: string; hint: string }> = {
   "workhub-demo-sora": { role: "人事 / 総務", hint: "人事・総務Task" },
   "workhub-demo-kai": { role: "System Admin", hint: "System Administration" },
 };
-
+const NOTIFICATION_LABELS: Record<string, string> = { "workflow.approval_requested": "出張申請の承認依頼が届きました", "workflow.returned": "出張申請が差し戻されました", "workflow.approved": "出張申請が承認されました", "workflow.rejected": "出張申請が却下されました" };
+const TIMELINE_LABELS: Record<string, string> = { "workflow.submitted": "申請しました", "workflow.returned": "差し戻されました", "workflow.resubmitted": "再申請しました", "workflow.approved": "承認されました", "workflow.rejected": "却下されました", "workflow.withdrawn": "取り下げました" };
 const REMEMBERED_USER_ID_KEY = "workhub.rememberedUserId";
+const readRememberedUserId = (): string => { try { return localStorage.getItem(REMEMBERED_USER_ID_KEY) ?? ""; } catch { return ""; } };
+const persistRememberedUserId = (remember: boolean, userId: string): void => { try { if (remember) localStorage.setItem(REMEMBERED_USER_ID_KEY, userId); else localStorage.removeItem(REMEMBERED_USER_ID_KEY); } catch { /* browser storage is optional */ } };
+const loginFailureMessage = (status: number): string => status === 401 ? "ユーザーIDまたはパスワードを確認してください。" : status === 429 ? "ログイン試行が一時的に制限されています。しばらくしてから再度お試しください。" : status === 400 || status === 413 || status === 415 ? "入力内容を確認してください。" : "現在ログインできません。時間をおいて再度お試しください。";
 
-const readRememberedUserId = (): string => {
-  try {
-    return localStorage.getItem(REMEMBERED_USER_ID_KEY) ?? "";
-  } catch {
-    return "";
-  }
-};
-
-const persistRememberedUserId = (remember: boolean, userId: string): void => {
-  try {
-    if (remember) localStorage.setItem(REMEMBERED_USER_ID_KEY, userId);
-    else localStorage.removeItem(REMEMBERED_USER_ID_KEY);
-  } catch {
-    // Authentication does not depend on browser storage availability.
-  }
-};
-
-const loginFailureMessage = (status: number): string => {
-  if (status === 401) return "ユーザーIDまたはパスワードを確認してください。";
-  if (status === 429) return "ログイン試行が一時的に制限されています。しばらくしてから再度お試しください。";
-  if (status === 400 || status === 413 || status === 415) return "入力内容を確認してください。";
-  return "現在ログインできません。時間をおいて再度お試しください。";
-};
-
-function Brand() {
-  return (
-    <div className="workhub-brand" aria-label="WORKHUB CECIL WORKS Digital Workplace">
-      <div className="workhub-logo" aria-hidden="true">W</div>
-      <div>
-        <div className="workhub-brand-name">WORKHUB</div>
-        <div className="workhub-brand-subtitle">CECIL WORKS Digital Workplace</div>
-      </div>
-    </div>
-  );
+async function apiJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers); headers.set("accept", "application/json"); if (init?.body) headers.set("content-type", "application/json");
+  if (init?.method && !["GET", "HEAD", "OPTIONS"].includes(init.method.toUpperCase())) { const csrfResponse = await fetch("/api/auth/csrf", { credentials: "same-origin" }); if (!csrfResponse.ok) throw new Error("CSRF token unavailable"); const csrfPayload = await csrfResponse.json() as { csrfToken: string }; headers.set("x-csrf-token", csrfPayload.csrfToken); }
+  const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
+  if (!response.ok) { const payload = await response.json().catch(() => ({})) as { error?: { message?: string } }; throw new Error(payload.error?.message ?? `Request failed (${response.status})`); }
+  return response.json() as Promise<T>;
 }
 
-interface PersonaDialogProps {
-  readonly personas: DemoPersona[];
-  readonly onSelect: (persona: DemoPersona) => void;
-  readonly onClose: () => void;
-}
-
-function PersonaDialog({ personas, onSelect, onClose }: PersonaDialogProps) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  return (
-    <div className="workhub-dialog-backdrop" onMouseDown={onClose}>
-      <section
-        className="workhub-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="persona-dialog-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="workhub-dialog-heading">
-          <div>
-            <p className="workhub-eyebrow">REFERENCE PERSONA</p>
-            <h2 id="persona-dialog-title">デモユーザを選ぶ</h2>
-          </div>
-          <button className="workhub-icon-button" type="button" onClick={onClose} aria-label="閉じる">
-            ×
-          </button>
-        </div>
-        <p className="workhub-muted">
-          Personaを選ぶとUser IDとデモ用Passwordを入力します。認証は省略せず、最後に「ログイン」を押してください。
-        </p>
-        <div className="workhub-persona-list">
-          {personas.map((persona) => (
-            <button
-              className="workhub-persona-card"
-              type="button"
-              key={persona.key}
-              onClick={() => onSelect(persona)}
-            >
-              <span className="workhub-persona-avatar" aria-hidden="true">
-                {persona.displayName.slice(0, 1)}
-              </span>
-              <span className="workhub-persona-copy">
-                <strong>{persona.displayName}</strong>
-                <span>{persona.roleLabel}</span>
-                <small>{persona.homeHint}</small>
-              </span>
-              <span className="workhub-persona-id">{persona.userId}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
+function Brand() { return <div className="workhub-brand" aria-label="WORKHUB CECIL WORKS Digital Workplace"><div className="workhub-logo" aria-hidden="true">W</div><div><div className="workhub-brand-name">WORKHUB</div><div className="workhub-brand-subtitle">CECIL WORKS Digital Workplace</div></div></div>; }
+interface PersonaDialogProps { readonly personas: DemoPersona[]; readonly onSelect: (persona: DemoPersona) => void; readonly onClose: () => void; }
+function PersonaDialog({ personas, onSelect, onClose }: PersonaDialogProps) { useEffect(() => { const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); }; window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [onClose]); return <div className="workhub-dialog-backdrop" onMouseDown={onClose}><section className="workhub-dialog" role="dialog" aria-modal="true" aria-labelledby="persona-dialog-title" onMouseDown={(event) => event.stopPropagation()}><div className="workhub-dialog-heading"><div><p className="workhub-eyebrow">REFERENCE PERSONA</p><h2 id="persona-dialog-title">デモユーザを選ぶ</h2></div><button className="workhub-icon-button" type="button" onClick={onClose} aria-label="閉じる">×</button></div><p className="workhub-muted">Personaを選ぶとUser IDとデモ用Passwordを入力します。認証は省略せず、最後に「ログイン」を押してください。</p><div className="workhub-persona-list">{personas.map((persona) => <button className="workhub-persona-card" type="button" key={persona.key} onClick={() => onSelect(persona)}><span className="workhub-persona-avatar" aria-hidden="true">{persona.displayName.slice(0, 1)}</span><span className="workhub-persona-copy"><strong>{persona.displayName}</strong><span>{persona.roleLabel}</span><small>{persona.homeHint}</small></span><span className="workhub-persona-id">{persona.userId}</span></button>)}</div></section></div>; }
 
 function LoginScreen() {
-  const auth = useAuth();
-  const remembered = useMemo(readRememberedUserId, []);
-  const [userId, setUserId] = useState(remembered);
-  const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(remembered.length > 0);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [demoConfig, setDemoConfig] = useState<DemoConfig>({ demoEnabled: false, personas: [] });
-  const [personaOpen, setPersonaOpen] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/workhub/demo-config", {
-      method: "GET",
-      headers: { accept: "application/json" },
-      credentials: "same-origin",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const payload = (await response.json()) as Partial<DemoConfig>;
-        if (payload.demoEnabled !== true || !Array.isArray(payload.personas)) return;
-        const personas = payload.personas.filter((item): item is DemoPersona => {
-          if (!item || typeof item !== "object") return false;
-          const candidate = item as Partial<DemoPersona>;
-          return [candidate.key, candidate.userId, candidate.displayName, candidate.roleLabel, candidate.homeHint]
-            .every((value) => typeof value === "string" && value.length > 0 && value.length <= 200);
-        });
-        setDemoConfig({
-          demoEnabled: true,
-          personas,
-          ...(typeof payload.demoPassword === "string" && payload.demoPassword.length <= 256
-            ? { demoPassword: payload.demoPassword }
-            : {}),
-        });
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-      });
-    return () => controller.abort();
-  }, []);
-
-  const choosePersona = (persona: DemoPersona) => {
-    setUserId(persona.userId);
-    setPassword(demoConfig.demoPassword ?? "");
-    setMessage(null);
-    setPersonaOpen(false);
-  };
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (submitting) return;
-    setSubmitting(true);
-    setMessage(null);
-
-    try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-        },
-        credentials: "same-origin",
-        body: JSON.stringify({ userId, password, remember }),
-      });
-      if (!response.ok) {
-        setMessage(loginFailureMessage(response.status));
-        return;
-      }
-      persistRememberedUserId(remember, userId);
-      setPassword("");
-      const synchronized = await auth.synchronize();
-      if (synchronized.status !== "authenticated") {
-        setMessage("ログイン状態を確認できませんでした。もう一度お試しください。");
-      }
-    } catch {
-      setMessage("現在ログインできません。ネットワーク状態を確認してください。");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <main className="workhub-login-shell">
-      <section className="workhub-login-story" aria-label="WORKHUB紹介">
-        <div className="workhub-story-content">
-          <Brand />
-          <p className="workhub-story-kicker">CECIL WORKS INTERNAL PORTAL</p>
-          <h1>仕事の入口を、ひとつに。</h1>
-          <p className="workhub-story-lead">
-            社内システムの名前ではなく、「何をしたいか」から仕事を始めるためのDigital Workplaceです。
-          </p>
-          <div className="workhub-story-grid" aria-hidden="true">
-            <span>MY WORK</span>
-            <span>REQUESTS</span>
-            <span>PEOPLE</span>
-            <span>DOCUMENTS</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="workhub-login-panel" aria-labelledby="login-title">
-        <div className="workhub-login-card">
-          <div className="workhub-mobile-brand"><Brand /></div>
-          <p className="workhub-eyebrow">EMPLOYEE SIGN IN</p>
-          <h2 id="login-title">WORKHUBにログイン</h2>
-          <p className="workhub-muted">CECIL WORKSの社内ポータルへアクセスします。</p>
-
-          {demoConfig.demoEnabled && (
-            <div className="workhub-demo-note" role="note">
-              <strong>Reference Demo</strong>
-              <span>この環境ではデモ用Credentialを利用できます。本番用の認証情報ではありません。</span>
-            </div>
-          )}
-
-          <form className="workhub-login-form" onSubmit={submit}>
-            <label>
-              <span>ユーザーID</span>
-              <input
-                name="userId"
-                autoComplete="username"
-                value={userId}
-                onChange={(event) => setUserId(event.target.value)}
-                required
-                maxLength={254}
-                disabled={submitting}
-              />
-            </label>
-            <label>
-              <span>パスワード</span>
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                maxLength={1024}
-                disabled={submitting}
-              />
-            </label>
-
-            <label className="workhub-remember-row">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(event) => setRemember(event.target.checked)}
-                disabled={submitting}
-              />
-              <span>
-                ログイン情報を保持する
-                <small>この端末にはユーザーIDだけを保存し、Passwordは保存しません。</small>
-              </span>
-            </label>
-
-            {message && <div className="workhub-login-error" role="alert">{message}</div>}
-
-            <button className="workhub-primary-button" type="submit" disabled={submitting}>
-              {submitting ? "確認しています…" : "ログイン"}
-            </button>
-            {demoConfig.demoEnabled && demoConfig.personas.length > 0 && (
-              <button
-                className="workhub-secondary-button"
-                type="button"
-                onClick={() => setPersonaOpen(true)}
-                disabled={submitting}
-              >
-                デモユーザを選ぶ
-              </button>
-            )}
-          </form>
-          <p className="workhub-login-footer">CECIL WORKS Inc. · Reference Application</p>
-        </div>
-      </section>
-
-      {personaOpen && (
-        <PersonaDialog
-          personas={demoConfig.personas}
-          onSelect={choosePersona}
-          onClose={() => setPersonaOpen(false)}
-        />
-      )}
-    </main>
-  );
+  const auth = useAuth(); const remembered = useMemo(readRememberedUserId, []); const [userId, setUserId] = useState(remembered); const [password, setPassword] = useState(""); const [remember, setRemember] = useState(remembered.length > 0); const [submitting, setSubmitting] = useState(false); const [message, setMessage] = useState<string | null>(null); const [demoConfig, setDemoConfig] = useState<DemoConfig>({ demoEnabled: false, personas: [] }); const [personaOpen, setPersonaOpen] = useState(false);
+  useEffect(() => { const controller = new AbortController(); fetch("/api/workhub/demo-config", { method: "GET", headers: { accept: "application/json" }, credentials: "same-origin", signal: controller.signal }).then(async (response) => { if (!response.ok) return; const payload = await response.json() as Partial<DemoConfig>; if (payload.demoEnabled !== true || !Array.isArray(payload.personas)) return; const personas = payload.personas.filter((item): item is DemoPersona => { if (!item || typeof item !== "object") return false; const candidate = item as Partial<DemoPersona>; return [candidate.key, candidate.userId, candidate.displayName, candidate.roleLabel, candidate.homeHint].every((value) => typeof value === "string" && value.length > 0 && value.length <= 200); }); setDemoConfig({ demoEnabled: true, personas, ...(typeof payload.demoPassword === "string" && payload.demoPassword.length <= 256 ? { demoPassword: payload.demoPassword } : {}) }); }).catch((caught: unknown) => { if (caught instanceof DOMException && caught.name === "AbortError") return; }); return () => controller.abort(); }, []);
+  const choosePersona = (persona: DemoPersona) => { setUserId(persona.userId); setPassword(demoConfig.demoPassword ?? ""); setMessage(null); setPersonaOpen(false); };
+  const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (submitting) return; setSubmitting(true); setMessage(null); try { const response = await fetch("/api/auth/login", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ userId, password, remember }) }); if (!response.ok) { setMessage(loginFailureMessage(response.status)); return; } persistRememberedUserId(remember, userId); setPassword(""); const synchronized = await auth.synchronize(); if (synchronized.status !== "authenticated") setMessage("ログイン状態を確認できませんでした。もう一度お試しください。"); } catch { setMessage("現在ログインできません。ネットワーク状態を確認してください。"); } finally { setSubmitting(false); } };
+  return <main className="workhub-login-shell"><section className="workhub-login-story" aria-label="WORKHUB紹介"><div className="workhub-story-content"><Brand /><p className="workhub-story-kicker">CECIL WORKS INTERNAL PORTAL</p><h1>仕事の入口を、ひとつに。</h1><p className="workhub-story-lead">社内システムの名前ではなく、「何をしたいか」から仕事を始めるためのDigital Workplaceです。</p><div className="workhub-story-grid" aria-hidden="true"><span>MY WORK</span><span>REQUESTS</span><span>PEOPLE</span><span>DOCUMENTS</span></div></div></section><section className="workhub-login-panel" aria-labelledby="login-title"><div className="workhub-login-card"><div className="workhub-mobile-brand"><Brand /></div><p className="workhub-eyebrow">EMPLOYEE SIGN IN</p><h2 id="login-title">WORKHUBにログイン</h2><p className="workhub-muted">CECIL WORKSの社内ポータルへアクセスします。</p>{demoConfig.demoEnabled && <div className="workhub-demo-note" role="note"><strong>Reference Demo</strong><span>この環境ではデモ用Credentialを利用できます。本番用の認証情報ではありません。</span></div>}<form className="workhub-login-form" onSubmit={submit}><label><span>ユーザーID</span><input name="userId" autoComplete="username" value={userId} onChange={(event) => setUserId(event.target.value)} required maxLength={254} disabled={submitting} /></label><label><span>パスワード</span><input name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={1024} disabled={submitting} /></label><label className="workhub-remember-row"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} disabled={submitting} /><span>ログイン情報を保持する<small>この端末にはユーザーIDだけを保存し、Passwordは保存しません。</small></span></label>{message && <div className="workhub-login-error" role="alert">{message}</div>}<button className="workhub-primary-button" type="submit" disabled={submitting}>{submitting ? "確認しています…" : "ログイン"}</button>{demoConfig.demoEnabled && demoConfig.personas.length > 0 && <button className="workhub-secondary-button" type="button" onClick={() => setPersonaOpen(true)} disabled={submitting}>デモユーザを選ぶ</button>}</form><p className="workhub-login-footer">CECIL WORKS Inc. · Reference Application</p></div></section>{personaOpen && <PersonaDialog personas={demoConfig.personas} onSelect={choosePersona} onClose={() => setPersonaOpen(false)} />}</main>;
 }
 
-function WorkhubHome() {
-  const auth = useAuth();
-  const user = auth.user;
-  const reference = user ? HOME_HINTS[user.id] : undefined;
-
-  return (
-    <div className="workhub-home-shell">
-      <header className="workhub-home-header">
-        <Brand />
-        <div className="workhub-user-chip">
-          <span className="workhub-user-dot" aria-hidden="true" />
-          <span>
-            <strong>{user?.displayName ?? "CECIL WORKS User"}</strong>
-            <small>{reference?.role ?? "Authenticated User"}</small>
-          </span>
-        </div>
-      </header>
-      <main className="workhub-home-main">
-        <p className="workhub-eyebrow">HOME / MY WORK</p>
-        <h1>おはようございます、{user?.displayName ?? "ユーザー"}さん</h1>
-        <p className="workhub-home-lead">今日やることを、システム横断でここから始められます。</p>
-
-        <section className="workhub-home-grid" aria-label="WORKHUB Home">
-          <article className="workhub-home-card workhub-home-card-primary">
-            <span className="workhub-card-label">あなたの優先エリア</span>
-            <h2>{reference?.hint ?? "MY WORK"}</h2>
-            <p>Persona / Roleに応じたWORKHUB Homeの差分を、この後のVertical Sliceで広げます。</p>
-          </article>
-          <article className="workhub-home-card">
-            <span className="workhub-card-label">QUICK ACTIONS</span>
-            <h2>何をしたいですか？</h2>
-            <div className="workhub-action-chips">
-              <span>休みたい</span>
-              <span>出張したい</span>
-              <span>経費を精算したい</span>
-            </div>
-          </article>
-          <article className="workhub-home-card">
-            <span className="workhub-card-label">REFERENCE STATUS</span>
-            <h2>Server-side authentication</h2>
-            <p>この画面はPersona選択だけでは開きません。D1のCredential検証とApplication Sessionを通過しています。</p>
-          </article>
-        </section>
-      </main>
-    </div>
-  );
+function TravelWorkspace() {
+  const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const reference = user ? HOME_HINTS[user.id] : undefined;
+  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const loadNotifications = useCallback(async () => { const [list, count] = await Promise.all([apiJson<{ items: NotificationRecord[] }>("/api/workhub/notifications"), apiJson<{ unreadCount: number }>("/api/workhub/notifications/unread-count")]); setNotifications(list.items); setUnreadCount(count.unreadCount); }, []);
+  const loadMyWork = useCallback(async () => { if (!isRen) return; const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work"); setMyWork(result.items); }, [isRen]);
+  const openRequest = useCallback(async (id: string) => { const detail = await apiJson<{ request: TravelRequestRecord; workflow: WorkflowRecord | null }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}`); const history = await apiJson<{ items: TimelineActivity[] }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}/timeline`); setSelectedRequest(detail.request); setSelectedWorkflow(detail.workflow); setTimeline(history.items ?? []); setDestinationOfficeItemId(detail.request.destinationOfficeItemId); setStartDate(detail.request.startDate); setEndDate(detail.request.endDate); setPurpose(detail.request.purpose); }, []);
+  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadNotifications]);
+  const run = async (operation: () => Promise<void>) => { if (busy) return; setBusy(true); setMessage(null); try { await operation(); } catch (caught) { setMessage(caught instanceof Error ? caught.message : "処理に失敗しました。"); } finally { setBusy(false); } };
+  const createAndSubmit = () => void run(async () => { const created = await apiJson<{ request: TravelRequestRecord }>("/api/workhub/travel-requests", { method: "POST", body: JSON.stringify({ destinationOfficeItemId, startDate, endDate, purpose }) }); const submitted = await apiJson<{ request: TravelRequestRecord }>(`/api/workhub/travel-requests/${created.request.id}/submit`, { method: "POST", body: JSON.stringify({ expectedVersion: created.request.version }) }); await openRequest(submitted.request.id); await loadNotifications(); setMessage("出張申請を提出しました。"); });
+  const updateAndResubmit = () => void run(async () => { if (!selectedRequest || !selectedWorkflow) return; const updated = await apiJson<{ request: TravelRequestRecord }>(`/api/workhub/travel-requests/${selectedRequest.id}`, { method: "PUT", body: JSON.stringify({ expectedVersion: selectedRequest.version, destinationOfficeItemId, startDate, endDate, purpose }) }); await apiJson(`/api/workhub/travel-requests/${selectedRequest.id}/resubmit`, { method: "POST", body: JSON.stringify({ expectedRequestVersion: updated.request.version, expectedWorkflowVersion: selectedWorkflow.version }) }); await openRequest(selectedRequest.id); await loadNotifications(); setMessage("出張申請を再申請しました。"); });
+  const decide = (entry: MyWorkEntry, action: "approve" | "return") => void run(async () => { await apiJson(`/api/workhub/workflows/${entry.workflow.id}/${action}`, { method: "POST", body: JSON.stringify({ expectedInstanceVersion: entry.workflow.version, expectedWorkItemVersion: entry.workItem.version, ...(action === "return" ? { reasonCode: "correction_required", comment: "日程を確認してください" } : {}) }) }); await loadMyWork(); await loadNotifications(); setMessage(action === "approve" ? "承認しました。" : "差し戻しました。"); });
+  const openNotification = (notification: NotificationRecord) => void run(async () => { if (!notification.readAt) await apiJson(`/api/workhub/notifications/${notification.id}/read`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version }) }); const target = notification.actionTarget?.match(/^resource:travel_request:(.+)$/u)?.[1]; if (target && isAoi) await openRequest(target); await loadNotifications(); });
+  const awaitingResubmission = selectedWorkflow?.state === "awaiting_resubmission";
+  return <div className="workhub-home-shell"><header className="workhub-home-header"><Brand /><div className="workhub-user-chip"><span className="workhub-user-dot" aria-hidden="true" /><span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span><span className="workhub-notification-badge" aria-label={`未読通知 ${unreadCount}件`}>{unreadCount}</span></div></header><main className="workhub-home-main"><p className="workhub-eyebrow">HOME / BUSINESS FOUNDATION</p><h1>おはようございます、{user?.displayName ?? "ユーザー"}さん</h1><p className="workhub-home-lead">TravelRequest・Workflow・Timeline・Notificationを同じ業務Scenarioで接続しています。</p>{message && <div className="workhub-demo-note" role="status"><strong>WORKHUB</strong><span>{message}</span></div>}<section className="workhub-home-grid" aria-label="WORKHUB Home">{isAoi && <article className="workhub-home-card workhub-home-card-primary"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "東京出張を申請"}</h2><div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => setDestinationOfficeItemId(event.target.value)}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><label>目的<textarea aria-label="目的" value={purpose} onChange={(event) => setPurpose(event.target.value)} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy} onClick={updateAndResubmit}>修正して再申請</button> : <button className="workhub-primary-button" type="button" disabled={busy} onClick={createAndSubmit}>出張申請を提出</button>}</div></article>}{isRen && <article className="workhub-home-card workhub-home-card-primary"><span className="workhub-card-label">MY WORK</span><h2>承認Task</h2>{myWork.length === 0 ? <p>現在の承認Taskはありません。</p> : <div className="workhub-task-list">{myWork.map((entry) => <div className="workhub-task-item" key={entry.workItem.id}><strong>{entry.request.purpose}</strong><span>{entry.request.startDate} → {entry.request.endDate}</span><div className="workhub-inline-actions"><button className="workhub-secondary-button" type="button" disabled={busy} onClick={() => decide(entry, "return")}>差し戻す</button><button className="workhub-primary-button" type="button" disabled={busy} onClick={() => decide(entry, "approve")}>承認する</button></div></div>)}</div>}</article>}<article className="workhub-home-card"><span className="workhub-card-label">NOTIFICATIONS</span><h2>通知 {unreadCount > 0 ? `(${unreadCount})` : ""}</h2>{notifications.length === 0 ? <p>通知はありません。</p> : <div className="workhub-notification-list">{notifications.map((notification) => <button key={notification.id} type="button" className={`workhub-notification-item ${notification.readAt ? "is-read" : ""}`} onClick={() => openNotification(notification)}><strong>{NOTIFICATION_LABELS[notification.notificationType] ?? notification.notificationType}</strong><small>{new Date(notification.createdAt).toLocaleString("ja-JP")}</small></button>)}</div>}</article>{selectedRequest && <article className="workhub-home-card"><span className="workhub-card-label">MY REQUEST DETAIL</span><h2>{selectedRequest.purpose}</h2><p>{selectedRequest.startDate} → {selectedRequest.endDate}</p><p>Workflow: <strong>{selectedWorkflow?.state ?? selectedRequest.status}</strong></p><div className="workhub-timeline" aria-label="申請履歴">{timeline.length === 0 ? <p>履歴はまだありません。</p> : timeline.map((activity) => <div key={activity.id} className="workhub-timeline-item"><strong>{TIMELINE_LABELS[activity.activityType] ?? activity.activityType}</strong><small>{new Date(activity.occurredAt).toLocaleString("ja-JP")}</small></div>)}</div></article>}{!isAoi && !isRen && <article className="workhub-home-card workhub-home-card-primary"><span className="workhub-card-label">あなたの優先エリア</span><h2>{reference?.hint ?? "MY WORK"}</h2><p>東京出張Vertical SliceはAoi / Ren Personaで操作できます。</p></article>}</section></main></div>;
 }
 
-export default function App() {
-  const auth = useAuth();
-
-  if (auth.status === "loading") {
-    return (
-      <main className="workhub-loading" aria-live="polite">
-        <Brand />
-        <span className="workhub-loading-bar" aria-hidden="true" />
-        <p>ログイン状態を確認しています…</p>
-      </main>
-    );
-  }
-
-  if (auth.status === "authenticated") return <WorkhubHome />;
-
-  if (auth.status === "error") {
-    return (
-      <main className="workhub-loading">
-        <Brand />
-        <h1>ログイン状態を確認できません</h1>
-        <p>通信状態を確認してから、もう一度お試しください。</p>
-        <button className="workhub-primary-button workhub-retry-button" type="button" onClick={() => void auth.synchronize()}>
-          再試行
-        </button>
-      </main>
-    );
-  }
-
-  return <LoginScreen />;
-}
+export default function App() { const auth = useAuth(); if (auth.status === "loading") return <main className="workhub-loading" aria-live="polite"><Brand /><span className="workhub-loading-bar" aria-hidden="true" /><p>ログイン状態を確認しています…</p></main>; if (auth.status === "authenticated") return <TravelWorkspace />; if (auth.status === "error") return <main className="workhub-loading"><Brand /><h1>ログイン状態を確認できません</h1><p>通信状態を確認してから、もう一度お試しください。</p><button className="workhub-primary-button workhub-retry-button" type="button" onClick={() => void auth.synchronize()}>再試行</button></main>; return <LoginScreen />; }
