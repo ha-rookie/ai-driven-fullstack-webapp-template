@@ -196,7 +196,6 @@ export class TravelRequestService {
     const next: TravelRequestRecord = {
       ...current,
       destinationOfficeItemId: boundedId(command.destinationOfficeItemId, "destinationOfficeItemId"),
-      destinationOfficeRevisionId: null,
       startDate,
       endDate,
       purpose: normalizePurpose(command.purpose),
