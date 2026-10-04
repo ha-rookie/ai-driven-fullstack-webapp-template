@@ -6,10 +6,12 @@ import {
   workhubSearchPrincipal,
 } from "../src/reference/workhub/search";
 import {
+  InMemorySearchCursorCodec,
   InMemorySearchProvider,
   SearchApplicationService,
   SearchRequestError,
   type SearchAuthorizationService,
+  type SearchProvider,
   type SearchResultHydrator,
 } from "../src/worker/search";
 
@@ -42,6 +44,9 @@ const authorization: SearchAuthorizationService = {
   },
 };
 
+const newService = (hydrator: SearchResultHydrator): SearchApplicationService =>
+  new SearchApplicationService(provider, authorization, hydrator, new InMemorySearchCursorCodec());
+
 test("search authorizes candidates before hydration and never returns unauthorized resources", async () => {
   let hydratedIds: readonly string[] = [];
   const hydrator: SearchResultHydrator = {
@@ -56,8 +61,7 @@ test("search authorizes candidates before hydration and never returns unauthoriz
     },
   };
 
-  const service = new SearchApplicationService(provider, authorization, hydrator);
-  const result = await service.search(principal, { text: "Tokyo", categories: ["requests"] });
+  const result = await newService(hydrator).search(principal, { text: "Tokyo", categories: ["requests"] });
 
   assert.deepEqual(hydratedIds, ["travel-visible"]);
   assert.equal(result.results.length, 1);
@@ -86,15 +90,14 @@ test("hydrator cannot smuggle a result that was not authorized", async () => {
     },
   };
 
-  const service = new SearchApplicationService(provider, authorization, hydrator);
-  const result = await service.search(principal, { text: "Tokyo" });
+  const result = await newService(hydrator).search(principal, { text: "Tokyo" });
 
   assert.deepEqual(result.results.map((item) => item.resourceId), ["travel-visible"]);
 });
 
 test("query validation rejects empty, oversized, invalid category, and invalid limit inputs", async () => {
   const hydrator: SearchResultHydrator = { async hydrateBatch() { return []; } };
-  const service = new SearchApplicationService(provider, authorization, hydrator);
+  const service = newService(hydrator);
 
   const cases = [
     { query: { text: "   " }, code: "invalid_query" },
@@ -123,6 +126,68 @@ test("in-memory provider applies category filter deterministically", async () =>
   });
 
   assert.deepEqual(result.candidates.map((candidate) => candidate.resourceId), ["doc-1"]);
+});
+
+test("opaque cursor hides provider cursor and restores it only for the same search binding", async () => {
+  const receivedCursors: Array<string | undefined> = [];
+  const pagingProvider: SearchProvider = {
+    async search(input) {
+      receivedCursors.push(input.query.cursor);
+      return {
+        candidates: [],
+        nextCursor: input.query.cursor ? null : "provider-secret-token",
+      };
+    },
+  };
+  const allowAll: SearchAuthorizationService = { async authorizeBatch() { return []; } };
+  const noHydration: SearchResultHydrator = { async hydrateBatch() { return []; } };
+  const service = new SearchApplicationService(
+    pagingProvider,
+    allowAll,
+    noHydration,
+    new InMemorySearchCursorCodec(),
+  );
+
+  const first = await service.search(principal, { text: "Tokyo", categories: ["requests"] });
+  assert.ok(first.nextCursor);
+  assert.notEqual(first.nextCursor, "provider-secret-token");
+  assert.equal(first.nextCursor.includes("provider-secret-token"), false);
+
+  await service.search(principal, {
+    text: "Tokyo",
+    categories: ["requests"],
+    cursor: first.nextCursor,
+  });
+  assert.deepEqual(receivedCursors, [undefined, "provider-secret-token"]);
+});
+
+test("opaque cursor rejects reuse after query or principal changes", async () => {
+  const pagingProvider: SearchProvider = {
+    async search() {
+      return { candidates: [], nextCursor: "provider-token" };
+    },
+  };
+  const service = new SearchApplicationService(
+    pagingProvider,
+    { async authorizeBatch() { return []; } },
+    { async hydrateBatch() { return []; } },
+    new InMemorySearchCursorCodec(),
+  );
+  const first = await service.search(principal, { text: "Tokyo", categories: ["requests"] });
+  assert.ok(first.nextCursor);
+
+  await assert.rejects(
+    () => service.search(principal, { text: "Osaka", categories: ["requests"], cursor: first.nextCursor ?? undefined }),
+    (error: unknown) => error instanceof SearchRequestError && error.code === "invalid_cursor",
+  );
+  await assert.rejects(
+    () => service.search({ principalId: "user-b", environment: "test" }, {
+      text: "Tokyo",
+      categories: ["requests"],
+      cursor: first.nextCursor ?? undefined,
+    }),
+    (error: unknown) => error instanceof SearchRequestError && error.code === "invalid_cursor",
+  );
 });
 
 test("WORKHUB reference search applies current principal authorization", async () => {
