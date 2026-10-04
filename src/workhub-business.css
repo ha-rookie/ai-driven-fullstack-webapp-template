@@ -1,0 +1,105 @@
+.workhub-business-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.workhub-business-form label {
+  display: grid;
+  gap: 6px;
+  color: #405764;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workhub-business-form input,
+.workhub-business-form select,
+.workhub-business-form textarea {
+  width: 100%;
+  border: 1px solid #cbd7dc;
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: #173243;
+  background: white;
+  font: inherit;
+}
+
+.workhub-business-form textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.workhub-notification-badge {
+  display: inline-grid;
+  min-width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 7px;
+  color: white;
+  background: #176f74;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.workhub-task-list,
+.workhub-notification-list,
+.workhub-timeline {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.workhub-task-item,
+.workhub-timeline-item {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #dde6e9;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfdfd;
+}
+
+.workhub-task-item > span,
+.workhub-timeline-item small,
+.workhub-notification-item small {
+  color: #73848e;
+  font-size: 11px;
+}
+
+.workhub-inline-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.workhub-inline-actions .workhub-primary-button,
+.workhub-inline-actions .workhub-secondary-button {
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.workhub-notification-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid #c5dddd;
+  border-radius: 10px;
+  padding: 12px;
+  text-align: left;
+  color: #1e4450;
+  background: #f0f9f8;
+}
+
+.workhub-notification-item.is-read {
+  border-color: #dde5e7;
+  background: #fafcfc;
+  opacity: 0.76;
+}
+
+@media (max-width: 720px) {
+  .workhub-inline-actions {
+    flex-direction: column;
+  }
+}
