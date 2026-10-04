@@ -23,6 +23,7 @@
     "src/worker/authorization/**/*.ts",
     "src/worker/audit/**/*.ts",
     "src/worker/workflow/**/*.ts",
+    "src/worker/master-data/**/*.ts",
     "tests/**/*.ts"
   ]
 }
