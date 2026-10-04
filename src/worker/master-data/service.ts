@@ -63,13 +63,6 @@ const assertIsoTimestamp = (value: string, name: string): string => {
   return value;
 };
 
-const assertPositiveInteger = (value: number, name: string): number => {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new MasterDataError("invalid_input", `${name} must be a positive integer`);
-  }
-  return value;
-};
-
 const normalizeDisplayOrder = (value: number | undefined): number => {
   const resolved = value ?? 0;
   if (!Number.isSafeInteger(resolved) || resolved < -1_000_000 || resolved > 1_000_000) {
