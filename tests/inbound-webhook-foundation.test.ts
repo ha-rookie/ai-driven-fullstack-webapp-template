@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   InMemoryInboundWebhookReceiptStore,
+  InboundWebhookProcessingError,
   InboundWebhookService,
   InboundWebhookVerificationError,
   type InboundWebhookVerifier,
@@ -80,6 +81,67 @@ test("duplicate provider delivery is acknowledged without duplicate business mut
   assert.equal(second.kind, "duplicate");
   assert.equal(second.receipt.id, first.receipt.id);
   assert.equal(handled.length, 1);
+});
+
+test("retryable failure can resume on provider redelivery with the same receipt identity", async () => {
+  const store = new InMemoryInboundWebhookReceiptStore();
+  let calls = 0;
+  const service = new InboundWebhookService({
+    environment: "test",
+    store,
+    verifier: verifier(),
+    mapper: { map: () => ({ travelRequestId: "travel-1" }) },
+    handler: {
+      async handle() {
+        calls += 1;
+        if (calls === 1) throw new InboundWebhookProcessingError("dependency_unavailable", true);
+      },
+    },
+    clock,
+    idGenerator: ids(),
+  });
+
+  await assert.rejects(
+    () => service.handle({ providerKey: "reference", headers, rawBody }),
+    (error: unknown) => error instanceof InboundWebhookProcessingError && error.code === "dependency_unavailable",
+  );
+  const failed = await store.getByReplayKey("test", "reference", "evt-1");
+  assert.equal(failed?.status, "failed");
+  assert.equal(failed?.attemptCount, 1);
+
+  const retried = await service.handle({ providerKey: "reference", headers, rawBody });
+  assert.equal(retried.kind, "processed");
+  assert.equal(retried.receipt.id, failed?.id);
+  assert.equal(retried.receipt.attemptCount, 2);
+  assert.equal(calls, 2);
+});
+
+test("non-retryable failure becomes dead letter and is not re-executed on redelivery", async () => {
+  const store = new InMemoryInboundWebhookReceiptStore();
+  let calls = 0;
+  const service = new InboundWebhookService({
+    environment: "test",
+    store,
+    verifier: verifier(),
+    mapper: { map: () => ({ travelRequestId: "travel-1" }) },
+    handler: {
+      async handle() {
+        calls += 1;
+        throw new InboundWebhookProcessingError("invalid_mapping", false);
+      },
+    },
+    clock,
+    idGenerator: ids(),
+  });
+
+  await assert.rejects(() => service.handle({ providerKey: "reference", headers, rawBody }));
+  const dead = await store.getByReplayKey("test", "reference", "evt-1");
+  assert.equal(dead?.status, "dead_letter");
+
+  const duplicate = await service.handle({ providerKey: "reference", headers, rawBody });
+  assert.equal(duplicate.kind, "duplicate");
+  assert.equal(duplicate.receipt.status, "dead_letter");
+  assert.equal(calls, 1);
 });
 
 test("verification must complete before mapping or business handling", async () => {
