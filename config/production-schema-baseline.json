@@ -31,7 +31,8 @@
     "workflow_transitions": ["id", "environment", "workflow_instance_id", "work_item_id", "sequence", "transition", "actor_id", "from_state", "to_state", "from_step_key", "to_step_key", "definition_version", "reason_code", "comment", "request_id", "correlation_id", "occurred_at"],
     "master_items": ["id", "environment", "master_key", "code", "version", "next_revision", "last_mutation_id", "retired_at", "created_at", "created_by", "updated_at", "updated_by"],
     "master_revisions": ["id", "environment", "master_item_id", "revision", "label", "enabled", "effective_from", "effective_to", "display_order", "parent_item_id", "attributes_json", "created_at", "created_by"],
-    "reference_travel_requests": ["id", "environment", "requester_id", "destination_office_item_id", "destination_office_revision_id", "start_date", "end_date", "purpose", "status", "submission_key", "workflow_instance_id", "submitted_at", "version", "created_at", "updated_at"]
+    "reference_travel_requests": ["id", "environment", "requester_id", "destination_office_item_id", "destination_office_revision_id", "start_date", "end_date", "purpose", "status", "submission_key", "workflow_instance_id", "submitted_at", "version", "created_at", "updated_at"],
+    "business_activities": ["id", "environment", "resource_type", "resource_id", "activity_type", "actor_ref", "actor_display_snapshot", "subject_ref", "source_type", "source_id", "source_sequence", "visibility_scope", "metadata_json", "occurred_at", "created_at"]
   },
   "requiredIndexes": [
     "idx_example_resources_created_at",
@@ -68,6 +69,8 @@
     "idx_master_revisions_parent",
     "idx_master_revisions_selectable",
     "idx_reference_travel_requests_requester_status",
-    "idx_reference_travel_requests_destination"
+    "idx_reference_travel_requests_destination",
+    "idx_business_activities_resource_order",
+    "idx_business_activities_resource_type"
   ]
 }
