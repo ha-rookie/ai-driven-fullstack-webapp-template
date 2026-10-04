@@ -17,7 +17,7 @@ const ids = (): IdGenerator => {
   return { generate: () => `receipt-${++sequence}` };
 };
 
-const headers = { get: (_name: string) => null };
+const headers = { get: () => null };
 const rawBody = new TextEncoder().encode('{"event":"approved"}');
 
 const verifier = (overrides: Partial<Awaited<ReturnType<InboundWebhookVerifier["verify"]>>> = {}): InboundWebhookVerifier => ({
