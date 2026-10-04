@@ -8,10 +8,14 @@ import {
 } from "./fixtures";
 import type {
   CreateTravelRequestCommand,
+  ResubmitTravelRequestCommand,
+  ResubmitTravelRequestResult,
   SubmitTravelRequestCommand,
   TravelRequestMutationGate,
   TravelRequestRecord,
   TravelRequestStore,
+  TravelRequestWorkflowStateReader,
+  UpdateReturnedTravelRequestCommand,
   UpdateTravelRequestCommand,
 } from "./types";
 
@@ -39,7 +43,8 @@ export interface TravelRequestServiceOptions {
   readonly environment: string;
   readonly store: TravelRequestStore;
   readonly masterData: Pick<MasterDataService, "listSelectable" | "resolveAsOf">;
-  readonly workflow: Pick<WorkflowService, "start">;
+  readonly workflow: Pick<WorkflowService, "start" | "resubmit">;
+  readonly workflowState?: TravelRequestWorkflowStateReader;
   readonly mutationGate?: TravelRequestMutationGate;
   readonly now?: () => Date;
   readonly generateId?: () => string;
@@ -180,6 +185,33 @@ export class TravelRequestService {
     return next;
   }
 
+  async updateReturned(command: UpdateReturnedTravelRequestCommand): Promise<TravelRequestRecord> {
+    await this.options.mutationGate?.assertMutationAllowed();
+    const current = await this.loadOwnedDraftOrRequest(command.id, command.principalId);
+    await this.assertAwaitingResubmission(current, command.principalId);
+    if (current.version !== command.expectedVersion) {
+      throw new TravelRequestError("conflict", "travel request version is stale");
+    }
+    const { startDate, endDate } = validateTravelDates(command.startDate, command.endDate);
+    const next: TravelRequestRecord = {
+      ...current,
+      destinationOfficeItemId: boundedId(command.destinationOfficeItemId, "destinationOfficeItemId"),
+      destinationOfficeRevisionId: null,
+      startDate,
+      endDate,
+      purpose: normalizePurpose(command.purpose),
+      version: current.version + 1,
+      updatedAt: this.now().toISOString(),
+    };
+    if (!await this.options.store.compareAndSet(next, {
+      expectedVersion: current.version,
+      expectedStatus: "submitted",
+    })) {
+      throw new TravelRequestError("conflict", "travel request changed concurrently during correction");
+    }
+    return next;
+  }
+
   async submit(command: SubmitTravelRequestCommand): Promise<TravelRequestRecord> {
     await this.options.mutationGate?.assertMutationAllowed();
     const current = await this.loadOwnedDraftOrRequest(command.id, command.principalId);
@@ -265,6 +297,74 @@ export class TravelRequestService {
       );
     }
     return submitted;
+  }
+
+  async resubmit(command: ResubmitTravelRequestCommand): Promise<ResubmitTravelRequestResult> {
+    await this.options.mutationGate?.assertMutationAllowed();
+    const current = await this.loadOwnedDraftOrRequest(command.id, command.principalId);
+    const instance = await this.assertAwaitingResubmission(current, command.principalId);
+    if (current.version !== command.expectedRequestVersion) {
+      throw new TravelRequestError("conflict", "travel request version is stale");
+    }
+    if (instance.version !== command.expectedWorkflowVersion) {
+      throw new TravelRequestError("conflict", "workflow version is stale");
+    }
+
+    const referenceAt = this.now().toISOString();
+    const office = await this.options.masterData.resolveAsOf(current.destinationOfficeItemId, referenceAt);
+    if (!office || office.item.masterKey !== WORKHUB_OFFICE_MASTER_KEY) {
+      throw new TravelRequestError("office_unavailable", "destination office is not selectable");
+    }
+
+    let request = current;
+    if (current.destinationOfficeRevisionId !== office.revision.id) {
+      request = {
+        ...current,
+        destinationOfficeRevisionId: office.revision.id,
+        version: current.version + 1,
+        updatedAt: referenceAt,
+      };
+      if (!await this.options.store.compareAndSet(request, {
+        expectedVersion: current.version,
+        expectedStatus: "submitted",
+      })) {
+        throw new TravelRequestError("conflict", "travel request changed concurrently before resubmission");
+      }
+    }
+
+    try {
+      const workflow = await this.options.workflow.resubmit({
+        instanceId: instance.id,
+        actorId: command.principalId,
+        expectedInstanceVersion: command.expectedWorkflowVersion,
+        requestId: command.requestId,
+        correlationId: command.correlationId,
+      });
+      return { request, workflow };
+    } catch {
+      throw new TravelRequestError("workflow_failed", "workflow could not be resubmitted");
+    }
+  }
+
+  private async assertAwaitingResubmission(current: TravelRequestRecord, principalId: string) {
+    if (current.status !== "submitted" || !current.workflowInstanceId || !this.options.workflowState) {
+      throw new TravelRequestError("invalid_state", "travel request is not awaiting correction");
+    }
+    const instance = await this.options.workflowState.getInstance(
+      current.workflowInstanceId,
+      this.options.environment,
+    );
+    if (!instance) throw new TravelRequestError("invalid_state", "workflow instance is unavailable");
+    if (instance.requesterId !== boundedId(principalId, "principalId")) {
+      throw new TravelRequestError("forbidden", "workflow belongs to another principal");
+    }
+    if (instance.resourceType !== WORKHUB_TRAVEL_RESOURCE_TYPE || instance.resourceId !== current.id) {
+      throw new TravelRequestError("invalid_state", "workflow resource does not match travel request");
+    }
+    if (instance.state !== "awaiting_resubmission") {
+      throw new TravelRequestError("invalid_state", "workflow is not awaiting resubmission");
+    }
+    return instance;
   }
 
   private async loadOwnedDraftOrRequest(idValue: string, principalValue: string): Promise<TravelRequestRecord> {
