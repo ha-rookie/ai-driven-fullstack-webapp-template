@@ -7,6 +7,8 @@ import type {
 
 const REQUESTER_RECIPIENT = "workhub.travel.requester";
 const ASSIGNEE_RECIPIENT = "workhub.travel.assignee";
+const travelActionTarget = (resourceId?: string): string | null =>
+  resourceId ? `resource:travel_request:${resourceId}` : null;
 
 export const WORKHUB_TRAVEL_NOTIFICATION_POLICY: NotificationPolicy = {
   resolve(event: NotificationSourceEvent) {
@@ -20,9 +22,7 @@ export const WORKHUB_TRAVEL_NOTIFICATION_POLICY: NotificationPolicy = {
           recipientResolverKey: ASSIGNEE_RECIPIENT,
           titleKey: "notification.workflow.approval_requested.title",
           messageKey: "notification.workflow.approval_requested.body",
-          actionTarget: event.resourceId
-            ? `resource:${event.resourceType}:${event.resourceId}`
-            : null,
+          actionTarget: travelActionTarget(event.resourceId),
           severity: "info",
         };
       case "workflow.return":
@@ -33,9 +33,7 @@ export const WORKHUB_TRAVEL_NOTIFICATION_POLICY: NotificationPolicy = {
           recipientResolverKey: REQUESTER_RECIPIENT,
           titleKey: "notification.workflow.returned.title",
           messageKey: "notification.workflow.returned.body",
-          actionTarget: event.resourceId
-            ? `resource:${event.resourceType}:${event.resourceId}`
-            : null,
+          actionTarget: travelActionTarget(event.resourceId),
           severity: "warning",
         };
       case "workflow.approve":
@@ -46,9 +44,7 @@ export const WORKHUB_TRAVEL_NOTIFICATION_POLICY: NotificationPolicy = {
           recipientResolverKey: REQUESTER_RECIPIENT,
           titleKey: "notification.workflow.approved.title",
           messageKey: "notification.workflow.approved.body",
-          actionTarget: event.resourceId
-            ? `resource:${event.resourceType}:${event.resourceId}`
-            : null,
+          actionTarget: travelActionTarget(event.resourceId),
           severity: "info",
         };
       case "workflow.reject":
@@ -59,9 +55,7 @@ export const WORKHUB_TRAVEL_NOTIFICATION_POLICY: NotificationPolicy = {
           recipientResolverKey: REQUESTER_RECIPIENT,
           titleKey: "notification.workflow.rejected.title",
           messageKey: "notification.workflow.rejected.body",
-          actionTarget: event.resourceId
-            ? `resource:${event.resourceType}:${event.resourceId}`
-            : null,
+          actionTarget: travelActionTarget(event.resourceId),
           severity: "warning",
         };
       default:
