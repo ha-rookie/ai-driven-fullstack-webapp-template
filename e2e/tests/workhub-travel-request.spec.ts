@@ -20,7 +20,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await loginAs(page, "aoi");
 
   await expect(page.getByText("REQUESTS / 出張したい", { exact: true })).toBeVisible();
-  await page.getByLabel("行先").selectOption({ label: /Tokyo Office/u });
+  await page.getByLabel("行先").selectOption({ label: "Tokyo Office (TOKYO)" });
   await page.getByLabel("開始日").fill("2026-10-20");
   await page.getByLabel("終了日").fill("2026-10-21");
   await page.getByLabel("目的").fill("東京顧客打ち合わせ E2E");
