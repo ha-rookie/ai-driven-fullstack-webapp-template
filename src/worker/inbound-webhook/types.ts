@@ -67,3 +67,14 @@ export class InboundWebhookVerificationError extends Error {
     this.name = "InboundWebhookVerificationError";
   }
 }
+
+export class InboundWebhookProcessingError extends Error {
+  constructor(
+    readonly code: string,
+    readonly retryable: boolean,
+    message = "Inbound webhook business processing failed",
+  ) {
+    super(message);
+    this.name = "InboundWebhookProcessingError";
+  }
+}
