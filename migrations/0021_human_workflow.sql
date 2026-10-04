@@ -13,6 +13,7 @@ CREATE TABLE workflow_instances (
   next_work_item_sequence INTEGER NOT NULL,
   next_transition_sequence INTEGER NOT NULL,
   submission_key TEXT NOT NULL,
+  last_mutation_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   completed_at TEXT,
