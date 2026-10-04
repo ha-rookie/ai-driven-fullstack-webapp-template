@@ -4,3 +4,4 @@ export * from "./d1-store";
 export * from "./service";
 export * from "./async-job";
 export * from "./webhook-security";
+export * from "./redrive";
