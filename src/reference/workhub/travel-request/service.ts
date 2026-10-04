@@ -45,9 +45,27 @@ export interface TravelRequestServiceOptions {
   readonly generateId?: () => string;
 }
 
+const hasDisallowedControlCharacter = (
+  value: string,
+  allowedCodes: ReadonlySet<number> = new Set<number>(),
+): boolean => {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    const isControl = (code >= 0 && code <= 31) || code === 127;
+    if (isControl && !allowedCodes.has(code)) return true;
+  }
+  return false;
+};
+
+const PURPOSE_ALLOWED_CONTROL_CODES = new Set([9, 10, 13]);
+
 const boundedId = (value: string, name: string): string => {
   const normalized = value.trim();
-  if (!normalized || normalized.length > MAX_ID_LENGTH || /[\u0000-\u001f\u007f]/u.test(normalized)) {
+  if (
+    !normalized
+    || normalized.length > MAX_ID_LENGTH
+    || hasDisallowedControlCharacter(normalized)
+  ) {
     throw new TravelRequestError("invalid_input", `${name} is invalid`);
   }
   return normalized;
@@ -55,7 +73,11 @@ const boundedId = (value: string, name: string): string => {
 
 const normalizePurpose = (value: string): string => {
   const normalized = value.trim();
-  if (!normalized || normalized.length > MAX_PURPOSE_LENGTH || /[\u0000\u000b\u000c\u000e-\u001f\u007f]/u.test(normalized)) {
+  if (
+    !normalized
+    || normalized.length > MAX_PURPOSE_LENGTH
+    || hasDisallowedControlCharacter(normalized, PURPOSE_ALLOWED_CONTROL_CODES)
+  ) {
     throw new TravelRequestError("invalid_input", "purpose is invalid");
   }
   return normalized;
@@ -97,8 +119,7 @@ export class TravelRequestService {
   }
 
   async get(id: string, principalId: string): Promise<TravelRequestRecord> {
-    const record = await this.loadOwnedDraftOrRequest(id, principalId);
-    return record;
+    return this.loadOwnedDraftOrRequest(id, principalId);
   }
 
   async createDraft(command: CreateTravelRequestCommand): Promise<TravelRequestRecord> {
@@ -175,11 +196,12 @@ export class TravelRequestService {
       throw new TravelRequestError("office_unavailable", "destination office is not selectable");
     }
 
+    const submissionKey = `travel-request:${current.id}:${this.generateId()}`;
     const reservation: TravelRequestRecord = {
       ...current,
       destinationOfficeRevisionId: office.revision.id,
       status: "submitting",
-      submissionKey: `travel-request:${current.id}:${this.generateId()}`,
+      submissionKey,
       version: current.version + 1,
       updatedAt: referenceAt,
     };
@@ -193,7 +215,7 @@ export class TravelRequestService {
     let workflowInstanceId: string;
     try {
       const started = await this.options.workflow.start({
-        submissionKey: reservation.submissionKey!,
+        submissionKey,
         resourceType: WORKHUB_TRAVEL_RESOURCE_TYPE,
         resourceId: reservation.id,
         definitionKey: WORKHUB_TRAVEL_WORKFLOW_KEY,
