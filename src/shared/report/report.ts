@@ -46,7 +46,8 @@ export interface GeneratedArtifact {
   readonly objectIdentifier: string; readonly contentType: string; readonly byteLength: number; readonly generatedAt: string;
   readonly generatedBy: string; readonly status: "ready"; readonly version: number;
 }
-const bounded=(value:string,name:string):string=>{const normalized=value.trim();if(!normalized||normalized.length>256||/[\u0000-\u001f\u007f]/u.test(normalized))throw new TypeError(`${name} is invalid`);return normalized;};
+const hasControlCharacter=(value:string):boolean=>Array.from(value).some((character)=>{const code=character.codePointAt(0)??0;return code<=0x1f||code===0x7f;});
+const bounded=(value:string,name:string):string=>{const normalized=value.trim();if(!normalized||normalized.length>256||hasControlCharacter(normalized))throw new TypeError(`${name} is invalid`);return normalized;};
 const iso=(value:string,name:string):string=>{const parsed=new Date(value);if(!Number.isFinite(parsed.getTime())||parsed.toISOString()!==value)throw new TypeError(`${name} must be an ISO-8601 UTC timestamp`);return value;};
 export const buildReportViewModel=<TData>(input:{readonly definition:ReportDefinition<TData>;readonly resourceRef:{readonly type:string;readonly id:string};readonly sourceSnapshot:ReportSourceSnapshot;readonly generationIntent:ReportGenerationIntent;readonly generatedBy:string;readonly generatedAt:string;readonly locale:string;readonly timezone:string;readonly data:unknown;}):ReportViewModel<TData>=>{
  if(!TOKEN.test(input.definition.key))throw new TypeError("report definition key is invalid");
