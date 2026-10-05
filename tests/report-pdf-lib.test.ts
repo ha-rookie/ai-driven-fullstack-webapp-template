@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { PdfLibReportRenderer, buildReportViewModel, type ReportDefinition } from "../src/shared/report";
 
 type Data={title:string};
@@ -24,8 +23,7 @@ test("pdf-lib renderer rejects mismatched template versions and unsupported outp
 
 
 test("pdf-lib renderer embeds a licensed custom font and renders Japanese text",async()=>{
- const require=createRequire(import.meta.url);
- const fontPath=require.resolve("@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-400-normal.woff");
+ const fontPath="node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-400-normal.woff";
  const renderer=new PdfLibReportRenderer(
    ()=>({key:"approval-pdf",version:"1",build:()=>({title:"出張申請承認書",lines:["東京出張","承認済み","申請者：青井"]})}),
    {loadFontBytes:async()=>new Uint8Array(await readFile(fontPath))},
