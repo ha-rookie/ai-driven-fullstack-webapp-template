@@ -1,5 +1,5 @@
-import type { AsyncJobEnvelope, AsyncJobPublisher } from "../async-job";
-import { createAsyncJobEnvelope } from "../async-job";
+import type { AsyncJobEnvelope, AsyncJobPublisher, ExecuteAsyncJobInput, AsyncJobExecutionResult } from "../async-job";
+import { createAsyncJobEnvelope, executeAsyncJob } from "../async-job";
 import type { ObjectStorage } from "../object-storage";
 import type { GeneratedArtifact, ReportDefinition, ReportOutputType, ReportRenderer, ReportViewModel } from "./report";
 import type { GeneratedArtifactStore, ReportGenerationAuthorizer } from "./artifact-service";
@@ -18,13 +18,6 @@ export interface AsyncReportResolver {
     renderer: ReportRenderer;
   }>;
 }
-
-const pendingContentType = (outputType: ReportOutputType): string => {
-  if (outputType === "html") return "text/html; charset=utf-8";
-  if (outputType === "pdf") return "application/pdf";
-  if (outputType === "xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  return "text/csv; charset=utf-8";
-};
 
 const jobIdentity = (environment: string, artifactId: string): string =>
   `report:${environment}:${artifactId}`;
@@ -77,9 +70,7 @@ export class AsyncReportGenerationService {
         generationIntent: input.viewModel.generationIntent,
         outputType: input.outputType,
         objectIdentifier: this.options.generateId(),
-        contentType: pendingContentType(input.outputType),
-        byteLength: 0,
-        generatedAt: this.options.now().toISOString(),
+        requestedAt: this.options.now().toISOString(),
         generatedBy: input.principalId,
         status: "pending",
         version: 1,
@@ -118,6 +109,7 @@ export const createAsyncReportHandler = (options: {
   artifacts: GeneratedArtifactStore;
   storage: ObjectStorage;
   resolver: AsyncReportResolver;
+  now?: () => Date;
 }) => async (payload: AsyncReportJobPayload): Promise<void> => {
   if (payload.environment !== options.environment) throw new Error("report job environment mismatch");
   let artifact = await options.artifacts.get(payload.artifactId, options.environment);
@@ -146,8 +138,9 @@ export const createAsyncReportHandler = (options: {
       id: artifact.id, environment: artifact.environment, expectedVersion: artifact.version,
       from: "generating", to: "ready",
       patch: {
-        contentType: existingObject.contentType ?? artifact.contentType,
+        contentType: existingObject.contentType ?? artifact.contentType ?? "application/octet-stream",
         byteLength: existingObject.byteLength,
+        generatedAt: (options.now ?? (() => new Date()))().toISOString(),
       },
     });
     if (!ready) {
@@ -178,7 +171,7 @@ export const createAsyncReportHandler = (options: {
   const ready = await options.artifacts.transition({
     id: artifact.id, environment: artifact.environment, expectedVersion: artifact.version,
     from: "generating", to: "ready",
-    patch: { contentType: rendered.contentType, byteLength: stored.byteLength },
+    patch: { contentType: rendered.contentType, byteLength: stored.byteLength, generatedAt: (options.now ?? (() => new Date()))().toISOString() },
   });
   if (!ready) throw new Error("report artifact ready transition conflicted");
 };
@@ -196,4 +189,21 @@ export const markAsyncReportFailed = async (input: {
     from: artifact.status, to: "failed", patch: { failureCode: input.failureCode },
   });
   return failed !== null;
+};
+
+
+export const executeAsyncReportJob = async (input: Omit<ExecuteAsyncJobInput<AsyncReportJobPayload>, "handler"> & {
+  artifacts: GeneratedArtifactStore;
+  handler: ExecuteAsyncJobInput<AsyncReportJobPayload>["handler"];
+}): Promise<AsyncJobExecutionResult> => {
+  const result = await executeAsyncJob(input);
+  if (result.kind === "failed" || result.kind === "dead_letter") {
+    await markAsyncReportFailed({
+      artifacts: input.artifacts,
+      artifactId: input.envelope.payload.artifactId,
+      environment: input.envelope.payload.environment,
+      failureCode: result.failureCode,
+    });
+  }
+  return result;
 };
