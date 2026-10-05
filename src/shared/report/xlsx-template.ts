@@ -17,7 +17,7 @@ export interface XlsxWorkbookTemplate<TData> {
   build(viewModel: ReportViewModel<TData>): XlsxWorkbookModel;
 }
 
-const INVALID_SHEET_CHARS = /[\\/?*\[\]:]/u;
+const INVALID_SHEET_CHARS = /[\\/?*[\]:]/u;
 const FORMULA_PREFIX = /^[=+\-@]/u;
 const MAX_SHEETS = 32;
 const MAX_ROWS = 10000;
