@@ -32,7 +32,7 @@ const mapRow = (row: SearchIndexRow): SearchIndexDocument => ({
 const normalizeTerms = (value: string): readonly string[] =>
   value.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean).slice(0, 8);
 
-const escapeLike = (value: string): string => value.replace(/[\\%_]/gu, (match) => `\\${match}`);
+const escapeLike = (value: string): string => value.replace(/[!%_]/gu, (match) => `!${match}`);
 
 const parseProviderCursor = (cursor: string | undefined): number => {
   if (!cursor) return 0;
@@ -145,7 +145,7 @@ export class D1SearchProvider implements SearchProvider {
     const bindings: unknown[] = [input.principal.environment];
 
     for (const term of terms) {
-      clauses.push("LOWER(search_text) LIKE ? ESCAPE '\\\\'");
+      clauses.push("LOWER(search_text) LIKE ? ESCAPE '!'");
       bindings.push(`%${escapeLike(term)}%`);
     }
 
