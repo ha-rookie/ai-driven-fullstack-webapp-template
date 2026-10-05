@@ -8,7 +8,7 @@ import { systemClock, type Clock, type IdGenerator } from "../../shared/runtime"
 import { applySearchIndexProjection, type SearchIndexProjector, type SearchIndexResourceKey } from "./index-projection";
 import type { SearchIndexWriter } from "./index-document";
 
-export interface SearchIndexProjectionJobPayload extends SearchIndexResourceKey {}
+export type SearchIndexProjectionJobPayload = SearchIndexResourceKey;
 
 export const createSearchIndexProjectionJobEnvelope = async (input: {
   readonly key: SearchIndexResourceKey;
