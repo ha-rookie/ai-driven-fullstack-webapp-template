@@ -27,7 +27,8 @@ test("WORKHUB approved travel generates one private PDF and download rechecks cu
   assert.equal(first.contentType,"application/pdf");
   const stored=await storage.get(first.objectIdentifier);
   assert.ok(stored);
-  const storedBytes=new Uint8Array(await new Response(stored.body).arrayBuffer());\n  assert.equal(new TextDecoder().decode(storedBytes.slice(0,5)),"%PDF-");
+  const storedBytes=new Uint8Array(await new Response(stored.body).arrayBuffer());
+  assert.equal(new TextDecoder().decode(storedBytes.slice(0,5)),"%PDF-");
 
   let allowed=true;
   const download=()=>handleReportArtifactDownload({request:new Request("https://example.test/api/workhub/reports/"+first.id),requestId:"req-pdf",principalId:"aoi",environment:"test",artifactId:first.id,artifacts,storage,authorizer:{canDownload:()=>allowed},filename:()=> "travel-approval.pdf"});
