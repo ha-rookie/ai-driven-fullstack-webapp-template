@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { PdfLibReportRenderer, buildReportViewModel, type ReportDefinition } from "../src/shared/report";
 
 type Data={title:string};
@@ -18,4 +19,17 @@ test("pdf-lib renderer rejects mismatched template versions and unsupported outp
  await assert.rejects(mismatch.render({definition,viewModel:vm,outputType:"pdf"}),/does not match/);
  const renderer=new PdfLibReportRenderer(()=>({key:"approval-pdf",version:"1",build:()=>({lines:["x"]})}));
  await assert.rejects(renderer.render({definition,viewModel:vm,outputType:"html"}),/only supports pdf/);
+});
+
+
+test("pdf-lib renderer embeds a licensed custom font and renders Japanese text",async()=>{
+ const fontPath="node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-400-normal.woff";
+ const renderer=new PdfLibReportRenderer(
+   ()=>({key:"approval-pdf",version:"1",build:()=>({title:"出張申請承認書",lines:["東京出張","承認済み","申請者：青井"]})}),
+   {loadFontBytes:async()=>new Uint8Array(await readFile(fontPath))},
+ );
+ const rendered=await renderer.render({definition,viewModel:vm,outputType:"pdf"});
+ assert.equal(rendered.contentType,"application/pdf");
+ assert.equal(new TextDecoder().decode(rendered.body.slice(0,5)),"%PDF-");
+ assert.ok(rendered.body.byteLength>1000);
 });
