@@ -43,7 +43,7 @@ export interface GeneratedArtifact {
   readonly id: string; readonly environment: string; readonly reportKey: string; readonly definitionVersion: string;
   readonly templateKey: string; readonly templateVersion: string; readonly resourceType: string; readonly resourceId: string;
   readonly sourceSnapshotId: string; readonly generationIntent: ReportGenerationIntent; readonly outputType: ReportOutputType;
-  readonly objectIdentifier: string; readonly contentType: string; readonly byteLength: number; readonly generatedAt: string;
+  readonly objectIdentifier: string; readonly contentType?: string; readonly byteLength?: number; readonly requestedAt: string; readonly generatedAt?: string;
   readonly generatedBy: string; readonly status: "pending" | "generating" | "ready" | "failed"; readonly version: number;
   readonly failureCode?: string;
 }
