@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { InMemoryObjectStorage } from "../src/shared/object-storage";
-import { InMemoryGeneratedArtifactStore, PdfLibReportRenderer, ReportArtifactService } from "../src/shared/report";
+import { InMemoryGeneratedArtifactStore, PdfLibReportRenderer, ReportArtifactService, type PdfTextTemplate } from "../src/shared/report";
 import { handleReportArtifactDownload } from "../src/worker/http/report-artifact-download";
 import {
   WORKHUB_TRAVEL_APPROVAL_PDF_REPORT,
@@ -20,14 +20,14 @@ test("WORKHUB approved travel generates one private PDF and download rechecks cu
   let sequence=0;
   const service=new ReportArtifactService({environment:"test",storage,artifacts,authorizer:{assertCanGenerate({principalId}){if(principalId!=="aoi")throw new Error("forbidden");}},generateId:()=>`workhub-pdf-${++sequence}`});
   const viewModel=buildWorkhubTravelApprovalPdfReport({travel,workflow,office,approval,generatedBy:"aoi",generatedAt:"2026-10-03T00:00:00.000Z"});
-  const renderer=new PdfLibReportRenderer(()=>WORKHUB_TRAVEL_APPROVAL_PDF_TEMPLATE);
+  const renderer=new PdfLibReportRenderer(<TData>()=>WORKHUB_TRAVEL_APPROVAL_PDF_TEMPLATE as unknown as PdfTextTemplate<TData>);
   const first=await service.generate({principalId:"aoi",definition:WORKHUB_TRAVEL_APPROVAL_PDF_REPORT,viewModel,renderer,outputType:"pdf",intent:"original"});
   const second=await service.generate({principalId:"aoi",definition:WORKHUB_TRAVEL_APPROVAL_PDF_REPORT,viewModel,renderer,outputType:"pdf",intent:"original"});
   assert.equal(first.id,second.id);
   assert.equal(first.contentType,"application/pdf");
   const stored=await storage.get(first.objectIdentifier);
   assert.ok(stored);
-  assert.equal(new TextDecoder().decode(stored.body.slice(0,5)),"%PDF-");
+  const storedBytes=new Uint8Array(await new Response(stored.body).arrayBuffer());\n  assert.equal(new TextDecoder().decode(storedBytes.slice(0,5)),"%PDF-");
 
   let allowed=true;
   const download=()=>handleReportArtifactDownload({request:new Request("https://example.test/api/workhub/reports/"+first.id),requestId:"req-pdf",principalId:"aoi",environment:"test",artifactId:first.id,artifacts,storage,authorizer:{canDownload:()=>allowed},filename:()=> "travel-approval.pdf"});
