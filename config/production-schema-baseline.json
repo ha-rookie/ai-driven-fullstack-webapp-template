@@ -372,6 +372,7 @@
       "object_identifier",
       "content_type",
       "byte_length",
+      "requested_at",
       "generated_at",
       "generated_by",
       "status",
