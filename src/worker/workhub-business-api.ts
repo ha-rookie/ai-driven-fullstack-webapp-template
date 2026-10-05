@@ -54,7 +54,6 @@ import {
   SearchApplicationService,
   SearchRequestError,
   applySearchIndexProjection,
-  type SearchCandidate,
 } from "./search";
 import {
   WorkhubTravelSearchProjector,
