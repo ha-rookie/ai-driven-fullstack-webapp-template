@@ -44,7 +44,8 @@ export interface GeneratedArtifact {
   readonly templateKey: string; readonly templateVersion: string; readonly resourceType: string; readonly resourceId: string;
   readonly sourceSnapshotId: string; readonly generationIntent: ReportGenerationIntent; readonly outputType: ReportOutputType;
   readonly objectIdentifier: string; readonly contentType: string; readonly byteLength: number; readonly generatedAt: string;
-  readonly generatedBy: string; readonly status: "ready"; readonly version: number;
+  readonly generatedBy: string; readonly status: "pending" | "generating" | "ready" | "failed"; readonly version: number;
+  readonly failureCode?: string;
 }
 const hasControlCharacter=(value:string):boolean=>Array.from(value).some((character)=>{const code=character.codePointAt(0)??0;return code<=0x1f||code===0x7f;});
 const bounded=(value:string,name:string):string=>{const normalized=value.trim();if(!normalized||normalized.length>256||hasControlCharacter(normalized))throw new TypeError(`${name} is invalid`);return normalized;};
