@@ -39,6 +39,16 @@ The cursor payload is limited to continuation metadata. It must not contain busi
 
 Local/Test uses a deterministic in-memory codec. Production projects inject a codec appropriate to their deployment and threat model; the template does not require a specific signing or encryption provider.
 
+## Stage 2b D1 index baseline
+
+The template includes a D1-backed secondary search index with a SQL provider that does not require FTS5. It stores only search projection fields selected by the application: resource identity, category, title/search text, optional keywords, source version timestamps and tombstone state.
+
+Index mutation is asynchronous by design. Integration Events map only to a resource key, and the #51 Async Job handler resolves the current source again before writing the index. Search text or full business payload is not copied into the job envelope merely to update the index.
+
+`sourceVersion` and `sourceUpdatedAt` prevent an older projection from replacing a newer index record. Deletion is represented as a tombstone so delayed events and reconciliation can reason about source state without treating physical index row deletion as the business source of truth.
+
+Reconciliation scans source resource keys page by page, projects the current source and repairs missing, stale or incorrectly tombstoned index rows. Business mutations are never rolled back because indexing or reconciliation is delayed.
+
 ## Security invariants
 
 - Provider/index presence never means the principal may read the resource.
@@ -50,18 +60,16 @@ Local/Test uses a deterministic in-memory codec. Production projects inject a co
 - Provider-specific query DSL must not be exposed through the public application API.
 - Provider raw continuation tokens must not escape through the application response.
 - Opaque cursors are continuation state, not an authorization source of truth.
-
-## Index consistency
-
-An index is secondary data and may be stale. Current existence, authorization and presentation are resolved after candidate discovery. A later Stage may connect index mutation/reconciliation to #304 Integration Event and #51 Async Job; business mutations must not be rolled back merely because an external index update is delayed.
+- Index update failure must not roll back the business transaction.
+- Async index jobs carry resource keys, not the raw business/search body.
+- Current authorization and presentation are always resolved after candidate discovery.
 
 ## Deliberately not claimed yet
 
-- D1 FTS implementation
+- FTS5 as a mandatory dependency
 - external search engine implementation
 - vector or embedding provider
 - multi-provider fan-out / timeout / partial-result policy
-- persistent indexing and reconciliation
 - browser search UI
 - Production/Preview search resources
 

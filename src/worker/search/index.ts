@@ -2,3 +2,7 @@ export * from "./types";
 export * from "./service";
 export * from "./cursor";
 export * from "./in-memory-provider";
+export * from "./index-document";
+export * from "./d1-index-store";
+export * from "./index-projection";
+export * from "./index-async-job";
