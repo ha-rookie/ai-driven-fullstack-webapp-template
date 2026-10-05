@@ -5,6 +5,7 @@ export interface GeneratedArtifactStore {
   get(id: string, environment: string): Promise<GeneratedArtifact | null>;
   findOriginal(input: { environment: string; reportKey: string; resourceType: string; resourceId: string; sourceSnapshotId: string; outputType: ReportOutputType }): Promise<GeneratedArtifact | null>;
   create(artifact: GeneratedArtifact): Promise<boolean>;
+  transition(input: { id: string; environment: string; expectedVersion: number; from: GeneratedArtifact["status"]; to: GeneratedArtifact["status"]; patch?: Partial<Pick<GeneratedArtifact, "objectIdentifier" | "contentType" | "byteLength" | "failureCode">> }): Promise<GeneratedArtifact | null>;
 }
 
 export class InMemoryGeneratedArtifactStore implements GeneratedArtifactStore {
@@ -14,6 +15,7 @@ export class InMemoryGeneratedArtifactStore implements GeneratedArtifactStore {
     return [...this.records.values()].find((value)=>value.environment===input.environment&&value.reportKey===input.reportKey&&value.resourceType===input.resourceType&&value.resourceId===input.resourceId&&value.sourceSnapshotId===input.sourceSnapshotId&&value.outputType===input.outputType&&value.generationIntent==="original")??null;
   }
   async create(artifact:GeneratedArtifact){const key=`${artifact.environment}:${artifact.id}`;if(this.records.has(key))return false;this.records.set(key,Object.freeze({...artifact}));return true;}
+  async transition(input:{id:string;environment:string;expectedVersion:number;from:GeneratedArtifact["status"];to:GeneratedArtifact["status"];patch?:Partial<Pick<GeneratedArtifact,"objectIdentifier"|"contentType"|"byteLength"|"failureCode">>}){const key=`${input.environment}:${input.id}`;const current=this.records.get(key);if(!current||current.version!==input.expectedVersion||current.status!==input.from)return null;const next=Object.freeze({...current,...input.patch,status:input.to,version:current.version+1});this.records.set(key,next);return next;}
 }
 
 export interface ReportGenerationAuthorizer { assertCanGenerate(input:{principalId:string;resourceType:string;resourceId:string;reportKey:string}):Promise<void>|void; }
