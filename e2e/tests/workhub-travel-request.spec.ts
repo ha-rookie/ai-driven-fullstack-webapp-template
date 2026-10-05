@@ -34,7 +34,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await page.getByRole("button", { name: "出張申請を提出" }).click();
   await expect(page.getByText("出張申請を提出しました。", { exact: true })).toBeVisible();
   await expect(page.getByText("申請しました", { exact: true })).toBeVisible();
-  await page.getByLabel("WORKHUBを検索").fill(initialPurpose);
+  await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(initialPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
   await expect(page.getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
 
@@ -42,7 +42,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   const firstTask = page.getByText(initialPurpose, { exact: true }).locator("..");
   await expect(firstTask).toBeVisible();
   await expect(latestNotification(page, "出張申請の承認依頼が届きました")).toBeVisible();
-  await page.getByLabel("WORKHUBを検索").fill(initialPurpose);
+  await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(initialPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
   await expect(page.getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
   await firstTask.getByRole("button", { name: "差し戻す" }).click();
@@ -64,7 +64,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(secondTask).toBeVisible();
   await secondTask.getByRole("button", { name: "承認する" }).click();
   await expect(page.getByText("承認しました。", { exact: true })).toBeVisible();
-  await page.getByLabel("WORKHUBを検索").fill(correctedPurpose);
+  await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(correctedPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
   await expect(page.getByText("該当する検索結果はありません。", { exact: true })).toBeVisible();
 
