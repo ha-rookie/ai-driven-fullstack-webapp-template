@@ -74,3 +74,18 @@ Reconciliation scans source resource keys page by page, projects the current sou
 - Production/Preview search resources
 
 Those remain follow-up stages under #305. Production credentials, remote index creation and external provider configuration remain Human Gate items.
+
+
+## Stage 3 — WORKHUB reference integration
+
+The WORKHUB reference application exercises the Search Foundation against real reference business data rather than static search fixtures.
+
+- TravelRequest is projected into the derived Search Index with only search-oriented fields.
+- `GET /api/workhub/search?q=...` resolves the authenticated principal on the server.
+- D1 search returns candidates only; every candidate is re-authorized against the current TravelRequest / Workflow state before hydration.
+- Hydration reads the current TravelRequest record. Search-index content is not returned as authoritative business data.
+- TravelRequest mutations refresh the derived index on a best-effort basis. Index failure does not roll back the business mutation.
+- The browser reference UI exposes enterprise search and Browser E2E verifies authorization changes across the Aoi / Ren workflow scenario.
+- A manager losing the current approval assignment no longer sees the request through search even if a stale index candidate remains.
+
+Stage 3 does not add RAG, AI-generated answers, MCP tools, vector search, or remote/Production resources.
