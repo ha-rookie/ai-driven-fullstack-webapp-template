@@ -32,7 +32,8 @@ export class PdfLibReportRenderer implements ReportRenderer {
     document.setCreator("Report Foundation");
     document.setCreationDate(new Date(input.viewModel.generatedAt));
     document.setModificationDate(new Date(input.viewModel.generatedAt));
-    if(template.build(input.viewModel).title)document.setTitle(boundedText(template.build(input.viewModel).title!));
+    const model=template.build(input.viewModel);
+    if(model.title)document.setTitle(boundedText(model.title));
     let font:PDFFont;
     if(this.fontProvider){
       document.registerFontkit(fontkit);
@@ -40,7 +41,6 @@ export class PdfLibReportRenderer implements ReportRenderer {
     }else{
       font=await document.embedFont(StandardFonts.Helvetica);
     }
-    const model=template.build(input.viewModel);
     if(model.lines.length>MAX_LINES)throw new TypeError("PDF report has too many lines");
     const page=document.addPage([595.28,841.89]);
     let y=800;
