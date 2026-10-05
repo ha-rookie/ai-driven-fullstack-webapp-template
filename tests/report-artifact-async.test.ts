@@ -7,6 +7,7 @@ import {
   AsyncReportGenerationService,
   InMemoryGeneratedArtifactStore,
   createAsyncReportHandler,
+  executeAsyncReportJob,
   buildReportViewModel,
   type ReportDefinition,
   type ReportRenderer,
@@ -52,6 +53,10 @@ test("async report request reuses historical original and publishes deterministi
   const second = await service.request({ principalId: "user-1", definition, viewModel, outputType: "html" });
   assert.equal(first.artifact.id, second.artifact.id);
   assert.equal(first.artifact.status, "pending");
+  assert.equal(first.artifact.requestedAt, "2026-10-06T00:00:00.000Z");
+  assert.equal(first.artifact.generatedAt, undefined);
+  assert.equal(first.artifact.contentType, undefined);
+  assert.equal(first.artifact.byteLength, undefined);
   assert.equal(first.job.idempotencyKey, second.job.idempotencyKey);
   assert.equal(publisher.jobs.length, 2);
   assert.deepEqual(first.job.payload, { artifactId: first.artifact.id, environment: "test" });
@@ -73,6 +78,7 @@ test("async report handler converges duplicate delivery to one ready artifact", 
   const handler = createAsyncReportHandler({
     environment: "test", artifacts, storage,
     resolver: { async resolve() { resolveCount += 1; return { definition: definition as ReportDefinition<unknown>, viewModel: viewModel as typeof viewModel & {data:unknown}, renderer }; } },
+    now: () => new Date("2026-10-06T00:00:02.000Z"),
   });
   const jobStore = new InMemoryAsyncJobStateStore();
   const run = () => executeAsyncJob({
@@ -87,5 +93,46 @@ test("async report handler converges duplicate delivery to one ready artifact", 
   const ready = await artifacts.get(requested.artifact.id, "test");
   assert.equal(ready?.status, "ready");
   assert.ok((ready?.byteLength ?? 0) > 0);
+  assert.equal(ready?.contentType, "text/html; charset=utf-8");
+  assert.equal(ready?.generatedAt, "2026-10-06T00:00:02.000Z");
   assert.equal(resolveCount, 1);
+});
+
+
+test("terminal async job failure marks report artifact failed but retryable failure does not", async () => {
+  const artifacts = new InMemoryGeneratedArtifactStore();
+  const publisher = new CapturePublisher();
+  let sequence = 0;
+  const service = new AsyncReportGenerationService({
+    environment: "test", artifacts, publisher,
+    authorizer: { assertCanGenerate() {} },
+    generateId: () => `terminal-${++sequence}`,
+    now: () => new Date("2026-10-06T01:00:00.000Z"),
+  });
+  const requested = await service.request({ principalId: "user-1", definition, viewModel, outputType: "html" });
+  const jobStore = new InMemoryAsyncJobStateStore();
+  const failingHandler = async () => { throw new Error("renderer unavailable"); };
+  const retry = await executeAsyncReportJob({
+    envelope: requested.job, store: jobStore, handler: failingHandler, artifacts,
+    retryPolicy: { maxAttempts: 2, baseDelayMs: 1000, maxDelayMs: 1000 },
+    leaseMs: 30000,
+    clock: { now: () => new Date("2026-10-06T01:00:01.000Z") },
+    idGenerator: { generate: () => "lease-retry" },
+    classifyError: () => ({ retryable: true, code: "renderer_unavailable" }),
+  });
+  assert.equal(retry.kind, "retry");
+  assert.equal((await artifacts.get(requested.artifact.id, "test"))?.status, "pending");
+
+  const terminal = await executeAsyncReportJob({
+    envelope: requested.job, store: jobStore, handler: failingHandler, artifacts,
+    retryPolicy: { maxAttempts: 2, baseDelayMs: 1000, maxDelayMs: 1000 },
+    leaseMs: 30000,
+    clock: { now: () => new Date("2026-10-06T01:00:03.000Z") },
+    idGenerator: { generate: () => "lease-terminal" },
+    classifyError: () => ({ retryable: false, code: "invalid_report_definition" }),
+  });
+  assert.equal(terminal.kind, "failed");
+  const failed = await artifacts.get(requested.artifact.id, "test");
+  assert.equal(failed?.status, "failed");
+  assert.equal(failed?.failureCode, "invalid_report_definition");
 });
