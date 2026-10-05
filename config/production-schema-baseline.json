@@ -375,7 +375,8 @@
       "generated_at",
       "generated_by",
       "status",
-      "version"
+      "version",
+      "failure_code"
     ]
   },
   "requiredIndexes": [
