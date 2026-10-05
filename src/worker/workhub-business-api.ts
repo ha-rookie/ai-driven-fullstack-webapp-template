@@ -47,6 +47,18 @@ import {
   requireCsrfProtection,
 } from "./http/csrf";
 import { readJsonBody } from "./http/request-body";
+import {
+  D1SearchIndexStore,
+  D1SearchProvider,
+  InMemorySearchCursorCodec,
+  SearchApplicationService,
+  SearchRequestError,
+  applySearchIndexProjection,
+  type SearchCandidate,
+} from "./search";
+import {
+  WorkhubTravelSearchProjector,
+} from "../reference/workhub/travel-search";
 
 export interface WorkhubBusinessApiEnvironment {
   readonly DB: D1Database;
@@ -95,6 +107,8 @@ const statusForWorkflowError = (code: WorkflowError["code"]): number => {
   return 400;
 };
 
+const searchCursorCodec = new InMemorySearchCursorCodec();
+
 const createServices = (db: D1Database, environment: string) => {
   const workflowStore = new D1WorkflowStore(db);
   const travelStore = new D1TravelRequestStore(db);
@@ -133,7 +147,10 @@ const createServices = (db: D1Database, environment: string) => {
     workflowState: workflowStore,
   });
 
-  return { workflowStore, travelStore, masterData, activityStore, notifications, workflow, travel };
+  const searchIndex = new D1SearchIndexStore(db);
+  const travelSearchProjector = new WorkhubTravelSearchProjector(travelStore);
+
+  return { db, workflowStore, travelStore, masterData, activityStore, notifications, workflow, travel, searchIndex, travelSearchProjector };
 };
 
 const canReadTravelResource = async (
@@ -149,6 +166,69 @@ const canReadTravelResource = async (
   const item = await services.workflowStore.getOpenWorkItem(travel.workflowInstanceId, environment);
   return item?.assigneePrincipal === principalId;
 };
+
+const refreshTravelSearchIndex = async (
+  resourceId: string,
+  services: ReturnType<typeof createServices>,
+  environment: string,
+): Promise<void> => {
+  try {
+    const projection = await services.travelSearchProjector.project({
+      environment,
+      resourceType: WORKHUB_TRAVEL_RESOURCE_TYPE,
+      resourceId,
+    });
+    if (projection) {
+      await applySearchIndexProjection({
+        projection,
+        writer: services.searchIndex,
+        indexedAt: new Date().toISOString(),
+      });
+    }
+  } catch {
+    // Search index is derived data. Business mutations must remain authoritative.
+  }
+};
+
+const createWorkhubSearch = (
+  principalId: string,
+  services: ReturnType<typeof createServices>,
+  environment: string,
+) => new SearchApplicationService(
+  new D1SearchProvider(services.db),
+  {
+    async authorizeBatch(input) {
+      const decisions = [];
+      for (const candidate of input.candidates) {
+        const allowed = candidate.resourceType === WORKHUB_TRAVEL_RESOURCE_TYPE
+          && await canReadTravelResource(principalId, candidate.resourceId, services, environment);
+        decisions.push({ resourceType: candidate.resourceType, resourceId: candidate.resourceId, allowed });
+      }
+      return decisions;
+    },
+  },
+  {
+    async hydrateBatch(input) {
+      const results = [];
+      for (const candidate of input.candidates) {
+        if (candidate.resourceType !== WORKHUB_TRAVEL_RESOURCE_TYPE) continue;
+        const travel = await services.travelStore.get(candidate.resourceId, environment);
+        if (!travel) continue;
+        results.push({
+          resourceType: WORKHUB_TRAVEL_RESOURCE_TYPE,
+          resourceId: travel.id,
+          category: candidate.category,
+          title: travel.purpose,
+          snippet: `${travel.startDate} → ${travel.endDate}`,
+          actionTarget: `resource:travel_request:${travel.id}`,
+          sourceUpdatedAt: travel.updatedAt,
+        });
+      }
+      return results;
+    },
+  },
+  searchCursorCodec,
+);
 
 const timelineFor = (
   principalId: string,
@@ -215,6 +295,16 @@ export const handleWorkhubBusinessApi = async (
   const pathname = url.pathname;
 
   try {
+    if (request.method === "GET" && pathname === "/api/workhub/search") {
+      const text = url.searchParams.get("q") ?? "";
+      const cursor = url.searchParams.get("cursor") ?? undefined;
+      const response = await createWorkhubSearch(principalId, services, environment).search(
+        { principalId, environment },
+        { text, categories: ["requests"], limit: 20, ...(cursor ? { cursor } : {}) },
+      );
+      return json(response);
+    }
+
     if (request.method === "GET" && pathname === "/api/workhub/offices") {
       const offices = await services.travel.listDestinationOffices();
       return json({ items: offices.map((office) => ({
@@ -235,6 +325,7 @@ export const handleWorkhubBusinessApi = async (
         endDate: stringField(body, "endDate"),
         purpose: stringField(body, "purpose"),
       });
+      await refreshTravelSearchIndex(created.id, services, environment);
       return json({ request: created }, 201);
     }
 
@@ -263,6 +354,7 @@ export const handleWorkhubBusinessApi = async (
       const updated = current.status === "draft"
         ? await services.travel.updateDraft(command)
         : await services.travel.updateReturned(command);
+      await refreshTravelSearchIndex(updated.id, services, environment);
       return json({ request: updated });
     }
 
@@ -276,6 +368,7 @@ export const handleWorkhubBusinessApi = async (
         expectedVersion: intField(body, "expectedVersion"),
         requestId: rid,
       });
+      await refreshTravelSearchIndex(submitted.id, services, environment);
       return json({ request: submitted });
     }
 
@@ -290,6 +383,7 @@ export const handleWorkhubBusinessApi = async (
         expectedWorkflowVersion: intField(body, "expectedWorkflowVersion"),
         requestId: rid,
       });
+      await refreshTravelSearchIndex(result.request.id, services, environment);
       return json(result);
     }
 
@@ -374,6 +468,9 @@ export const handleWorkhubBusinessApi = async (
 
     return error(404, "not_found", "WORKHUB API route was not found");
   } catch (caught) {
+    if (caught instanceof SearchRequestError) {
+      return error(400, `search_${caught.code}`, "Search request is invalid");
+    }
     if (caught instanceof TravelRequestError) {
       return error(statusForTravelError(caught.code), `travel_request_${caught.code}`, caught.message);
     }
