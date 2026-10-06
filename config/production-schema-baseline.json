@@ -377,7 +377,8 @@
       "generated_by",
       "status",
       "version",
-      "failure_code"
+      "failure_code",
+      "expires_at"
     ]
   },
   "requiredIndexes": [
@@ -428,6 +429,7 @@
     "idx_inbound_webhook_receipts_status_time",
     "idx_search_index_documents_lookup",
     "idx_generated_artifacts_original",
-    "idx_generated_artifacts_resource"
+    "idx_generated_artifacts_resource",
+    "idx_generated_artifacts_expiry"
   ]
 }
