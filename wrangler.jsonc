@@ -9,15 +9,15 @@
       "binding": "DB",
       "database_name": "REPLACE_WITH_PRODUCTION_D1_NAME",
       "database_id": "00000000-0000-0000-0000-000000000000",
-      "preview_database_id": "00000000-0000-0000-0000-000000000001"
+      "preview_database_id": "f1ce1268-2be2-4a20-ab10-a94c32feee64"
     }
   ],
   "previews": {
     "d1_databases": [
       {
         "binding": "DB",
-        "database_name": "REPLACE_WITH_PREVIEW_D1_NAME",
-        "database_id": "00000000-0000-0000-0000-000000000001"
+        "database_name": "ai-driven-webapp-template-preview",
+        "database_id": "f1ce1268-2be2-4a20-ab10-a94c32feee64"
       }
     ]
   },
