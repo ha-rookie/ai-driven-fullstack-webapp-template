@@ -24,6 +24,8 @@ Use this Instruction for D1 binding, schema, migration, index, Local database va
 - Validate migration and schema locally before deliberate remote application
 - Keep Local, Preview, and Production database resources distinct
 - Treat Preview/Production resource identity as explicit configuration, not an inferred default
+- Preserve the credential purpose boundary when changing migration triggers or orchestration; changing how a migration starts does not by itself justify changing which credential authorizes it
+- Preview D1 migration workflows must source Wrangler's `CLOUDFLARE_API_TOKEN` environment variable from the dedicated `CLOUDFLARE_D1_MIGRATION_TOKEN` GitHub Secret; do not substitute the generic deployment token without a separately reviewed credential-scope change
 - Preserve foreign keys, uniqueness, checks, and indexes that enforce documented invariants
 - Tie new indexes to a known access pattern and validate the intended query plan when relevant
 - When a schema change interacts with optimistic concurrency, auth, or authorization, load the corresponding Instruction too
@@ -36,6 +38,7 @@ Use this Instruction for D1 binding, schema, migration, index, Local database va
 - Do not use `clean`, reseed, destructive reset, or broad fixture deletion as a default preparation step
 - Do not copy Template example schema mechanically into Product Domain design
 - Do not expose database IDs, SQL errors, schema internals, secrets, or row data as public diagnostics
+- Do not broaden or swap credential scope as an incidental part of changing a workflow trigger, schedule, or invocation path
 
 ## Validation / Evidence
 
