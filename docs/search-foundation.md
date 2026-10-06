@@ -107,3 +107,18 @@ The authorization invariant remains:
 - Search Index/provider content remains candidate data. Stale title/snippet never overrides current hydrated resource state.
 - AI/RAG/MCP sharing is intentionally deferred to the next stage; Stage 4 strengthens the normal search boundary first.
 - Production / Remote Search Provider changes are not required.
+
+
+## Stage 5 — Shared Web / AI-RAG / MCP consumer boundary
+
+Web UI, AI/RAG and MCP must not create separate retrieval paths that bypass current authorization.
+
+`consumer → SharedSearchConsumer → SearchApplicationService → provider candidate → current authorization → current hydration → projection/masking`
+
+- `SharedSearchConsumer` is consumer-neutral; `web`, `ai_rag` and `mcp` are intent labels, not authorization grants.
+- `AiSearchContextBuilder` consumes only the already-authorized, current-hydrated, projected `SearchResponse`.
+- AI context carries stable resource identity and available source metadata; it never receives raw provider/index documents.
+- Permission changes are evaluated on every search, so stale index candidates cannot remain in AI context after access is revoked.
+- Category provider failures remain explicit context metadata and are not converted to “no evidence found”.
+- MCP transport/server implementation remains #273 responsibility. This stage proves the shared application-service adapter boundary only.
+- LLM calls, answer generation, embeddings, vector DB provisioning and Production endpoints remain out of scope.
