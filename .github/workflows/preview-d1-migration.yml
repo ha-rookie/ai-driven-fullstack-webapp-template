@@ -46,6 +46,34 @@ jobs:
           if (!text.includes(process.env.PREVIEW_DATABASE_ID)) throw new Error("Preview database ID mismatch");
           JS
 
+      - name: Diagnose Cloudflare authentication
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+          if (!token) throw new Error("CLOUDFLARE_API_TOKEN is missing");
+          if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID is missing");
+
+          const headers = { Authorization: `Bearer ${token}` };
+          const verify = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", { headers });
+          const verifyBody = await verify.json();
+          console.log("Token verification:", verify.status, verifyBody?.result?.status ?? "unknown");
+          if (!verify.ok || !verifyBody?.success) throw new Error("Cloudflare API token verification failed");
+
+          const db = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${process.env.PREVIEW_DATABASE_ID}`,
+            { headers }
+          );
+          const dbBody = await db.json();
+          console.log("Preview D1 access:", db.status, dbBody?.success === true ? "accessible" : "denied");
+          if (!db.ok || !dbBody?.success) {
+            const codes = Array.isArray(dbBody?.errors) ? dbBody.errors.map((e) => e.code).filter(Boolean) : [];
+            console.log("Cloudflare error codes:", codes.length ? codes.join(",") : "unknown");
+            throw new Error("Configured token/account cannot access the pinned Preview D1 database");
+          }
+          JS
+
       - name: Show pending migrations
         run: npx wrangler d1 migrations list DB --remote --preview
 
