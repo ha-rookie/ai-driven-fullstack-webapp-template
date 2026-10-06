@@ -6,7 +6,7 @@ interface GeneratedArtifactRow {
   template_key: string; template_version: string; resource_type: string; resource_id: string;
   source_snapshot_id: string; generation_intent: GeneratedArtifact["generationIntent"];
   output_type: GeneratedArtifact["outputType"]; object_identifier: string; content_type: string;
-  byte_length: number | null; requested_at: string; generated_at: string | null; generated_by: string; status: GeneratedArtifact["status"]; version: number; failure_code: string | null;
+  byte_length: number | null; requested_at: string; generated_at: string | null; generated_by: string; status: GeneratedArtifact["status"]; version: number; failure_code: string | null; expires_at: string | null;
 }
 
 const mapRow = (row: GeneratedArtifactRow): GeneratedArtifact => Object.freeze({
@@ -16,7 +16,7 @@ const mapRow = (row: GeneratedArtifactRow): GeneratedArtifact => Object.freeze({
   outputType: row.output_type, objectIdentifier: row.object_identifier,
   ...(row.content_type === null ? {} : { contentType: row.content_type }), ...(row.byte_length === null ? {} : { byteLength: row.byte_length }), requestedAt: row.requested_at,
   ...(row.generated_at === null ? {} : { generatedAt: row.generated_at }), generatedBy: row.generated_by,
-  status: row.status, version: row.version, ...(row.failure_code === null ? {} : { failureCode: row.failure_code }),
+  status: row.status, version: row.version, ...(row.failure_code === null ? {} : { failureCode: row.failure_code }), ...(row.expires_at === null ? {} : { expiresAt: row.expires_at }),
 });
 
 const isConstraintError = (error: unknown): boolean =>
@@ -29,7 +29,7 @@ export class D1GeneratedArtifactStore implements GeneratedArtifactStore {
     const row = await this.db.prepare(`
       SELECT id, environment, report_key, definition_version, template_key, template_version,
              resource_type, resource_id, source_snapshot_id, generation_intent, output_type,
-             object_identifier, content_type, byte_length, requested_at, generated_at, generated_by, status, version, failure_code
+             object_identifier, content_type, byte_length, requested_at, generated_at, generated_by, status, version, failure_code, expires_at
       FROM generated_artifacts WHERE environment = ? AND id = ? LIMIT 1
     `).bind(environment, id).first<GeneratedArtifactRow>();
     return row ? mapRow(row) : null;
@@ -42,7 +42,7 @@ export class D1GeneratedArtifactStore implements GeneratedArtifactStore {
     const row = await this.db.prepare(`
       SELECT id, environment, report_key, definition_version, template_key, template_version,
              resource_type, resource_id, source_snapshot_id, generation_intent, output_type,
-             object_identifier, content_type, byte_length, requested_at, generated_at, generated_by, status, version, failure_code
+             object_identifier, content_type, byte_length, requested_at, generated_at, generated_by, status, version, failure_code, expires_at
       FROM generated_artifacts
       WHERE environment = ? AND report_key = ? AND resource_type = ? AND resource_id = ?
         AND source_snapshot_id = ? AND output_type = ? AND generation_intent = 'original'
@@ -58,14 +58,14 @@ export class D1GeneratedArtifactStore implements GeneratedArtifactStore {
         INSERT INTO generated_artifacts (
           id, environment, report_key, definition_version, template_key, template_version,
           resource_type, resource_id, source_snapshot_id, generation_intent, output_type,
-          object_identifier, content_type, byte_length, requested_at, generated_at, generated_by, status, version, failure_code
+          object_identifier, content_type, byte_length, requested_at, generated_at, generated_by, status, version, failure_code, expires_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         artifact.id, artifact.environment, artifact.reportKey, artifact.definitionVersion,
         artifact.templateKey, artifact.templateVersion, artifact.resourceType, artifact.resourceId,
         artifact.sourceSnapshotId, artifact.generationIntent, artifact.outputType, artifact.objectIdentifier,
         artifact.contentType ?? null, artifact.byteLength ?? null, artifact.requestedAt, artifact.generatedAt ?? null, artifact.generatedBy,
-        artifact.status, artifact.version, artifact.failureCode ?? null,
+        artifact.status, artifact.version, artifact.failureCode ?? null, artifact.expiresAt ?? null,
       ).run();
       return (result.meta?.changes ?? 0) === 1;
     } catch (error) {
