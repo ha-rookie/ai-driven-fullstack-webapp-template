@@ -3,11 +3,11 @@ import type { SearchCandidate, SearchCategoryFailure, SearchPrincipal, SearchPro
 type CategoryProviderRegistry = Readonly<Record<string, SearchProvider>>;
 
 interface FanoutCursor { readonly cursors: Readonly<Record<string,string>>; }
-const encodeCursor=(value:FanoutCursor):string=>Buffer.from(JSON.stringify(value),"utf8").toString("base64url");
+const encodeCursor=(value:FanoutCursor):string=>btoa(JSON.stringify(value)).replaceAll("+","-").replaceAll("/","_").replace(/=+$/,"");
 const decodeCursor=(value:string|undefined):FanoutCursor=>{
  if(!value)return{cursors:{}};
  try{
-  const parsed=JSON.parse(Buffer.from(value,"base64url").toString("utf8")) as {cursors?:unknown};
+  const parsed=JSON.parse(atob(value.replaceAll("-","+").replaceAll("_","/").padEnd(Math.ceil(value.length/4)*4,"="))) as {cursors?:unknown};
   if(!parsed.cursors||typeof parsed.cursors!=="object"||Array.isArray(parsed.cursors))throw new Error();
   const cursors:Record<string,string>={};
   for(const [key,cursor] of Object.entries(parsed.cursors)){
