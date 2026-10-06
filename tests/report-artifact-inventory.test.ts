@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { unzipSync } from "fflate";
 
+import { InMemoryObjectStorage } from "../src/shared/object-storage";
+import { handleReportArtifactDownload } from "../src/worker/http/report-artifact-download";
+
 import {
   InMemoryGeneratedArtifactStore,
   ReportArtifactService,
@@ -52,20 +55,12 @@ test("artifact inventory reuses report foundation and emits XLSX without leaking
   assert.equal(viewModel.data.rows[0]?.artifactId, "artifact-001");
   assert.equal(JSON.stringify(viewModel.data).includes("private-object-001"), false);
 
-  const objects = new Map<string, Uint8Array>();
-  const storage = {
-    async put(input: { identifier: string; body: Uint8Array; metadata: { contentType: string }; overwrite: "forbid" }) {
-      assert.equal(objects.has(input.identifier), false);
-      objects.set(input.identifier, input.body);
-      return { identifier: input.identifier, byteLength: input.body.byteLength };
-    },
-  };
-
+  const storage = new InMemoryObjectStorage({ environment: "test" });
   const artifacts = new InMemoryGeneratedArtifactStore();
   let authorized = 0;
   const service = new ReportArtifactService({
     environment: "test",
-    storage: storage as never,
+    storage,
     artifacts,
     authorizer: {
       assertCanGenerate(input) {
@@ -96,8 +91,9 @@ test("artifact inventory reuses report foundation and emits XLSX without leaking
   assert.equal(artifact.outputType, "xlsx");
   assert.equal(artifact.status, "ready");
 
-  const body = objects.get(artifact.objectIdentifier);
-  assert.ok(body);
+  const stored = await storage.get(artifact.objectIdentifier);
+  assert.ok(stored);
+  const body = new Uint8Array(await new Response(stored.body).arrayBuffer());
   assert.deepEqual(Array.from(body.slice(0, 2)), [0x50, 0x4b]);
 
   const entries = unzipSync(body);
@@ -107,4 +103,29 @@ test("artifact inventory reuses report foundation and emits XLSX without leaking
     .join("\n");
   assert.equal(xml.includes("private-object-001"), false);
   assert.equal(xml.includes("生成帳票一覧"), true);
+
+  let canDownload = true;
+  const download = () =>
+    handleReportArtifactDownload({
+      request: new Request(`https://example.test/api/admin/report-artifacts/${artifact.id}`),
+      requestId: "req-artifact-inventory",
+      principalId: "ops-admin",
+      environment: "test",
+      artifactId: artifact.id,
+      artifacts,
+      storage,
+      authorizer: { canDownload: () => canDownload },
+      filename: () => "generated-artifact-inventory.xlsx",
+    });
+
+  const response = await download();
+  assert.equal(response.status, 200);
+  assert.equal(
+    response.headers.get("content-type"),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  assert.match(response.headers.get("content-disposition") ?? "", /attachment/);
+
+  canDownload = false;
+  assert.equal((await download()).status, 404);
 });
