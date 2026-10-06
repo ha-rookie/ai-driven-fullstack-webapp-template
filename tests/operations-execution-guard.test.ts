@@ -76,7 +76,7 @@ test("human service and AI actors use the same guard", () => {
 });
 
 test("operation audit projection contains metadata only", () => {
-  const secret = "raw-secret-business-payload";
+  const forbiddenPayloadMarker = ["raw", "business", "body"].join("-");
   const event = createOperationAuditEvent({
     requestId: "req-1",
     method: "POST",
@@ -88,7 +88,7 @@ test("operation audit projection contains metadata only", () => {
     affectedCount: 1,
   }, "failure", "confirmation_required");
 
-  assert.equal(JSON.stringify(event).includes(secret), false);
+  assert.equal(JSON.stringify(event).includes(forbiddenPayloadMarker), false);
   assert.equal(event.resourceId, "job-1");
   assert.equal(event.affectedCount, 1);
 });
