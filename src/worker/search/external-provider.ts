@@ -52,7 +52,7 @@ export class ExternalSearchProvider implements SearchProvider {
   }
 }
 
-export interface VectorSearchClient extends ExternalSearchClient {}
+export type VectorSearchClient = ExternalSearchClient;
 
 export class VectorSearchProvider extends ExternalSearchProvider {
   constructor(client: VectorSearchClient) {
