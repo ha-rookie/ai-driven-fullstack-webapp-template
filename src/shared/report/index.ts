@@ -7,3 +7,5 @@ export * from "./async-report";
 export * from "./pdf-lib-renderer";
 
 export * from "./xlsx-template";
+
+export * from "./write-excel-file-renderer";
