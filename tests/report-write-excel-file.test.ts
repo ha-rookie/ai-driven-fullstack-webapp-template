@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import test from "node:test";\nimport { unzipSync } from "fflate";
+import test from "node:test";
+import { unzipSync } from "fflate";
 
 import {
   buildReportViewModel,
@@ -37,7 +38,7 @@ const viewModel = buildReportViewModel({
   data: { title: "出張申請承認書", formulaLike: "=1+1" },
 });
 
-test("write-excel-file adapter emits real XLSX bytes with Japanese data", async () => {
+test("write-excel-file adapter emits safe real XLSX bytes with Japanese data", async () => {
   const template: XlsxWorkbookTemplate<unknown> = {
     key: "xlsx.test.template",
     version: "1",
@@ -68,4 +69,24 @@ test("write-excel-file adapter emits real XLSX bytes with Japanese data", async 
   assert.equal(rendered.suggestedFilename, "xlsx.test.xlsx");
   assert.ok(rendered.body.byteLength > 100);
   assert.deepEqual(Array.from(rendered.body.slice(0, 2)), [0x50, 0x4b]);
+
+  const entries = unzipSync(rendered.body);
+  const decoder = new TextDecoder();
+  const worksheetXml = decoder.decode(entries["xl/worksheets/sheet1.xml"]);
+  const sharedStrings = entries["xl/sharedStrings.xml"]
+    ? decoder.decode(entries["xl/sharedStrings.xml"])
+    : "";
+
+  assert.doesNotMatch(worksheetXml, /<f(?:\\s|>)/);
+  assert.ok(
+    worksheetXml.includes("&apos;=1+1") ||
+      sharedStrings.includes("&apos;=1+1") ||
+      worksheetXml.includes("'=1+1") ||
+      sharedStrings.includes("'=1+1"),
+  );
+  assert.equal(entries["xl/vbaProject.bin"], undefined);
+  assert.equal(
+    Object.keys(entries).some((name) => name.startsWith("xl/externalLinks/")),
+    false,
+  );
 });
