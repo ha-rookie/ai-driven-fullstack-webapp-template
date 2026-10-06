@@ -1,7 +1,9 @@
 import {
+  AiSearchContextBuilder,
   InMemorySearchCursorCodec,
   InMemorySearchProvider,
   SearchApplicationService,
+  SharedSearchConsumer,
   type SearchAuthorizationService,
   type SearchPrincipal,
   type SearchResultHydrator,
@@ -61,6 +63,8 @@ const hydrator: SearchResultHydrator = {
         category: source.category,
         title: source.title,
         actionTarget: `${source.resourceType}:${source.resourceId}`,
+        sourceUpdatedAt: "2026-10-06T00:00:00.000Z",
+        officiality: source.resourceType === "app" ? "official_app" : "business_record",
       }];
     });
   },
@@ -78,3 +82,9 @@ export const workhubSearchPrincipal = (principalId: "aoi" | "ren"): SearchPrinci
   principalId,
   environment: "test",
 });
+
+export const createWorkhubSharedSearchConsumer = (): SharedSearchConsumer =>
+  new SharedSearchConsumer(createWorkhubReferenceSearch());
+
+export const createWorkhubAiSearchContextBuilder = (): AiSearchContextBuilder =>
+  new AiSearchContextBuilder(createWorkhubSharedSearchConsumer());
