@@ -1,12 +1,13 @@
 name: Preview D1 migration
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "migrations/**"
+      - "wrangler.jsonc"
+      - ".github/workflows/preview-d1-migration.yml"
   workflow_dispatch:
-    inputs:
-      confirmation:
-        description: Type exactly MIGRATE PREVIEW
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -19,11 +20,10 @@ jobs:
   migrate-preview:
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       PREVIEW_DATABASE_NAME: ai-driven-webapp-template-preview
       PREVIEW_DATABASE_ID: f1ce1268-2be2-4a20-ab10-a94c32feee64
-      CONFIRMATION: ${{ inputs.confirmation }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +39,6 @@ jobs:
       - name: Validate Preview target
         run: |
           set -euo pipefail
-          test "$CONFIRMATION" = "MIGRATE PREVIEW"
           node --input-type=module <<'JS'
           import fs from "node:fs";
           const text = fs.readFileSync("wrangler.jsonc", "utf8");
