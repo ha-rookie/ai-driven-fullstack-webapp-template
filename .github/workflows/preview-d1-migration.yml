@@ -20,7 +20,7 @@ jobs:
   migrate-preview:
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       PREVIEW_DATABASE_NAME: ai-driven-webapp-template-preview
       PREVIEW_DATABASE_ID: f1ce1268-2be2-4a20-ab10-a94c32feee64
