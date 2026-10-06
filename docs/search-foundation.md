@@ -122,3 +122,18 @@ Web UI, AI/RAG and MCP must not create separate retrieval paths that bypass curr
 - Category provider failures remain explicit context metadata and are not converted to “no evidence found”.
 - MCP transport/server implementation remains #273 responsibility. This stage proves the shared application-service adapter boundary only.
 - LLM calls, answer generation, embeddings, vector DB provisioning and Production endpoints remain out of scope.
+
+
+## Stage 6 — External/vector provider, query privacy and performance evidence
+
+- `ExternalSearchProvider` adapts an external full-text client to the existing provider-neutral `SearchProvider` contract.
+- `VectorSearchProvider` proves the same boundary can wrap vector retrieval without changing `SearchApplicationService`.
+- Provider-specific raw hits/payloads do not enter the API contract; only bounded candidate identity/category/score and opaque provider cursor cross the adapter.
+- Raw query text is intentionally absent from `SearchObservation`. Normal observability records counts, environment and cursor/failure state only.
+- Existing #122 `ApplicationMetricsRecorder` is reused for bounded dependency-failure telemetry.
+- Integration Event (#304) can map aggregate identity to a Search Index projection job using the existing #51 Async Job envelope. Event business payload is not copied into the job.
+- Existing search projection/reconciliation remains the repair path for stale/missing index state.
+- Existing post-hydration projection remains the #74-style masking boundary.
+- Locale remains an explicit `SearchQuery.locale` input; provider adapters do not infer browser/OS locale.
+- Batch evidence verifies 50 candidates require one authorization batch and one hydration batch, preventing per-result N+1 behavior at the Search Application Service boundary.
+- Production external search/vector services, embeddings, secrets, bindings and remote resources remain out of scope and Human Gate.

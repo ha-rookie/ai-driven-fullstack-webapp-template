@@ -8,3 +8,6 @@ export * from "./index-projection";
 export * from "./index-async-job";
 export * from "./category-fanout-provider";
 export * from "./consumer";
+export * from "./external-provider";
+export * from "./observability";
+export * from "./integration-event-bridge";
