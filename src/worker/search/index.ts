@@ -6,3 +6,4 @@ export * from "./index-document";
 export * from "./d1-index-store";
 export * from "./index-projection";
 export * from "./index-async-job";
+export * from "./category-fanout-provider";
