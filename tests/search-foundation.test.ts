@@ -8,6 +8,7 @@ import {
 import {
   InMemorySearchCursorCodec,
   InMemorySearchProvider,
+  CategoryFanoutSearchProvider,
   SearchApplicationService,
   SearchRequestError,
   type SearchAuthorizationService,
@@ -201,4 +202,54 @@ test("WORKHUB reference search applies current principal authorization", async (
     ren.results.map((result) => result.resourceId).sort(),
     ["travel-aoi-tokyo", "travel-other-tokyo"],
   );
+});
+
+test("category fan-out keeps successful categories and reports failed categories separately", async () => {
+  const documents = new InMemorySearchProvider([
+    { resourceType: "document", resourceId: "doc-1", category: "documents", title: "Travel policy" },
+  ]);
+  const failing: SearchProvider = { async search() { throw new Error("provider down"); } };
+  const fanout = new CategoryFanoutSearchProvider({ documents, apps: failing });
+  const service = new SearchApplicationService(
+    fanout,
+    { async authorizeBatch(input) { return input.candidates.map((candidate) => ({resourceType:candidate.resourceType,resourceId:candidate.resourceId,allowed:true})); } },
+    { async hydrateBatch(input) { return input.candidates.map((candidate) => ({...candidate,title:"Current travel policy"})); } },
+    new InMemorySearchCursorCodec(),
+  );
+  const result = await service.search(principal,{text:"Travel",categories:["documents","apps"]});
+  assert.deepEqual(result.results.map((item)=>item.resourceId),["doc-1"]);
+  assert.deepEqual(result.categoryFailures,[{category:"apps",code:"provider_error"}]);
+});
+
+test("missing category provider is not misreported as zero results", async () => {
+  const fanout = new CategoryFanoutSearchProvider({
+    documents:new InMemorySearchProvider([]),
+  });
+  const service = new SearchApplicationService(
+    fanout,
+    { async authorizeBatch(){return [];} },
+    { async hydrateBatch(){return [];} },
+    new InMemorySearchCursorCodec(),
+  );
+  const result=await service.search(principal,{text:"Travel",categories:["documents","people"]});
+  assert.deepEqual(result.results,[]);
+  assert.deepEqual(result.categoryFailures,[{category:"people",code:"provider_unavailable"}]);
+});
+
+test("result projection masks sensitive hydrated fields after current authorization", async () => {
+  const multi = new InMemorySearchProvider([
+    { resourceType:"document",resourceId:"doc-1",category:"documents",title:"Travel policy" },
+    { resourceType:"app",resourceId:"app-1",category:"apps",title:"Travel app" },
+  ]);
+  const service = new SearchApplicationService(
+    multi,
+    { async authorizeBatch(input){return input.candidates.map((candidate)=>({resourceType:candidate.resourceType,resourceId:candidate.resourceId,allowed:true}));} },
+    { async hydrateBatch(input){return input.candidates.map((candidate)=>({...candidate,title:candidate.resourceType==="document"?"Travel policy — HR confidential":"Travel app",snippet:"internal-sensitive-snippet"}));} },
+    new InMemorySearchCursorCodec(),
+    { project({result}) { return {...result,title:result.title.replace(" — HR confidential",""),snippet:undefined}; } },
+  );
+  const result=await service.search(principal,{text:"Travel"});
+  assert.deepEqual(result.results.map((item)=>item.resourceType).sort(),["app","document"]);
+  assert.equal(result.results.some((item)=>item.title.includes("confidential")),false);
+  assert.equal(result.results.some((item)=>item.snippet!==undefined),false);
 });

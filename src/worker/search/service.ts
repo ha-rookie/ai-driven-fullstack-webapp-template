@@ -12,6 +12,7 @@ import type {
   SearchQuery,
   SearchResponse,
   SearchResultHydrator,
+  SearchResultProjector,
 } from "./types";
 
 const DEFAULT_LIMIT = 20;
@@ -77,6 +78,7 @@ export class SearchApplicationService {
     private readonly authorization: SearchAuthorizationService,
     private readonly hydrator: SearchResultHydrator,
     private readonly cursorCodec: SearchCursorCodec,
+    private readonly projector?: SearchResultProjector,
   ) {}
 
   async search(principal: SearchPrincipal, query: SearchQuery): Promise<SearchResponse> {
@@ -102,7 +104,7 @@ export class SearchApplicationService {
       : null;
 
     if (providerResult.candidates.length === 0) {
-      return { results: [], nextCursor };
+      return { results: [], nextCursor, ...(providerResult.categoryFailures?.length ? { categoryFailures: providerResult.categoryFailures } : {}) };
     }
 
     const decisions = await this.authorization.authorizeBatch({
@@ -124,10 +126,17 @@ export class SearchApplicationService {
     });
     const authorizedKeys = new Set(authorizedCandidates.map(candidateKey));
     const safeResults = hydrated.filter((result) => authorizedKeys.has(`${result.resourceType}\u0000${result.resourceId}`));
+    const projectedResults = this.projector
+      ? safeResults.flatMap((result) => {
+          const projected = this.projector?.project({ principal, result });
+          return projected ? [projected] : [];
+        })
+      : safeResults;
 
     return {
-      results: safeResults.slice(0, normalized.limit ?? DEFAULT_LIMIT),
+      results: projectedResults.slice(0, normalized.limit ?? DEFAULT_LIMIT),
       nextCursor,
+      ...(providerResult.categoryFailures?.length ? { categoryFailures: providerResult.categoryFailures } : {}),
     };
   }
 }

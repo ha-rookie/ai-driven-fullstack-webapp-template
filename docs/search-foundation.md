@@ -89,3 +89,21 @@ The WORKHUB reference application exercises the Search Foundation against real r
 - A manager losing the current approval assignment no longer sees the request through search even if a stale index candidate remains.
 
 Stage 3 does not add RAG, AI-generated answers, MCP tools, vector search, or remote/Production resources.
+
+
+## Stage 4 — Multi-resource / Masking / Partial Failure
+
+The authorization invariant remains:
+
+`Search provider/index → candidate → current authorization → current hydration → safe projection`
+
+- Multiple resource types may share the same `SearchApplicationService`.
+- `SearchResultProjector` runs only after current authorization and hydration. It is the bounded presentation/masking extension point; it does not grant authorization.
+- `CategoryFanoutSearchProvider` can query category-specific providers in parallel.
+- A category provider failure is returned as `categoryFailures`; it is never silently converted into an empty result set.
+- Successful categories remain usable when another category fails.
+- The fan-out provider cursor tracks completed categories so later pages do not restart already exhausted providers.
+- The outer Search cursor remains opaque and bound to principal, environment, query and categories.
+- Search Index/provider content remains candidate data. Stale title/snippet never overrides current hydrated resource state.
+- AI/RAG/MCP sharing is intentionally deferred to the next stage; Stage 4 strengthens the normal search boundary first.
+- Production / Remote Search Provider changes are not required.

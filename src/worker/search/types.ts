@@ -19,9 +19,15 @@ export interface SearchCandidate {
   readonly providerCursor?: string;
 }
 
+export interface SearchCategoryFailure {
+  readonly category: string;
+  readonly code: "provider_unavailable" | "provider_error";
+}
+
 export interface SearchProviderResult {
   readonly candidates: readonly SearchCandidate[];
   readonly nextCursor: string | null;
+  readonly categoryFailures?: readonly SearchCategoryFailure[];
 }
 
 export interface SearchProvider {
@@ -63,7 +69,15 @@ export interface SearchResultHydrator {
   }): Promise<readonly SearchResult[]>;
 }
 
+export interface SearchResultProjector {
+  project(input: {
+    readonly principal: SearchPrincipal;
+    readonly result: SearchResult;
+  }): SearchResult | null;
+}
+
 export interface SearchResponse {
   readonly results: readonly SearchResult[];
   readonly nextCursor: string | null;
+  readonly categoryFailures?: readonly SearchCategoryFailure[];
 }
