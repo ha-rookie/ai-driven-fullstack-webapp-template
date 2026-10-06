@@ -73,3 +73,12 @@ Human, Service and AI Agent callers use the same guard. Transport or UI type nev
 Operation audit uses an explicit metadata projection: request identity, actor, operation name, resource reference, affected count and outcome/rejection reason. Raw command payload, secret values and sensitive business bodies are not accepted by the operation audit projection.
 
 Correlation remains on the Operation Preview/Execution contract while the existing requestId remains the current Audit correlation field. A future durable operation record may link both without copying business payload.
+
+
+## Shared application service
+
+Concrete operations register an OperationHandler in the OperationRegistry. The OperationsApplicationService provides the common preview, execution guard, handler invocation, verification, and audit sequence.
+
+Duplicate operation ids are rejected. Preview and execution must refer to the same operation, correlation id, and resource. A mismatch returns CONFLICT before the handler runs.
+
+Handler exceptions become UNKNOWN because the service cannot prove whether an external side effect completed. Explicit PARTIAL and CONFLICT results remain unchanged. Feature areas such as job, data correction, integration, and recovery operations should reuse this service instead of implementing separate orchestration.
