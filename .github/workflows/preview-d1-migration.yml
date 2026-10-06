@@ -47,7 +47,7 @@ jobs:
           JS
 
       - name: Show pending migrations
-        run: npx wrangler d1 migrations list "$PREVIEW_DATABASE_NAME" --remote
+        run: npx wrangler d1 migrations list "$PREVIEW_DATABASE_ID" --remote
 
       - name: Apply migrations to Preview D1
-        run: npx wrangler d1 migrations apply "$PREVIEW_DATABASE_NAME" --remote
+        run: npx wrangler d1 migrations apply "$PREVIEW_DATABASE_ID" --remote
