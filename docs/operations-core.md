@@ -48,3 +48,28 @@ Preview, confirmation, reason, step-up, approval, audit and verification are exp
 - generic workflow/BPM engine
 - provider-specific console
 - Production infrastructure execution
+
+
+## Execution guard
+
+An Operation Preview is not an execution capability. Every execution path must pass the server-side execution guard.
+
+The guard rejects:
+
+- DENY
+- HUMAN_GATE direct execution
+- stale policy version
+- missing confirmation
+- missing reason
+- missing step-up evidence
+- missing approval evidence where an executable policy explicitly requires it
+
+HUMAN_GATE is intentionally non-executable even when an approval identifier is supplied. A future approval workflow must produce a separately authorized executable state; callers cannot turn a Human Gate into an allow decision by attaching metadata.
+
+Human, Service and AI Agent callers use the same guard. Transport or UI type never grants an execution bypass.
+
+### Audit boundary
+
+Operation audit uses an explicit metadata projection: request identity, actor, operation name, resource reference, affected count and outcome/rejection reason. Raw command payload, secret values and sensitive business bodies are not accepted by the operation audit projection.
+
+Correlation remains on the Operation Preview/Execution contract while the existing requestId remains the current Audit correlation field. A future durable operation record may link both without copying business payload.
