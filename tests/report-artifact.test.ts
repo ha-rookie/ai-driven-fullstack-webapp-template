@@ -19,3 +19,20 @@ test("artifact download re-evaluates current authorization and hides forbidden e
  const denied=await handleReportArtifactDownload({request:new Request("https://example.test/report"),requestId:"r2",principalId:"aoi",environment:"test",artifactId:artifact.id,artifacts,storage,authorizer:{canDownload:()=>false},filename:()=> "travel-approval.html"});
  assert.equal(denied.status,404);
 });
+
+test("artifact expiry fails closed at the exact expiry boundary",async()=>{
+ const storage=new InMemoryObjectStorage({environment:"test"});
+ const artifacts=new InMemoryGeneratedArtifactStore();
+ await storage.put({identifier:"expiry-object",body:new TextEncoder().encode("report"),metadata:{contentType:"text/plain"},overwrite:"forbid"});
+ await artifacts.create({
+  id:"expiry-artifact",environment:"test",reportKey:"approval-report",definitionVersion:"1",templateKey:"approval-html",templateVersion:"1",
+  resourceType:"request",resourceId:"req-1",sourceSnapshotId:"snap-1",generationIntent:"original",outputType:"html",
+  objectIdentifier:"expiry-object",contentType:"text/plain",byteLength:6,requestedAt:"2026-10-01T00:00:00.000Z",
+  generatedAt:"2026-10-01T00:00:01.000Z",generatedBy:"aoi",expiresAt:"2026-10-10T00:00:00.000Z",status:"ready",version:1
+ });
+ const {handleReportArtifactDownload}=await import("../src/worker/http/report-artifact-download");
+ const base={request:new Request("https://example.test/report"),requestId:"expiry",principalId:"aoi",environment:"test",artifactId:"expiry-artifact",artifacts,storage,authorizer:{canDownload:()=>true},filename:()=> "report.html"};
+ assert.equal((await handleReportArtifactDownload({...base,now:()=>new Date("2026-10-09T23:59:59.999Z")})).status,200);
+ assert.equal((await handleReportArtifactDownload({...base,now:()=>new Date("2026-10-10T00:00:00.000Z")})).status,404);
+ assert.equal((await handleReportArtifactDownload({...base,now:()=>new Date("2026-10-11T00:00:00.000Z")})).status,404);
+});
