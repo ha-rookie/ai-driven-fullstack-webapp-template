@@ -25,7 +25,7 @@ class FakeD1Database {
   }
   run(sql: string, values: unknown[]) {
     assert.match(sql, /INSERT INTO generated_artifacts/u);
-    const keys = ["id","environment","report_key","definition_version","template_key","template_version","resource_type","resource_id","source_snapshot_id","generation_intent","output_type","object_identifier","content_type","byte_length","requested_at","generated_at","generated_by","status","version","failure_code"];
+    const keys = ["id","environment","report_key","definition_version","template_key","template_version","resource_type","resource_id","source_snapshot_id","generation_intent","output_type","object_identifier","content_type","byte_length","requested_at","generated_at","generated_by","status","version","failure_code","expires_at"];
     const row = Object.fromEntries(keys.map((key, index) => [key, values[index]]));
     const duplicateId = this.rows.some((r) => r.environment === row.environment && r.id === row.id);
     const duplicateOriginal = row.generation_intent === "original" && this.rows.some((r) =>
@@ -66,4 +66,11 @@ test("D1 generated artifact store enforces one historical original identity", as
     resourceId: "travel-1", sourceSnapshotId: "snapshot-1", outputType: "html",
   }))?.id, "artifact-1");
   assert.equal(await store.create(artifact({ id: "artifact-3", generationIntent: "reissue", objectIdentifier: "object-3" })), true);
+});
+
+test("D1 generated artifact store persists optional expiry metadata", async () => {
+  const db = new FakeD1Database();
+  const store = new D1GeneratedArtifactStore(db as unknown as D1Database);
+  assert.equal(await store.create(artifact({ expiresAt: "2026-11-01T00:00:00.000Z" })), true);
+  assert.equal((await store.get("artifact-1", "test"))?.expiresAt, "2026-11-01T00:00:00.000Z");
 });
