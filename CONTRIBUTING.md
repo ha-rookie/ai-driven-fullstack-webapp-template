@@ -7,10 +7,11 @@ This repository provides React / Workers / D1 implementation patterns for busine
 1. Use one Issue as the Change Contract: Goal, In Scope, Out of Scope, Planned Files, Risk Level, Impact Flags, Validation and Stop Conditions.
 2. Read [the implementation design index](docs/README.md) and the applicable [scoped instructions](docs/instructions/README.md), together with the reviewed Common Template guardrails.
 3. Create one Issue-specific branch from current `main`; do not modify `main` directly.
-4. Update the responsible design source before changing behavior. Keep changes within Planned Files. If another file is necessary, stop and resolve the scope change before editing it; avoid unrelated cleanup.
+4. Update the responsible design source before changing behavior. Keep changes within Planned Files. If another file is necessary, stop and resolve the scope change before editing it; avoid unrelated cleanup. Prefer the smallest change that satisfies the Change Contract; preserve existing credentials, permissions, environment bindings, triggers, and other operational configuration unless changing them is explicitly required by the Goal and validated separately.
 5. Open one Pull Request closing exactly one Issue (`Closes #<number>`). Explain behavior, changed design, evidence, unresolved items and recovery considerations.
 6. Verify changed paths against the Issue's Planned Files and confirm the `validate` CI job. This repository currently has no automated Planned Files Scope Guard; do not claim that it ran.
 7. Reconcile Issue, design, implementation and validation evidence for Development Convergence. Stop at the Human Merge Gate until a maintainer explicitly approves the reviewed head SHA.
+8. If the initially assumed tool or execution path is unavailable, do not equate that with the Goal being impossible. Before requesting manual maintainer action, check same-service triggers/APIs, existing workflows/scripts, and a small safe configuration change that can achieve the same Goal. Manual operation is the last resort, subject to the same Human Gates.
 
 The default is **1 Issue = 1 Branch = 1 PR**. Tracking Issues organize child work and are not implementation contracts.
 
