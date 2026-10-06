@@ -14,8 +14,8 @@ export class WriteExcelFileReportRenderer implements ReportRenderer {
     if(input.outputType!=="xlsx")throw new TypeError("XLSX renderer only supports xlsx output");
     const template=resolveXlsxTemplate(input.definition,this.resolveTemplate);
     const model=validateXlsxWorkbookModel(template.build(input.viewModel));
-    const data=model.sheets.map((sheet)=>sheet.rows.map((row)=>row.map((value)=>typeof value==="string"?xlsxLiteralText(value):value)));
-    const blob=await writeExcelFile(data,{sheets:model.sheets.map((sheet)=>sheet.name)}).toBlob();
+    const sheets=model.sheets.map((sheet)=>({sheet:sheet.name,data:sheet.rows.map((row)=>row.map((value)=>typeof value==="string"?xlsxLiteralText(value):value))}));
+    const blob=await writeExcelFile(sheets).toBlob();
     const body=new Uint8Array(await blob.arrayBuffer());
     return{body,contentType:XLSX_CONTENT_TYPE,suggestedFilename:`${input.definition.key}.xlsx`};
   }
