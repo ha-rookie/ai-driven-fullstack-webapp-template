@@ -1,0 +1,62 @@
+name: Preview deploy gateway
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-preview:
+    if: >-
+      github.event.issue.number == 132 &&
+      github.event.comment.author_association == 'OWNER' &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/deploy-preview ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse and validate owner deploy command
+        id: request
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [[ "$COMMAND" =~ ^/deploy-preview[[:space:]]+([a-f0-9]{40})[[:space:]]+DEPLOY[[:space:]]+PREVIEW$ ]]; then
+            echo "target_sha=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Invalid Preview deploy command" >&2
+            exit 1
+          fi
+
+      - name: Checkout main for ancestry validation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Require target SHA to be merged into main
+        env:
+          TARGET_SHA: ${{ steps.request.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$TARGET_SHA^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+
+      - name: Dispatch guarded Preview deploy workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.request.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          gh workflow run preview-deploy.yml \
+            --ref main \
+            -f target_sha="$TARGET_SHA" \
+            -f confirmation="DEPLOY PREVIEW"
+
+      - name: Record gateway evidence
+        env:
+          TARGET_SHA: ${{ steps.request.outputs.target_sha }}
+        run: |
+          echo "Preview deploy dispatched for $TARGET_SHA from issue #${{ github.event.issue.number }} by ${{ github.actor }}"
