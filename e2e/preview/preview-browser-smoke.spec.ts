@@ -27,3 +27,30 @@ test("fixed Preview WORKHUB login and home shell render without business-data mu
     fullPage: true,
   });
 });
+
+
+test("fixed Preview administration portal renders for System Admin without mutation", async ({ page }, testInfo) => {
+  await page.goto("/", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  const dialog = page.getByRole("dialog", { name: "デモユーザを選ぶ" });
+  await dialog.getByRole("button", { name: /Kai System Admin/u }).click();
+  await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
+
+  const response = await page.goto("/admin", { waitUntil: "networkidle" });
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "管理できている状態を、ひとつの入口から" })).toBeVisible();
+  await expect(page.getByText("OPERATIONS / ADMINISTRATION", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "管理ポータル" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ユーザー・権限" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ジョブ・連携" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "監査・セキュリティ" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "危険な操作ほど、理由と確認を残す" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "安全操作の接続点" })).toBeDisabled();
+
+  await page.screenshot({
+    path: testInfo.outputPath(`preview-admin-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
+});
