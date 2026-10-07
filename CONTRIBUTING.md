@@ -15,6 +15,24 @@ This repository provides React / Workers / D1 implementation patterns for busine
 
 The default is **1 Issue = 1 Branch = 1 PR**. Tracking Issues organize child work and are not implementation contracts.
 
+## Source editing safety
+
+AI-assisted and scripted edits must treat escape-sensitive source changes as structural edits, not blind text substitution.
+
+- Do not use broad source-code `replace()` / global replacement to translate `\\n`, `\\r`, `\\t`, quotes, regex escapes, or similar syntax-sensitive tokens between escaped and physical characters.
+- Prefer a clean whole-file rewrite for generated scripts and workflows. For narrow changes, use line-aware or syntax-aware edits.
+- Immediately after an automated edit, re-read the changed file and run the applicable parser/syntax check before opening a PR.
+- Run `npm run source-editing:validate` before the wider validation suite. CI is the final safety net, not the first syntax check.
+- Never repair escape corruption with a repository-wide inverse replacement. Restore the intended construct explicitly and validate legitimate escaped string/regex cases remain intact.
+
+Required sequence:
+
+```text
+edit -> syntax/structural validation -> re-read/diff inspection -> PR -> CI
+```
+
+The source-editing validator intentionally detects only known high-confidence corruption patterns in addition to parser checks; legitimate string and regular-expression escapes must remain valid.
+
 ## Local validation
 
 Follow [Local development](README.md#local-development) for installation and local migrations. Then run:
