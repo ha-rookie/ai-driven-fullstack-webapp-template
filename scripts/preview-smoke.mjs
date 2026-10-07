@@ -20,7 +20,11 @@ const validateInput = ({ baseUrl, deployedSha }) => {
   if (!shaPattern.test(String(deployedSha ?? ""))) errors.push("deployed SHA must be a full 40-character lowercase commit SHA");
   try {
     const url = new URL(baseUrl);
-    if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash) {\n      errors.push("base URL must be a canonical HTTPS origin");\n    } else if (url.origin !== policy.allowedOrigin) {\n      errors.push("base URL must match the fixed Preview origin");\n    }
+    if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash) {
+      errors.push("base URL must be a canonical HTTPS origin");
+    } else if (url.origin !== policy.allowedOrigin) {
+      errors.push("base URL must match the fixed Preview origin");
+    }
   } catch {
     errors.push("base URL must be a valid HTTPS origin");
   }
@@ -113,7 +117,8 @@ const execute = async ({ baseUrl, deployedSha, output }) => {
 
   if (output) {
     fs.mkdirSync(path.dirname(path.resolve(root, output)), { recursive: true });
-    fs.writeFileSync(path.resolve(root, output), JSON.stringify(evidence, null, 2) + "\n");
+    fs.writeFileSync(path.resolve(root, output), JSON.stringify(evidence, null, 2) + "
+");
   }
   if (!ok) process.exitCode = 1;
 };
