@@ -1,3 +1,4 @@
+import { pbkdf2 as nodePbkdf2 } from "node:crypto";
 import type { Clock, IdGenerator } from "../../shared/runtime";
 import { cryptoIdGenerator, systemClock } from "../../shared/runtime";
 
@@ -7,8 +8,6 @@ export const DEFAULT_PASSWORD_RESET_TTL_SECONDS = 30 * 60;
 export const DEFAULT_PASSWORD_MIN_CODE_POINTS = 15;
 export const DEFAULT_PASSWORD_MAX_CODE_POINTS = 128;
 
-const PBKDF2_ALGORITHM = "PBKDF2";
-const PBKDF2_HASH = "SHA-256";
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_OUTPUT_BITS = 256;
 const RESET_TOKEN_BYTES = 32;
@@ -128,26 +127,23 @@ const derivePbkdf2 = async (
   password: string,
   salt: Uint8Array,
   iterations: number,
-): Promise<Uint8Array> => {
-  const material = await crypto.subtle.importKey(
-    "raw",
-    toArrayBuffer(new TextEncoder().encode(normalizePasswordForHashing(password))),
-    PBKDF2_ALGORITHM,
-    false,
-    ["deriveBits"],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: PBKDF2_ALGORITHM,
-      hash: PBKDF2_HASH,
-      salt: toArrayBuffer(salt),
+): Promise<Uint8Array> =>
+  new Promise((resolve, reject) => {
+    nodePbkdf2(
+      normalizePasswordForHashing(password),
+      Buffer.from(salt),
       iterations,
-    },
-    material,
-    PBKDF2_OUTPUT_BITS,
-  );
-  return new Uint8Array(bits);
-};
+      PBKDF2_OUTPUT_BITS / 8,
+      "sha256",
+      (error, derivedKey) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(new Uint8Array(derivedKey));
+      },
+    );
+  });
 
 interface ParsedPasswordHash {
   readonly iterations: number;
