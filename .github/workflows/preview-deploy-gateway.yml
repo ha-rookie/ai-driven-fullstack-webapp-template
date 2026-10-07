@@ -1,4 +1,4 @@
-name: Preview deploy gateway
+name: Preview operations gateway
 
 on:
   issue_comment:
@@ -14,29 +14,39 @@ jobs:
       github.event.issue.number == 132 &&
       github.event.comment.author_association == 'OWNER' &&
       github.actor == github.repository_owner &&
-      startsWith(github.event.comment.body, '/deploy-preview ')
+      (startsWith(github.event.comment.body, '/deploy-preview ') ||
+       startsWith(github.event.comment.body, '/verify-preview ') ||
+       github.event.comment.body == '/verify-preview-browser')
     runs-on: ubuntu-latest
     steps:
-      - name: Parse and validate owner deploy command
+      - name: Parse and validate owner command
         id: request
         env:
           COMMAND: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
           if [[ "$COMMAND" =~ ^/deploy-preview[[:space:]]+([a-f0-9]{40})[[:space:]]+DEPLOY[[:space:]]+PREVIEW$ ]]; then
+            echo "operation=deploy" >> "$GITHUB_OUTPUT"
             echo "target_sha=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          elif [[ "$COMMAND" =~ ^/verify-preview[[:space:]]+([a-f0-9]{40})$ ]]; then
+            echo "operation=smoke" >> "$GITHUB_OUTPUT"
+            echo "target_sha=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          elif [[ "$COMMAND" == "/verify-preview-browser" ]]; then
+            echo "operation=browser" >> "$GITHUB_OUTPUT"
           else
-            echo "Invalid Preview deploy command" >&2
+            echo "Invalid Preview operation command" >&2
             exit 1
           fi
 
       - name: Checkout main for ancestry validation
+        if: steps.request.outputs.operation != 'browser'
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
       - name: Require target SHA to be merged into main
+        if: steps.request.outputs.operation != 'browser'
         env:
           TARGET_SHA: ${{ steps.request.outputs.target_sha }}
         run: |
@@ -45,6 +55,7 @@ jobs:
           git merge-base --is-ancestor "$TARGET_SHA" origin/main
 
       - name: Dispatch guarded Preview deploy workflow
+        if: steps.request.outputs.operation == 'deploy'
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ steps.request.outputs.target_sha }}
@@ -55,8 +66,25 @@ jobs:
             -f target_sha="$TARGET_SHA" \
             -f confirmation="DEPLOY PREVIEW"
 
-      - name: Record gateway evidence
+      - name: Dispatch read-only Preview HTTP smoke workflow
+        if: steps.request.outputs.operation == 'smoke'
         env:
+          GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ steps.request.outputs.target_sha }}
         run: |
-          echo "Preview deploy dispatched for $TARGET_SHA from issue #${{ github.event.issue.number }} by ${{ github.actor }}"
+          set -euo pipefail
+          gh workflow run preview-smoke.yml \
+            --ref main \
+            -f deployed_sha="$TARGET_SHA"
+
+      - name: Dispatch read-only Preview browser smoke workflow
+        if: steps.request.outputs.operation == 'browser'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run preview-browser-smoke.yml --ref main
+
+      - name: Record gateway evidence
+        run: |
+          echo "Preview operation '${{ steps.request.outputs.operation }}' dispatched from issue #${{ github.event.issue.number }} by ${{ github.actor }}"
