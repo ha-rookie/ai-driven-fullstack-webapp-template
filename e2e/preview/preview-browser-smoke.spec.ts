@@ -14,7 +14,18 @@ test("fixed Preview WORKHUB login and home shell render without business-data mu
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /Aoi Employee/u }).click();
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
+  const loginResponsePromise = page.waitForResponse(
+    (response) => response.url().endsWith("/api/auth/login") && response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  const loginResponse = await loginResponsePromise;
+  const loginBody = await loginResponse.text();
+  console.log("Preview Aoi login evidence", {
+    status: loginResponse.status(),
+    requestId: loginResponse.headers()["x-request-id"] ?? null,
+    body: loginBody,
+  });
+  expect(loginResponse.status(), loginBody).toBe(200);
 
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
   await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
@@ -35,7 +46,18 @@ test("fixed Preview administration portal renders for System Admin without mutat
   const dialog = page.getByRole("dialog", { name: "デモユーザを選ぶ" });
   await dialog.getByRole("button", { name: /Kai Admin/u }).click();
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
+  const loginResponsePromise = page.waitForResponse(
+    (response) => response.url().endsWith("/api/auth/login") && response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  const loginResponse = await loginResponsePromise;
+  const loginBody = await loginResponse.text();
+  console.log("Preview Kai login evidence", {
+    status: loginResponse.status(),
+    requestId: loginResponse.headers()["x-request-id"] ?? null,
+    body: loginBody,
+  });
+  expect(loginResponse.status(), loginBody).toBe(200);
   await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
 
   const response = await page.goto("/admin", { waitUntil: "networkidle" });
