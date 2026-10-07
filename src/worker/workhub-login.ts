@@ -7,6 +7,7 @@ import {
   type RuntimeEnvironment,
 } from "../shared/runtime";
 import {
+  LocalCredentialAuthenticationDependencyError,
   LocalCredentialService,
   createSessionCookie,
   issueApplicationSession,
@@ -312,7 +313,10 @@ export const handleWorkhubLogin = async (
         },
       },
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof LocalCredentialAuthenticationDependencyError) {
+      dependencyStage = error.stage;
+    }
     audit({
       category: "authentication",
       action: "local_login",
