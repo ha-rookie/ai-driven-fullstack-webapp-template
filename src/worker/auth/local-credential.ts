@@ -1,20 +1,27 @@
-import { pbkdf2 as nodePbkdf2 } from "node:crypto";
+import { pbkdf2 as nodePbkdf2, scrypt as nodeScrypt } from "node:crypto";
 import type { Clock, IdGenerator } from "../../shared/runtime";
 import { cryptoIdGenerator, systemClock } from "../../shared/runtime";
 
 export const LOCAL_CREDENTIAL_PROVIDER = "local";
 export const DEFAULT_PBKDF2_ITERATIONS = 600_000;
+export const DEFAULT_SCRYPT_N = 2 ** 15;
+export const DEFAULT_SCRYPT_R = 8;
+export const DEFAULT_SCRYPT_P = 3;
 export const DEFAULT_PASSWORD_RESET_TTL_SECONDS = 30 * 60;
 export const DEFAULT_PASSWORD_MIN_CODE_POINTS = 15;
 export const DEFAULT_PASSWORD_MAX_CODE_POINTS = 128;
 
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_OUTPUT_BITS = 256;
+const SCRYPT_SALT_BYTES = 16;
+const SCRYPT_OUTPUT_BYTES = 32;
+const SCRYPT_MAXMEM_BYTES = 64 * 1024 * 1024;
 const RESET_TOKEN_BYTES = 32;
 const MAX_IDENTIFIER_CODE_POINTS = 254;
 const MAX_PASSWORD_VERIFY_CODE_POINTS = 1024;
-const HASH_FORMAT_PREFIX = "pbkdf2-sha256";
-const DUMMY_SALT = new Uint8Array(PBKDF2_SALT_BYTES);
+const PBKDF2_PBKDF2_HASH_FORMAT_PREFIX = "pbkdf2-sha256";
+const SCRYPT_PBKDF2_HASH_FORMAT_PREFIX = "scrypt";
+const DUMMY_SALT = new Uint8Array(SCRYPT_SALT_BYTES);
 
 export type PasswordPolicyErrorCode =
   | "too_short"
@@ -153,7 +160,7 @@ interface ParsedPasswordHash {
 
 const parsePasswordHash = (encodedHash: string): ParsedPasswordHash => {
   const parts = encodedHash.split("$");
-  if (parts.length !== 4 || parts[0] !== HASH_FORMAT_PREFIX) {
+  if (parts.length !== 4 || parts[0] !== PBKDF2_HASH_FORMAT_PREFIX) {
     throw new TypeError("Unsupported password hash format");
   }
   const iterations = Number(parts[1]);
@@ -187,7 +194,7 @@ export class Pbkdf2PasswordHasher implements PasswordHasher {
   async hash(password: string): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
     const hash = await derivePbkdf2(password, salt, this.iterations);
-    return `${HASH_FORMAT_PREFIX}$${this.iterations}$${toBase64Url(salt)}$${toBase64Url(hash)}`;
+    return `${PBKDF2_HASH_FORMAT_PREFIX}$${this.iterations}$${toBase64Url(salt)}$${toBase64Url(hash)}`;
   }
 
   async verify(password: string, encodedHash: string): Promise<PasswordHashVerification> {
@@ -201,6 +208,136 @@ export class Pbkdf2PasswordHasher implements PasswordHasher {
 
   async burn(password: string): Promise<void> {
     await derivePbkdf2(password, DUMMY_SALT, this.iterations);
+  }
+}
+
+
+export interface ScryptPasswordHasherOptions {
+  readonly n?: number;
+  readonly r?: number;
+  readonly p?: number;
+  readonly maxmem?: number;
+  /** Test-only escape hatch. Never enable this in Preview or Production. */
+  readonly unsafeAllowBelowRecommendedParametersForTests?: boolean;
+}
+
+interface ParsedScryptPasswordHash {
+  readonly n: number;
+  readonly r: number;
+  readonly p: number;
+  readonly salt: Uint8Array;
+  readonly hash: Uint8Array;
+}
+
+const deriveScrypt = async (
+  password: string,
+  salt: Uint8Array,
+  n: number,
+  r: number,
+  p: number,
+  maxmem: number,
+): Promise<Uint8Array> =>
+  new Promise((resolve, reject) => {
+    nodeScrypt(
+      normalizePasswordForHashing(password),
+      Buffer.from(salt),
+      SCRYPT_OUTPUT_BYTES,
+      { N: n, r, p, maxmem },
+      (error, derivedKey) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(new Uint8Array(derivedKey));
+      },
+    );
+  });
+
+const parseScryptPasswordHash = (encodedHash: string): ParsedScryptPasswordHash => {
+  const parts = encodedHash.split("$");
+  if (parts.length !== 6 || parts[0] !== SCRYPT_HASH_FORMAT_PREFIX) {
+    throw new TypeError("Unsupported scrypt password hash format");
+  }
+  const n = Number(parts[1]);
+  const r = Number(parts[2]);
+  const p = Number(parts[3]);
+  if (
+    !Number.isSafeInteger(n) || n <= 1 || (n & (n - 1)) !== 0
+    || !Number.isSafeInteger(r) || r <= 0
+    || !Number.isSafeInteger(p) || p <= 0
+  ) {
+    throw new TypeError("Invalid scrypt parameters");
+  }
+  const salt = fromBase64Url(parts[4]);
+  const hash = fromBase64Url(parts[5]);
+  if (salt.byteLength < SCRYPT_SALT_BYTES || hash.byteLength !== SCRYPT_OUTPUT_BYTES) {
+    throw new TypeError("Invalid scrypt hash payload");
+  }
+  return { n, r, p, salt, hash };
+};
+
+export class ScryptPasswordHasher implements PasswordHasher {
+  readonly n: number;
+  readonly r: number;
+  readonly p: number;
+  readonly maxmem: number;
+  private readonly legacyPbkdf2 = new Pbkdf2PasswordHasher();
+
+  constructor(options: ScryptPasswordHasherOptions = {}) {
+    this.n = options.n ?? DEFAULT_SCRYPT_N;
+    this.r = options.r ?? DEFAULT_SCRYPT_R;
+    this.p = options.p ?? DEFAULT_SCRYPT_P;
+    this.maxmem = options.maxmem ?? SCRYPT_MAXMEM_BYTES;
+
+    const recommended =
+      this.n === DEFAULT_SCRYPT_N
+      && this.r === DEFAULT_SCRYPT_R
+      && this.p === DEFAULT_SCRYPT_P;
+    if (
+      (!Number.isSafeInteger(this.n) || this.n <= 1 || (this.n & (this.n - 1)) !== 0)
+      || !Number.isSafeInteger(this.r) || this.r <= 0
+      || !Number.isSafeInteger(this.p) || this.p <= 0
+      || !Number.isSafeInteger(this.maxmem) || this.maxmem <= 0
+    ) {
+      throw new RangeError("scrypt parameters are invalid");
+    }
+    if (!recommended && options.unsafeAllowBelowRecommendedParametersForTests !== true) {
+      throw new RangeError("scrypt parameters must use the recommended production profile");
+    }
+  }
+
+  async hash(password: string): Promise<string> {
+    const salt = crypto.getRandomValues(new Uint8Array(SCRYPT_SALT_BYTES));
+    const hash = await deriveScrypt(password, salt, this.n, this.r, this.p, this.maxmem);
+    return [
+      SCRYPT_HASH_FORMAT_PREFIX,
+      this.n,
+      this.r,
+      this.p,
+      toBase64Url(salt),
+      toBase64Url(hash),
+    ].join("$");
+  }
+
+  async verify(password: string, encodedHash: string): Promise<PasswordHashVerification> {
+    if (encodedHash.startsWith(`${PBKDF2_HASH_FORMAT_PREFIX}$`)) {
+      const legacy = await this.legacyPbkdf2.verify(password, encodedHash);
+      return { valid: legacy.valid, needsRehash: legacy.valid };
+    }
+
+    const parsed = parseScryptPasswordHash(encodedHash);
+    const actual = await deriveScrypt(password, parsed.salt, parsed.n, parsed.r, parsed.p, this.maxmem);
+    return {
+      valid: constantTimeEqual(actual, parsed.hash),
+      needsRehash:
+        parsed.n !== this.n
+        || parsed.r !== this.r
+        || parsed.p !== this.p,
+    };
+  }
+
+  async burn(password: string): Promise<void> {
+    await deriveScrypt(password, DUMMY_SALT, this.n, this.r, this.p, this.maxmem);
   }
 }
 
@@ -284,7 +421,7 @@ export class LocalCredentialService {
   private readonly idGenerator: IdGenerator;
 
   constructor(private readonly options: LocalCredentialServiceOptions) {
-    this.hasher = options.hasher ?? new Pbkdf2PasswordHasher();
+    this.hasher = options.hasher ?? new ScryptPasswordHasher();
     this.normalizeIdentifier = options.normalizeIdentifier ?? normalizeLocalIdentifier;
     this.clock = options.clock ?? systemClock;
     this.idGenerator = options.idGenerator ?? cryptoIdGenerator;
