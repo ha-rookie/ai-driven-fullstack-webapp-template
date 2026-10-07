@@ -8,7 +8,7 @@ A normal pull request, push, or schedule must not deploy the remote Preview envi
 
 ## Environment boundary
 
-- Preview uses the repository's explicit Wrangler `preview` environment
+- Preview uses the repository's explicit named Wrangler `env.preview` environment
 - Preview D1 is pinned to `f1ce1268-2be2-4a20-ab10-a94c32feee64`
 - runtime evidence is labeled with `RUNTIME_ENVIRONMENT=preview`
 - Production Wrangler configuration and `PRODUCTION_*` secrets are forbidden in this workflow
@@ -30,11 +30,11 @@ This workflow does not create Cloudflare resources, register secrets, or modify 
 1. Operator supplies a full immutable commit SHA
 2. confirmation must exactly equal `DEPLOY PREVIEW`
 3. preflight checks out the exact SHA
-4. Preview workflow policy, lockfile and build are validated
+4. Preview workflow policy and lockfile are validated; Vite builds with `CLOUDFLARE_ENV=preview` so the generated deploy configuration contains the Preview bindings
 5. deploy waits on GitHub `environment: preview`
 6. after approval, the exact SHA and validations are repeated
 7. the pinned Preview target is checked
-8. `wrangler deploy --env preview --var RUNTIME_ENVIRONMENT:preview` deploys code
+8. `wrangler deploy` deploys the Vite-generated Preview configuration; environment selection is intentionally not deferred to deploy time
 9. non-secret deployment evidence is retained
 
 ## Separation from D1 migration

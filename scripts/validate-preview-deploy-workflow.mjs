@@ -34,7 +34,13 @@ const validateWorkflowText = (text) => {
     errors.push("workflow must checkout the explicit target SHA");
   }
   if (!/DEPLOY PREVIEW/.test(text)) errors.push("typed Preview confirmation is missing");
-  if (!/wrangler deploy[\s\S]*--env preview/m.test(text)) errors.push("explicit wrangler deploy --env preview is missing");
+  if (!/CLOUDFLARE_ENV=preview npm run build/m.test(text)) {
+    errors.push("Preview environment must be selected at Vite build time");
+  }
+  if (!/npx wrangler deploy(?:\s|$)/m.test(text)) errors.push("wrangler deploy is missing");
+  if (/wrangler deploy[^\n]*--env\s+preview/m.test(text)) {
+    errors.push("Vite plugin deploy must not select Preview with wrangler --env");
+  }
   if (/--env\s+production/m.test(text)) errors.push("Production Wrangler environment must not be referenced");
   if (/d1 migrations apply/m.test(text)) errors.push("Preview deploy workflow must not execute D1 migrations");
   if (!text.includes(policy.previewDatabaseId)) errors.push("pinned Preview D1 database ID is missing");
@@ -54,16 +60,25 @@ const selfTest = () => {
   if (validateRequest(safeRequest).length) throw new Error("safe request unexpectedly failed validation");
   const unsafeRequest = { targetSha: "main", confirmation: "yes" };
   if (validateRequest(unsafeRequest).length < 2) throw new Error("unsafe request did not fail closed");
+
   const workflow = fs.readFileSync(policy.workflowPath, "utf8");
   const workflowErrors = validateWorkflowText(workflow);
   if (workflowErrors.length) throw new Error(workflowErrors.join("\n"));
+
   console.log("[preview-deploy-workflow] self-test passed");
 };
 
 if (args.has("self-test")) {
-  try { selfTest(); } catch (error) { fail([error instanceof Error ? error.message : "unexpected error"]); }
+  try {
+    selfTest();
+  } catch (error) {
+    fail([error instanceof Error ? error.message : "unexpected error"]);
+  }
 } else {
-  const errors = validateRequest({ targetSha: args.get("target-sha"), confirmation: args.get("confirmation") });
+  const errors = validateRequest({
+    targetSha: args.get("target-sha"),
+    confirmation: args.get("confirmation"),
+  });
   if (errors.length) fail(errors);
   else console.log("[preview-deploy-workflow] request validation PASS");
 }
