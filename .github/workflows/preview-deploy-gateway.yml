@@ -83,7 +83,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh workflow run preview-browser-smoke.yml --ref main
+          gh workflow run preview-browser-smoke.yml --repo "$GITHUB_REPOSITORY" --ref main
 
       - name: Record gateway evidence
         run: |
