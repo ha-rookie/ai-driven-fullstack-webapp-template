@@ -42,6 +42,21 @@ export class LocalCredentialMutationError extends Error {
   }
 }
 
+export type LocalCredentialAuthenticationDependencyStage =
+  | "credential_lookup"
+  | "password_verify"
+  | "credential_rehash";
+
+export class LocalCredentialAuthenticationDependencyError extends Error {
+  constructor(
+    readonly stage: LocalCredentialAuthenticationDependencyStage,
+    options?: ErrorOptions,
+  ) {
+    super("Local credential authentication dependency failed", options);
+    this.name = "LocalCredentialAuthenticationDependencyError";
+  }
+}
+
 export interface PasswordBlocklist {
   isBlocked(password: string): Promise<boolean>;
 }
@@ -304,12 +319,17 @@ export class LocalCredentialService {
       return null;
     }
 
-    const row = await this.options.db.prepare(`
-      SELECT c.user_id, c.password_hash, u.status
-      FROM local_credentials c
-      JOIN users u ON u.id = c.user_id
-      WHERE c.identifier_normalized = ?
-    `).bind(normalizedIdentifier).first<CredentialRow>();
+    let row: CredentialRow | null;
+    try {
+      row = await this.options.db.prepare(`
+        SELECT c.user_id, c.password_hash, u.status
+        FROM local_credentials c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.identifier_normalized = ?
+      `).bind(normalizedIdentifier).first<CredentialRow>();
+    } catch (error) {
+      throw new LocalCredentialAuthenticationDependencyError("credential_lookup", { cause: error });
+    }
 
     if (!row || row.status !== "active") {
       await this.burnBoundedPassword(password);
@@ -317,19 +337,28 @@ export class LocalCredentialService {
     }
 
     const candidate = this.boundPasswordForVerification(password);
-    const verification = await this.hasher.verify(candidate, row.password_hash);
+    let verification: PasswordHashVerification;
+    try {
+      verification = await this.hasher.verify(candidate, row.password_hash);
+    } catch (error) {
+      throw new LocalCredentialAuthenticationDependencyError("password_verify", { cause: error });
+    }
     if (!verification.valid) return null;
 
     let credentialUpgraded = false;
     if (verification.needsRehash) {
-      const upgraded = await this.hasher.hash(candidate);
-      const now = this.clock.now().toISOString();
-      const result = await this.options.db.prepare(`
-        UPDATE local_credentials
-        SET password_hash = ?, password_changed_at = ?, updated_at = ?
-        WHERE user_id = ? AND password_hash = ?
-      `).bind(upgraded, now, now, row.user_id, row.password_hash).run();
-      credentialUpgraded = (result.meta.changes ?? 0) === 1;
+      try {
+        const upgraded = await this.hasher.hash(candidate);
+        const now = this.clock.now().toISOString();
+        const result = await this.options.db.prepare(`
+          UPDATE local_credentials
+          SET password_hash = ?, password_changed_at = ?, updated_at = ?
+          WHERE user_id = ? AND password_hash = ?
+        `).bind(upgraded, now, now, row.user_id, row.password_hash).run();
+        credentialUpgraded = (result.meta.changes ?? 0) === 1;
+      } catch (error) {
+        throw new LocalCredentialAuthenticationDependencyError("credential_rehash", { cause: error });
+      }
     }
 
     return { userId: row.user_id, credentialUpgraded };
