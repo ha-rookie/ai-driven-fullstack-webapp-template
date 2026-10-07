@@ -16,7 +16,8 @@
     "preview": {
       "name": "ai-driven-fullstack-webapp-template-preview",
       "vars": {
-        "RUNTIME_ENVIRONMENT": "preview"
+        "RUNTIME_ENVIRONMENT": "preview",
+        "WORKHUB_DEMO_MODE": "true"
       },
       "d1_databases": [
         {
