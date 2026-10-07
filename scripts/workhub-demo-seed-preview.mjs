@@ -6,12 +6,12 @@ const masterEnvironment = "preview";
 const officeMasterKey = "workhub.office";
 
 const personas = [
-  ["workhub-demo-haru", "Haru Newcomer", "haru", "newcomer", "pbkdf2-sha256$600000$AAECAwQFBgcICQoLDA0ODw$2qf6FK7jEQTVZbkzylYMcO3hg0xcIxrbbQjsjIZ57QA"],
-  ["workhub-demo-aoi", "Aoi Employee", "aoi", "employee", "pbkdf2-sha256$600000$ERITFBUWFxgZGhscHR4fIA$2F8Ub-L3Z0Se2aUTdFI8wj1hLM71dwScLyY_KynwBU0"],
-  ["workhub-demo-ren", "Ren Manager", "ren", "manager", "pbkdf2-sha256$600000$IiMkJSYnKCkqKywtLi8wMQ$hqYYWhjzEL_ldEhxj5xP8PhRvBrB1ncPJgnnMalaFbI"],
-  ["workhub-demo-mei", "Mei Accounting", "mei", "accounting", "pbkdf2-sha256$600000$MzQ1Njc4OTo7PD0-P0BBQg$RaiPMXeuvwX3Bgr2vuwoMFXnE9eJK5AL3l869C1YSq8"],
-  ["workhub-demo-sora", "Sora Corporate", "sora", "corporate", "pbkdf2-sha256$600000$REVGR0hJSktMTU5PUFFSUw$QqGOY1EwCwJ6YTv5t1sZQlT7n6-_6U4fsGG-F3eF41Y"],
-  ["workhub-demo-kai", "Kai Admin", "kai", "system_admin", "pbkdf2-sha256$600000$VVZXWFlaW1xdXl9gYWJjZA$C2Wlgxq7z39m7ltAWq7bhGHTNGYnA5P4Z6xsdvluoSY"],
+  ["workhub-demo-haru", "Haru Newcomer", "haru", "newcomer", "scrypt$32768$8$3$AAECAwQFBgcICQoLDA0ODw$cf5wGgfu3sy4cO_RvujgkwrUnyDG-RgZKMcc6oaDbgU"],
+  ["workhub-demo-aoi", "Aoi Employee", "aoi", "employee", "scrypt$32768$8$3$ERITFBUWFxgZGhscHR4fIA$cZL5lyiryapApuj37FzB3GjTg2CfVCo5IwhrP1LXMGA"],
+  ["workhub-demo-ren", "Ren Manager", "ren", "manager", "scrypt$32768$8$3$IiMkJSYnKCkqKywtLi8wMQ$-J2hRaX9zwHprraOCX7ZoR2gMmK1pK_kyIHQvwdIMo4"],
+  ["workhub-demo-mei", "Mei Accounting", "mei", "accounting", "scrypt$32768$8$3$MzQ1Njc4OTo7PD0-P0BBQg$KkZ-LPUwavyRwwyW4kQcNn3umEAFVRQehY-6aZ0-C4g"],
+  ["workhub-demo-sora", "Sora Corporate", "sora", "corporate", "scrypt$32768$8$3$REVGR0hJSktMTU5PUFFSUw$EGnY5zKzWKEUoZLDYrrpZXepbwP5_2NaetQMKRTmYNg"],
+  ["workhub-demo-kai", "Kai Admin", "kai", "system_admin", "scrypt$32768$8$3$VVZXWFlaW1xdXl9gYWJjZA$tqIvcsqFd8kO066uGOU-o_10yXja3EAiQsYmPGqqHbQ"],
 ];
 
 const offices = [
