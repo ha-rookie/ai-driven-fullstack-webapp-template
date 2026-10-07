@@ -1,0 +1,60 @@
+name: Bootstrap Preview deploy bb74a73
+
+on:
+  push:
+    branches:
+      - bootstrap-preview-deploy-bb74a73
+    paths:
+      - ".github/workflows/bootstrap-preview-deploy-bb74a73.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-approved-sha:
+    runs-on: ubuntu-latest
+    environment: preview
+    env:
+      TARGET_SHA: bb74a7387b163d4c2c724742d771679c0477eb22
+      PREVIEW_DATABASE_ID: f1ce1268-2be2-4a20-ab10-a94c32feee64
+    steps:
+      - name: Checkout approved deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify immutable approved SHA
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate lockfile
+        run: npm run supply-chain:lockfile
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Build approved Preview SHA
+        run: CLOUDFLARE_ENV=preview npm run build
+      - name: Verify generated Preview deploy config
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          const path = "dist/ai_driven_fullstack_webapp_template/wrangler.json";
+          const config = JSON.parse(fs.readFileSync(path, "utf8"));
+          const db = config.d1_databases?.find((entry) => entry.binding === "DB");
+          if (db?.database_id !== process.env.PREVIEW_DATABASE_ID) throw new Error("Generated deploy config is not pinned to Preview D1");
+          if (db.database_id === "00000000-0000-0000-0000-000000000000") throw new Error("Production placeholder leaked into Preview deploy config");
+          JS
+      - name: Deploy approved SHA to Preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          npx wrangler deploy
