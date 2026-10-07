@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "environment": "preview",
+  "allowedOrigin": "https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev",
+  "timeoutMs": 5000,
+  "maxAttempts": 3,
+  "retryDelayMs": 1000,
+  "maxResponseBytes": 4096,
+  "checks": [
+    { "id": "root", "path": "/", "expectedStatus": 200 },
+    { "id": "liveness", "path": "/api/health/live", "expectedStatus": 200, "expectedJson": { "status": "ok", "component": "runtime" } },
+    { "id": "readiness", "path": "/api/health/ready", "expectedStatus": 200, "expectedJson": { "status": "ok", "component": "database" } },
+    { "id": "unauthenticated-boundary", "path": "/api/auth/me", "expectedStatus": 401, "expectedJson": { "authenticated": false } }
+  ],
+  "optionalAuthenticatedCheck": {
+    "id": "authenticated-boundary",
+    "path": "/api/auth/me",
+    "expectedStatus": 200,
+    "expectedJson": { "authenticated": true },
+    "cookieEnvironmentVariable": "PREVIEW_SMOKE_SESSION_COOKIE"
+  }
+}
