@@ -54,7 +54,8 @@
     "preview": "vite preview",
     "deploy:preview:validate": "node scripts/validate-preview-deploy-workflow.mjs",
     "smoke:preview": "node scripts/preview-smoke.mjs",
-    "source-editing:validate": "node scripts/validate-source-editing-safety.mjs"
+    "source-editing:validate": "node scripts/validate-source-editing-safety.mjs",
+    "browser:preview:smoke": "playwright test --config playwright.preview.config.ts"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "1.1.1",
