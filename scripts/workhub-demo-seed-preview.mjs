@@ -91,7 +91,7 @@ const sql = `
 PRAGMA foreign_keys = ON;
 
 INSERT INTO operation_modes (environment, mode, version, updated_at, updated_by, reason)
-VALUES ('local', 'normal', 1, ${quote(timestamp)}, 'workhub-preview-fixture', 'WORKHUB deterministic Preview fixture')
+VALUES ('preview', 'normal', 1, ${quote(timestamp)}, 'workhub-preview-fixture', 'WORKHUB deterministic Preview fixture')
 ON CONFLICT(environment) DO UPDATE SET
   mode = 'normal',
   version = operation_modes.version + 1,
@@ -117,7 +117,7 @@ const run = (args) => execFileSync("npx", ["wrangler", ...args], {
   env: process.env,
 });
 
-// Intentionally local-only. Do not add --remote or a Production database identifier here.
+// Intentionally Preview-only. The pinned Preview D1 ID, runtime environment, and explicit confirmation below must all match.
 const expectedDatabaseId = "f1ce1268-2be2-4a20-ab10-a94c32feee64";
 if (process.env.RUNTIME_ENVIRONMENT !== "preview") throw new Error("Preview fixture requires RUNTIME_ENVIRONMENT=preview");
 if (process.env.PREVIEW_DATABASE_ID !== expectedDatabaseId) throw new Error("Pinned Preview D1 database ID mismatch");
