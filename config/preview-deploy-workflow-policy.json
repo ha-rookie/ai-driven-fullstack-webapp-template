@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "requiredEnvironment": "preview",
+  "requiredConfirmation": "DEPLOY PREVIEW",
+  "targetShaPattern": "^[a-f0-9]{40}$",
+  "workflowPath": ".github/workflows/preview-deploy.yml",
+  "previewDatabaseId": "f1ce1268-2be2-4a20-ab10-a94c32feee64",
+  "requiredSecretNames": [
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID"
+  ],
+  "forbiddenTriggers": ["pull_request", "push", "schedule"],
+  "requiredValidationCommands": [
+    "npm run supply-chain:lockfile",
+    "npm run build"
+  ]
+}
