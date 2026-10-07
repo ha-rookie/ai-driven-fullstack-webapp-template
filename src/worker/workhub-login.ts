@@ -254,6 +254,7 @@ export const handleWorkhubLogin = async (
     environment,
   );
 
+  let dependencyStage = "attack_guard_check";
   try {
     const existingRejection = await checkSubjects(guard, subjects);
     if (existingRejection) {
@@ -266,6 +267,7 @@ export const handleWorkhubLogin = async (
       return credentialAttackRejectionResponse(existingRejection, requestId);
     }
 
+    dependencyStage = "credential_authenticate";
     const credentials = new LocalCredentialService({
       db: env.DB,
       blocklist: passwordBlocklistNotUsedForLogin,
@@ -284,7 +286,9 @@ export const handleWorkhubLogin = async (
         : genericAuthenticationFailure(requestId);
     }
 
+    dependencyStage = "session_issue";
     const session = await issueApplicationSession(env.DB, authenticated.userId);
+    dependencyStage = "attack_guard_clear";
     await guard.recordSuccess(LOGIN_POLICY, identifier);
     audit({
       category: "authentication",
@@ -313,7 +317,7 @@ export const handleWorkhubLogin = async (
       category: "authentication",
       action: "local_login",
       outcome: "failure",
-      reason: "dependency_error",
+      reason: `dependency_error:${dependencyStage}`,
     });
     return apiErrorResponse(
       {
