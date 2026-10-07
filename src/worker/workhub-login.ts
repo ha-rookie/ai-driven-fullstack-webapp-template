@@ -319,7 +319,7 @@ export const handleWorkhubLogin = async (
       outcome: "failure",
       reason: `dependency_error:${dependencyStage}`,
     });
-    return apiErrorResponse(
+    const response = apiErrorResponse(
       {
         status: 503,
         code: "authentication_unavailable",
@@ -327,5 +327,13 @@ export const handleWorkhubLogin = async (
       },
       requestId,
     );
+    if (environment !== "preview") return response;
+    const headers = new Headers(response.headers);
+    headers.set("x-auth-dependency-stage", dependencyStage);
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   }
 };
