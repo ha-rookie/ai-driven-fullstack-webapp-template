@@ -13,6 +13,7 @@ test("fixed Preview WORKHUB login and home shell render without business-data mu
   const dialog = page.getByRole("dialog", { name: "デモユーザを選ぶ" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /Aoi Employee/u }).click();
+  await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
