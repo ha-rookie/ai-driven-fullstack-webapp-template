@@ -117,8 +117,7 @@ const execute = async ({ baseUrl, deployedSha, output }) => {
 
   if (output) {
     fs.mkdirSync(path.dirname(path.resolve(root, output)), { recursive: true });
-    fs.writeFileSync(path.resolve(root, output), JSON.stringify(evidence, null, 2) + "
-");
+    fs.writeFileSync(path.resolve(root, output), JSON.stringify(evidence, null, 2) + "\\n");
   }
   if (!ok) process.exitCode = 1;
 };
