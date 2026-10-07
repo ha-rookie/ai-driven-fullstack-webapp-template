@@ -1,0 +1,40 @@
+name: Bootstrap Preview smoke bb74a73
+
+on:
+  push:
+    branches:
+      - bootstrap-preview-smoke-bb74a73
+    paths:
+      - ".github/workflows/bootstrap-preview-smoke-bb74a73.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout smoke verifier
+        uses: actions/checkout@v4
+        with:
+          ref: 25f6127708fcd819ab54792ba98ad8ee460ad90a
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate smoke contract
+        run: node scripts/preview-smoke.mjs --self-test
+      - name: Verify deployed Preview read-only
+        run: >-
+          node scripts/preview-smoke.mjs
+          --base-url="https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev/"
+          --deployed-sha="bb74a7387b163d4c2c724742d771679c0477eb22"
+          --output=.evidence/preview-smoke.json
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-smoke-bb74a73
+          path: .evidence/preview-smoke.json
+          if-no-files-found: error
+          retention-days: 14
