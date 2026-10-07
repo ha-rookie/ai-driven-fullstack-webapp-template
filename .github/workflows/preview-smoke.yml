@@ -1,0 +1,42 @@
+name: Preview smoke verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployed_sha:
+        description: Exact deployed 40-character commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: preview
+    steps:
+      - name: Checkout deployed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployed_sha }}
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate Preview smoke contract locally
+        run: node scripts/preview-smoke.mjs --self-test
+      - name: Run read-only Preview smoke verification
+        run: >-
+          node scripts/preview-smoke.mjs
+          --base-url="https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev/"
+          --deployed-sha="${{ inputs.deployed_sha }}"
+          --output=.evidence/preview-smoke.json
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-smoke-${{ inputs.deployed_sha }}
+          path: .evidence/preview-smoke.json
+          if-no-files-found: error
+          retention-days: 14
