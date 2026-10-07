@@ -1,0 +1,42 @@
+name: Bootstrap Preview browser smoke 07f0ce1
+
+on:
+  push:
+    branches:
+      - bootstrap-preview-browser-smoke-07f0ce1
+    paths:
+      - '.github/workflows/bootstrap-preview-browser-smoke-07f0ce1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact verifier SHA
+        uses: actions/checkout@v4
+        with:
+          ref: 07f0ce19fcbbccbfcc74c790f7bedb6de274ddc6
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install repository dependencies
+        run: npm ci
+      - name: Install pinned Playwright test runner
+        run: npm install --no-save --package-lock=false @playwright/test@1.63.0
+      - name: Install Chromium only
+        run: npx playwright install --with-deps chromium
+      - name: Run read-only remote Preview browser smoke
+        run: npm run browser:preview:smoke
+      - name: Upload Preview browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-browser-smoke-07f0ce1
+          path: test-results/preview-browser-smoke
+          if-no-files-found: error
+          retention-days: 14
