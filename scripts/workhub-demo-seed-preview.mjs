@@ -126,4 +126,15 @@ if (process.env.CONFIRMATION !== "SEED WORKHUB PREVIEW") throw new Error("Explic
 run(["d1", "migrations", "apply", "DB", "--remote", "--env", "preview"]);
 run(["d1", "execute", "DB", "--remote", "--env", "preview", "--command", sql]);
 
-console.log("WORKHUB Preview demo users, Office master, and normal operation mode seeded.");
+// Read-only acceptance probe: prove the exact join used by LocalCredentialService can resolve
+// every seeded persona without printing credential hashes or other secrets.
+const credentialProbeSql = `
+SELECT c.identifier_normalized AS identifier, u.status AS status
+FROM local_credentials c
+JOIN users u ON u.id = c.user_id
+WHERE c.identifier_normalized IN ('haru','aoi','ren','mei','sora','kai')
+ORDER BY c.identifier_normalized;
+`;
+run(["d1", "execute", "DB", "--remote", "--env", "preview", "--command", credentialProbeSql]);
+
+console.log("WORKHUB Preview demo users, Office master, and normal operation mode seeded and credential join probed.");
