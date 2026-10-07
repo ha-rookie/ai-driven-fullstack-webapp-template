@@ -16,7 +16,8 @@ jobs:
       github.actor == github.repository_owner &&
       (startsWith(github.event.comment.body, '/deploy-preview ') ||
        startsWith(github.event.comment.body, '/verify-preview ') ||
-       github.event.comment.body == '/verify-preview-browser')
+       github.event.comment.body == '/verify-preview-browser' ||
+       startsWith(github.event.comment.body, '/seed-preview-demo '))
     runs-on: ubuntu-latest
     steps:
       - name: Parse and validate owner command
@@ -33,6 +34,9 @@ jobs:
             echo "target_sha=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
           elif [[ "$COMMAND" == "/verify-preview-browser" ]]; then
             echo "operation=browser" >> "$GITHUB_OUTPUT"
+          elif [[ "$COMMAND" =~ ^/seed-preview-demo[[:space:]]+([a-f0-9]{40})[[:space:]]+SEED[[:space:]]+WORKHUB[[:space:]]+PREVIEW$ ]]; then
+            echo "operation=seed_demo" >> "$GITHUB_OUTPUT"
+            echo "target_sha=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
           else
             echo "Invalid Preview operation command" >&2
             exit 1
@@ -65,6 +69,15 @@ jobs:
             --ref main \
             -f target_sha="$TARGET_SHA" \
             -f confirmation="DEPLOY PREVIEW"
+
+      - name: Dispatch guarded Preview demo fixture workflow
+        if: steps.request.outputs.operation == 'seed_demo'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.request.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          gh workflow run preview-workhub-demo-fixture.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_sha="$TARGET_SHA" -f confirmation="SEED WORKHUB PREVIEW"
 
       - name: Dispatch read-only Preview HTTP smoke workflow
         if: steps.request.outputs.operation == 'smoke'

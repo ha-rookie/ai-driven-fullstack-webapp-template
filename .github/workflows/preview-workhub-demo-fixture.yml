@@ -1,0 +1,50 @@
+name: Preview WORKHUB demo fixture
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full 40-character commit SHA merged into main
+        required: true
+        type: string
+      confirmation:
+        description: Type SEED WORKHUB PREVIEW exactly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-workhub-demo-fixture
+  cancel-in-progress: false
+
+jobs:
+  seed-preview:
+    runs-on: ubuntu-latest
+    environment: preview
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PREVIEW_DATABASE_ID: f1ce1268-2be2-4a20-ab10-a94c32feee64
+      RUNTIME_ENVIRONMENT: preview
+      CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Validate guarded request
+        run: |
+          node -e 'const sha=process.argv[1],c=process.argv[2];if(!/^[a-f0-9]{40}$/.test(sha)||c!=="SEED WORKHUB PREVIEW")process.exit(1)' "${{ inputs.target_sha }}" "${{ inputs.confirmation }}"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+      - name: Require exact merged main SHA
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ inputs.target_sha }}"
+          git fetch origin main
+          git merge-base --is-ancestor "${{ inputs.target_sha }}" origin/main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Seed pinned Preview D1 fixture
+        run: node scripts/workhub-demo-seed-preview.mjs
