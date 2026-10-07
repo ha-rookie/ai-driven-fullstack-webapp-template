@@ -34,7 +34,7 @@ const validateWorkflowText = (text) => {
     errors.push("workflow must checkout the explicit target SHA");
   }
   if (!/DEPLOY PREVIEW/.test(text)) errors.push("typed Preview confirmation is missing");
-  if (!/wrangler deploy[\s\S]*--env preview/m.test(text)) errors.push("explicit wrangler deploy --env preview is missing");
+  if (!/CLOUDFLARE_ENV=preview npm run build/m.test(text)) errors.push("Preview environment must be selected at Vite build time");\n  if (!/npx wrangler deploy(?:\\s|$)/m.test(text)) errors.push("wrangler deploy is missing");\n  if (/wrangler deploy[^\\n]*--env\\s+preview/m.test(text)) errors.push("Vite plugin deploy must not select Preview with wrangler --env");
   if (/--env\s+production/m.test(text)) errors.push("Production Wrangler environment must not be referenced");
   if (/d1 migrations apply/m.test(text)) errors.push("Preview deploy workflow must not execute D1 migrations");
   if (!text.includes(policy.previewDatabaseId)) errors.push("pinned Preview D1 database ID is missing");
