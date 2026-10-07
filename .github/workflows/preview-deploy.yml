@@ -50,7 +50,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Build exact deploy SHA
-        run: npm run build
+        run: CLOUDFLARE_ENV=preview npm run build
 
   deploy:
     needs: preflight
@@ -83,7 +83,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Build exact deploy SHA again
-        run: npm run build
+        run: CLOUDFLARE_ENV=preview npm run build
 
       - name: Validate pinned Preview target
         run: |
@@ -92,7 +92,7 @@ jobs:
           import fs from "node:fs";
           const text = fs.readFileSync("wrangler.jsonc", "utf8");
           if (!text.includes(process.env.PREVIEW_DATABASE_ID)) throw new Error("Pinned Preview D1 database ID mismatch");
-          if (!text.includes('"previews"')) throw new Error("Preview Wrangler environment is missing");
+          if (!text.includes('"env"') || !text.includes('"preview"')) throw new Error("Named Preview Wrangler environment is missing");
           JS
 
       - name: Deploy exact SHA to Preview
@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
-          npx wrangler deploy --env preview --var RUNTIME_ENVIRONMENT:preview
+          npx wrangler deploy
 
       - name: Record deploy evidence
         run: |
