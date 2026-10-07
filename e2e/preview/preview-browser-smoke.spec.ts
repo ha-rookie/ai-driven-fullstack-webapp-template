@@ -33,7 +33,7 @@ test("fixed Preview administration portal renders for System Admin without mutat
   await page.goto("/", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
   const dialog = page.getByRole("dialog", { name: "デモユーザを選ぶ" });
-  await dialog.getByRole("button", { name: /Kai System Admin/u }).click();
+  await dialog.getByRole("button", { name: /Kai Admin/u }).click();
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
