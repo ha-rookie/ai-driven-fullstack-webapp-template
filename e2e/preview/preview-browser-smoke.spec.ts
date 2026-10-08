@@ -24,6 +24,7 @@ test("fixed Preview WORKHUB login and home shell render without business-data mu
     status: loginResponse.status(),
     requestId: loginResponse.headers()["x-request-id"] ?? null,
     dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
+    dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
     body: loginBody,
   });
   expect(loginResponse.status(), loginBody).toBe(200);
@@ -57,6 +58,7 @@ test("fixed Preview administration portal renders for System Admin without mutat
     status: loginResponse.status(),
     requestId: loginResponse.headers()["x-request-id"] ?? null,
     dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
+    dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
     body: loginBody,
   });
   expect(loginResponse.status(), loginBody).toBe(200);
