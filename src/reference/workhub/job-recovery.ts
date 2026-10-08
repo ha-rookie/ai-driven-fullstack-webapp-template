@@ -13,6 +13,7 @@ import { WorkhubTravelSearchProjector } from "./travel-search";
 import {
   createSearchIndexProjectionJobHandler,
   D1SearchIndexStore,
+  type SearchIndexResourceKey,
 } from "../../worker/search";
 import {
   JobRecoveryRegistry,
@@ -26,7 +27,7 @@ const SEARCH_IDEMPOTENCY_PREFIX = "search-index:";
 const parseSearchKey = (
   environment: RuntimeEnvironment,
   job: RecoverableJobRecord,
-): { environment: RuntimeEnvironment; resourceType: string; resourceId: string } | null => {
+): SearchIndexResourceKey | null => {
   const prefix = `${SEARCH_IDEMPOTENCY_PREFIX}${environment}:${WORKHUB_TRAVEL_RESOURCE_TYPE}:`;
   if (!job.idempotencyKey.startsWith(prefix)) return null;
   const resourceId = job.idempotencyKey.slice(prefix.length);
@@ -45,7 +46,7 @@ export const createWorkhubSearchIndexRecoveryAdapter = (
     const key = parseSearchKey(environment, job);
     if (!key) return { result: "CONFLICT" };
 
-    const envelope: AsyncJobEnvelope = await createAsyncJobEnvelope({
+    const envelope: AsyncJobEnvelope<SearchIndexResourceKey> = await createAsyncJobEnvelope<SearchIndexResourceKey>({
       type: SEARCH_JOB_TYPE,
       payload: key,
       jobId: job.jobId,
