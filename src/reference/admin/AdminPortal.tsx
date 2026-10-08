@@ -30,6 +30,37 @@ interface JobResponse {
   readonly limit: number;
 }
 
+interface CorrectionProjection {
+  readonly resourceType: string;
+  readonly resourceId: string;
+  readonly version: number;
+  readonly state: Readonly<Record<string, string | number | boolean | null>>;
+}
+
+interface CorrectionPreviewResponse {
+  readonly correctionPreview: {
+    readonly available: boolean;
+    readonly before?: CorrectionProjection;
+    readonly reasonCode?: string;
+  };
+  readonly preview: {
+    readonly policyDecision: string;
+    readonly risk: string;
+  };
+  readonly policyVersion: string;
+}
+
+interface CorrectionExecuteResponse {
+  readonly execution: { readonly result: string };
+  readonly verification: { readonly status: string; readonly summary?: string };
+  readonly correction: {
+    readonly result: string;
+    readonly before?: CorrectionProjection;
+    readonly after?: CorrectionProjection;
+    readonly reasonCode?: string;
+  } | null;
+}
+
 interface AuditItem {
   readonly id: string;
   readonly timestamp: string;
@@ -50,6 +81,162 @@ interface AuditResponse {
 const StateCard = ({ title, children }: { readonly title: string; readonly children: ReactNode }) => (
   <article className="admin-state-card"><strong>{title}</strong><div>{children}</div></article>
 );
+
+const DATA_CORRECTION_COMMAND = "RESTORE_SOFT_DELETED_RESOURCE";
+const DATA_CORRECTION_RESOURCE_ID = "workhub-demo-deleted-resource";
+const DATA_CORRECTION_EXPECTED_VERSION = 2;
+
+const DataCorrectionViewer = () => {
+  const [preview, setPreview] = useState<CorrectionPreviewResponse | null>(null);
+  const [reason, setReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [lastResult, setLastResult] = useState<CorrectionExecuteResponse | null>(null);
+
+  const loadPreview = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        scopeId: WORKHUB_SCOPE_ID,
+        resourceId: DATA_CORRECTION_RESOURCE_ID,
+        expectedVersion: String(DATA_CORRECTION_EXPECTED_VERSION),
+      });
+      const response = await fetch(
+        `/api/admin/data-corrections/${DATA_CORRECTION_COMMAND}/preview?${params.toString()}`,
+        { headers: { accept: "application/json" } },
+      );
+      if (!response.ok) {
+        setStatus(`補正Previewを取得できませんでした (HTTP ${response.status})`);
+        return;
+      }
+      setPreview(await response.json() as CorrectionPreviewResponse);
+    } catch {
+      setStatus("補正Previewの取得で通信エラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeCorrection = async () => {
+    if (!preview) return;
+    setStatus("補正を実行しています…");
+    try {
+      const csrfResponse = await fetch("/api/auth/csrf", { headers: { accept: "application/json" } });
+      if (!csrfResponse.ok) {
+        setStatus("CSRF tokenを取得できませんでした");
+        return;
+      }
+      const { csrfToken } = await csrfResponse.json() as { readonly csrfToken: string };
+      const params = new URLSearchParams({
+        scopeId: WORKHUB_SCOPE_ID,
+        resourceId: DATA_CORRECTION_RESOURCE_ID,
+      });
+      const response = await fetch(
+        `/api/admin/data-corrections/${DATA_CORRECTION_COMMAND}/execute?${params.toString()}`,
+        {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            "idempotency-key": `workhub-correction-${crypto.randomUUID()}`,
+            "x-csrf-token": csrfToken,
+          },
+          body: JSON.stringify({
+            expectedVersion: DATA_CORRECTION_EXPECTED_VERSION,
+            reason,
+            confirmed,
+            previewPolicyVersion: preview.policyVersion,
+          }),
+        },
+      );
+
+      if (response.status === 409) {
+        setStatus("他の操作で対象状態が更新されました。最新状態を再取得しました");
+        await loadPreview();
+        return;
+      }
+      if (!response.ok) {
+        setStatus(`補正を実行できませんでした (HTTP ${response.status})`);
+        return;
+      }
+
+      const result = await response.json() as CorrectionExecuteResponse;
+      setLastResult(result);
+      setStatus("補正と検証が完了しました");
+      setReason("");
+      setConfirmed(false);
+      await loadPreview();
+    } catch {
+      setStatus("補正処理で通信エラーが発生しました");
+    }
+  };
+
+  useEffect(() => { void loadPreview(); }, []);
+
+  const before = preview?.correctionPreview.before;
+  const currentState = before?.state;
+  const deleted = currentState?.deleted;
+  const previewAvailable = preview?.correctionPreview.available === true;
+
+  return <section className="admin-audit-panel" id="admin-business-operations" aria-labelledby="admin-correction-title">
+    <div className="admin-audit-heading">
+      <div>
+        <p className="admin-eyebrow">BUSINESS OPERATIONS / SAFE CORRECTION</p>
+        <h2 id="admin-correction-title">安全なデータ補正</h2>
+        <p>SQLや行編集ではなく、Projectが許可したCommandだけを実行します。対象Version・業務状態・理由・確認を明示し、競合時は更新しません。</p>
+      </div>
+      <div className="admin-audit-scope"><span>Scope</span><strong>{WORKHUB_SCOPE_ID}</strong></div>
+    </div>
+
+    {loading && <div className="admin-audit-state" role="status">補正対象を確認しています…</div>}
+
+    {!loading && preview && <div className="admin-correction-grid">
+      <div className="admin-correction-summary">
+        <span>Command</span><strong>{DATA_CORRECTION_COMMAND}</strong>
+        <span>Resource</span><code>{DATA_CORRECTION_RESOURCE_ID}</code>
+        <span>Current version</span><strong>{before?.version ?? "—"}</strong>
+        <span>Deleted</span><strong>{deleted === true ? "YES" : deleted === false ? "NO" : "—"}</strong>
+        <span>Policy</span><strong>{preview.preview.policyDecision} / {preview.preview.risk}</strong>
+        {!previewAvailable && <small>現在は実行不可: {preview.correctionPreview.reasonCode ?? "precondition_not_met"}</small>}
+      </div>
+
+      <form className="admin-retry-panel admin-correction-form" onSubmit={(event) => { event.preventDefault(); void executeCorrection(); }}>
+        <label>補正理由
+          <textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={200}
+            required
+            placeholder="例：誤って論理削除されたことを確認し、業務責任者の確認後に復元"
+          />
+        </label>
+        <label className="admin-confirm">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+          />
+          対象・Version・影響範囲を確認しました
+        </label>
+        <div className="admin-retry-actions">
+          <button
+            type="submit"
+            disabled={!previewAvailable || !reason.trim() || !confirmed}
+          >
+            このデータを復元
+          </button>
+        </div>
+      </form>
+    </div>}
+
+    {lastResult?.correction?.after && <div className="admin-audit-state">
+      復元後: version {lastResult.correction.after.version} / deleted {String(lastResult.correction.after.state.deleted)}
+      / verification {lastResult.verification.status}
+    </div>}
+    {status && <div className="admin-audit-state" role="status">{status}</div>}
+  </section>;
+};
 
 const JobOperationsViewer = () => {
   const [jobState, setJobState] = useState("");
@@ -325,8 +512,9 @@ export default function AdminPortal() {
           <div className="admin-context-card"><span>Environment</span><strong>{environment}</strong><small>環境を常に明示し、誤操作を減らします</small></div>
         </section>
         <section className="admin-grid" aria-label="管理領域">
-          {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Audit & Security" ? <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a> : key === "Jobs & Integrations" ? <a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
+          {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Audit & Security" ? <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a> : key === "Jobs & Integrations" ? <a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> : key === "Business Operations" ? <a className="admin-section-link" href="#admin-business-operations">安全なデータ補正を見る</a> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
         </section>
+        <DataCorrectionViewer />
         <JobOperationsViewer />
         <AuditViewer />
         <section className="admin-foundation" aria-labelledby="admin-foundation-title">
