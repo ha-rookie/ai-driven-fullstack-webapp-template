@@ -3,6 +3,7 @@ import { useAuth } from "../../frontend/auth";
 import MasterDataViewer from "./MasterDataViewer";
 import MasterRetireDemo from "./MasterRetireDemo";
 import MasterScheduleDemo from "./MasterScheduleDemo";
+import MasterAvailabilityDemo from "./MasterAvailabilityDemo";
 import "./admin-portal.css";
 
 const ADMIN_USER_ID = "workhub-demo-kai";
@@ -521,6 +522,7 @@ export default function AdminPortal() {
         <MasterDataViewer />
         <MasterRetireDemo />
         <MasterScheduleDemo />
+        <MasterAvailabilityDemo />
         <DataCorrectionViewer />
         <JobOperationsViewer />
         <AuditViewer />
