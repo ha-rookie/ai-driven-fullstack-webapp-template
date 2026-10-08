@@ -1,20 +1,9 @@
-import { expect, test, type Page } from "@playwright/test";
-import { WORKHUB_DEMO_PASSWORD } from "../../src/reference/workhub/personas";
-import { submitPreviewLogin } from "./preview-login-evidence";
+import { expect, test } from "@playwright/test";
+import { loginPreviewPersona } from "./preview-persona-session";
 
 const masterListUrl = "/api/admin/master-data?scopeId=workhub-company&masterKey=workhub.office";
 
-const loginAs = async (page: Page, user: "Aoi Employee" | "Kai Admin") => {
-  await page.goto("/", { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
-  await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
-    .getByRole("button", { name: new RegExp(user, "u") }).click();
-  await page.getByLabel("パスワード", { exact: true }).fill(WORKHUB_DEMO_PASSWORD);
-
-  const loginResponse = await submitPreviewLogin(page, user);
-  expect(loginResponse.status(), "Preview login failed; see sanitized login attempt evidence").toBe(200);
-};
-
+const loginAs = loginPreviewPersona;
 test("master administration fails closed for ordinary employee", async ({ page }) => {
   await loginAs(page, "Aoi Employee");
   const status = await page.evaluate(async (url) => (await fetch(url)).status, masterListUrl);
