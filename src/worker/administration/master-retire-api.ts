@@ -1,7 +1,10 @@
 import { D1OperationModeStore } from "../../infrastructure/d1-operation-mode-store";
 import { isRuntimeEnvironment } from "../../shared/runtime";
 import { requireAuthenticatedUser, requireScopedAuthorization, type RolePolicy } from "../authorization";
-import { consoleAuditLogger, type AuditLogger } from "../audit";
+import {
+  consoleAuditLogger, prepareDurableAuditRecord, sha256Text,
+  type AuditLogger, type PreparedDurableAuditRecord,
+} from "../audit";
 import {
   apiErrorResponse, csrfGuardFailureResponse, readJsonBody, requireCsrfProtection,
   OperationModeGuard, operationModeRejectionResponse,
@@ -12,7 +15,7 @@ import {
 } from "../http/idempotency";
 import { D1MasterDataStore, MasterDataError, MasterDataService, StaticMasterDefinitionRegistry, type MasterDefinition } from "../master-data";
 import {
-  OperationRegistry, OperationsApplicationService, OPERATIONS_POLICY_VERSION,
+  createOperationAuditEvent, OperationRegistry, OperationsApplicationService, OPERATIONS_POLICY_VERSION,
   type OperationDefinition, type OperationHandler, type OperationRequest,
 } from "../operations";
 
@@ -61,6 +64,7 @@ export const createRetireMasterHandler = (input: {
   readonly definition: MasterDefinition;
   readonly actorId: string;
   readonly expectedVersion: number;
+  readonly getAudit?: () => PreparedDurableAuditRecord | undefined;
 }): OperationHandler => {
   const store = new D1MasterDataStore(input.db);
   const service = new MasterDataService({
@@ -82,6 +86,7 @@ export const createRetireMasterHandler = (input: {
         await service.retireItem({
           itemId: current.id, actorId: input.actorId,
           expectedItemVersion: input.expectedVersion,
+          durableAudit: input.getAudit?.(),
         });
         return { result: "SUCCESS" };
       } catch (caught) {
@@ -192,8 +197,10 @@ export const handleMasterRetireApi = async (
     return error(requestId, 400, "expected_version_required", "Expected version is required");
   }
 
+  let auditReceipt: PreparedDurableAuditRecord | undefined;
   const handler = createRetireMasterHandler({
     db: env.DB, environment, definition: options.definition, actorId, expectedVersion,
+    getAudit: () => auditReceipt,
   });
   const operations = new OperationsApplicationService(
     new OperationRegistry([handler]), options.auditLogger ?? consoleAuditLogger,
@@ -237,6 +244,16 @@ export const handleMasterRetireApi = async (
     return error(requestId, 409, "master_state_conflict", "Master state has changed");
   }
 
+  try {
+    auditReceipt = await prepareDurableAuditRecord(createOperationAuditEvent({
+      requestId, method: request.method, path: url.pathname, actorId,
+      target: operationRequest.target, operationId: RETIRE_MASTER_ITEM,
+      correlationId: requestId, affectedCount: 1,
+    }, "success", "reason_sha256:" + await sha256Text(reason)), environment);
+  } catch {
+    await guard.fail(idempotency.execution);
+    return error(requestId, 503, "audit_unavailable", "Durable audit preparation failed");
+  }
   const result = await operations.execute(operationRequest, preview, {
     actorId,
     requestContext: { requestId, method: request.method, path: url.pathname },
