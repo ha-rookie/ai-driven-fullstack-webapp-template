@@ -6,6 +6,7 @@ import type {
   MasterRevisionRecord,
   ResolvedMasterValue,
   RetireMasterItemBundle,
+  ScheduleMasterRevisionBundle,
 } from "./types";
 
 const overlaps = (
@@ -57,6 +58,31 @@ export class InMemoryMasterDataStore implements MasterDataStore {
     );
     if (hasOverlap || this.revisions.has(bundle.revision.id)) return false;
     this.items.set(bundle.item.id, bundle.item);
+    this.revisions.set(bundle.revision.id, bundle.revision);
+    return true;
+  }
+
+  async scheduleRevision(bundle: ScheduleMasterRevisionBundle): Promise<boolean> {
+    const current = this.items.get(bundle.item.id);
+    const prior = this.revisions.get(bundle.priorRevisionId);
+    if (!current || !prior || current.environment !== bundle.item.environment
+      || current.version !== bundle.expectedItemVersion || current.retiredAt !== null
+      || prior.masterItemId !== current.id || prior.environment !== current.environment
+      || prior.effectiveTo !== null || prior.effectiveFrom >= bundle.revision.effectiveFrom
+      || this.revisions.has(bundle.revision.id)
+      || bundle.revision.masterItemId !== current.id
+      || bundle.revision.environment !== current.environment
+      || bundle.revision.effectiveTo !== null
+      || bundle.revision.revision !== current.nextRevision) return false;
+    // No other period may cover the scheduled instant or extend beyond it.
+    const overlapsFuture = [...this.revisions.values()].some((other) =>
+      other.masterItemId === current.id && other.environment === current.environment
+      && other.id !== prior.id
+      && (other.effectiveTo === null || bundle.revision.effectiveFrom < other.effectiveTo),
+    );
+    if (overlapsFuture) return false;
+    this.items.set(current.id, bundle.item);
+    this.revisions.set(prior.id, { ...prior, effectiveTo: bundle.revision.effectiveFrom });
     this.revisions.set(bundle.revision.id, bundle.revision);
     return true;
   }
