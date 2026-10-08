@@ -11,7 +11,6 @@ import {
 } from "./travel-request";
 import { WorkhubTravelSearchProjector } from "./travel-search";
 import {
-  applySearchIndexProjection,
   createSearchIndexProjectionJobHandler,
   D1SearchIndexStore,
 } from "../../worker/search";
