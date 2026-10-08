@@ -183,6 +183,12 @@ export const handleDataCorrectionApi = async (
       correlationId: requestId,
     };
     const preview = service.preview({ allowed: true }, operationRequest);
+    const correctionPreview = adapter.inspect
+      ? await adapter.inspect({
+          targetId: resourceId,
+          expectedVersion: expectedVersionFromQuery,
+        })
+      : { available: true };
     return Response.json(
       {
         command: {
@@ -191,6 +197,7 @@ export const handleDataCorrectionApi = async (
           capability: adapter.definition.capability,
           supportsPreview: adapter.definition.supportsPreview,
         },
+        correctionPreview,
         preview,
         policyVersion: OPERATIONS_POLICY_VERSION,
       },
@@ -244,10 +251,14 @@ export const handleDataCorrectionApi = async (
     return idempotencyReplayResponse(idempotencyDecision, requestId);
   }
 
+  let correctionResult;
   const handler = createDataCorrectionOperationHandler({
     adapter,
     actorId,
     expectedVersion,
+    onResult: (result) => {
+      correctionResult = result;
+    },
   });
   const service = new OperationsApplicationService(
     new OperationRegistry([handler]),
@@ -282,10 +293,16 @@ export const handleDataCorrectionApi = async (
     : result.execution.result === "CONFLICT" || result.execution.result === "REJECTED"
       ? 409
       : 503;
-  const response = Response.json(result, {
-    status,
-    headers: { "cache-control": "no-store" },
-  });
+  const response = Response.json(
+    {
+      ...result,
+      correction: correctionResult ?? null,
+    },
+    {
+      status,
+      headers: { "cache-control": "no-store" },
+    },
+  );
 
   if (status === 200) {
     await idempotency.completeWithResponse(idempotencyDecision.execution, response.clone());
