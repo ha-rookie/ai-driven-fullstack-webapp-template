@@ -48,3 +48,9 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Seed pinned Preview D1 fixture
         run: node scripts/workhub-demo-seed-preview.mjs
+      - name: Seed isolated Preview master retirement fixture
+        run: |
+          test "$RUNTIME_ENVIRONMENT" = "preview"
+          test "$PREVIEW_DATABASE_ID" = "f1ce1268-2be2-4a20-ab10-a94c32feee64"
+          test "$CONFIRMATION" = "SEED WORKHUB PREVIEW"
+          npx wrangler d1 execute DB --remote --env preview --file scripts/workhub-master-retire-preview.sql
