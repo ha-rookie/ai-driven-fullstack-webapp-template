@@ -15,7 +15,8 @@ import {
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
 import { createWorkhubJobRecoveryRegistry } from "./reference/workhub/job-recovery";
-import { handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi } from "./worker/administration";
+import { handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi, handleMasterDataViewerApi } from "./worker/administration";
+import { WORKHUB_OFFICE_MASTER_DEFINITION } from "./reference/workhub/travel-request";
 import { handleLiveness, handleReadiness } from "./worker/health";
 import {
   apiErrorResponse,
@@ -209,6 +210,14 @@ export default {
       requestContext.requestId,
     );
     if (dataCorrectionResponse) return api(dataCorrectionResponse);
+
+    const masterDataResponse = await handleMasterDataViewerApi(
+      request,
+      env,
+      requestContext.requestId,
+      { scopeId: "workhub-company", masterKeys: [WORKHUB_OFFICE_MASTER_DEFINITION.key] },
+    );
+    if (masterDataResponse) return api(masterDataResponse);
 
     const workhubBusinessResponse = await handleWorkhubBusinessApi(request, env);
     if (workhubBusinessResponse) return api(workhubBusinessResponse);

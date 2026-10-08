@@ -147,3 +147,17 @@ Office
 ```
 
 これらはReference Applicationのデータであり、Template Coreへ組み込みません。
+
+## #418 Administration read-only Stage 1
+
+Admin Portalは、まずProjectが許可したMaster Definitionの参照から始めます。
+
+- `GET /api/admin/master-data?scopeId=...&masterKey=...`: 最大50 Itemの一覧
+- `itemId` 指定時: 最大50 Revisionの履歴と `current / future / expired / disabled / retired` の時点別状態
+- Server-side authentication / `master_data:view` scoped authorization / Project definition allowlist / runtime environment filter
+- JSON attributes、credential、任意のtable選択、arbitrary SQLは公開しない
+- 件数上限を超える場合は `hasMore` を明示して、全件取得と誤解させない
+- Coreの既存#298更新サービスを唯一のマスタ更新経路として維持する（本StageのAPIはGET専用）
+- #298 Master ItemにScope列はない。Reference APIは信頼できるProject Scopeに明示的に紐付け、別Scopeへの無条件共有を許さない
+
+次Stageのmutation（future-effective revision追加、retire等）は、CSRF、expectedVersion、reason、Audit、Operations Core、Production Human Gateの設計とAcceptanceを終えるまでUIから開放しません。
