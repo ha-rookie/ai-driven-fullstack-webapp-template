@@ -22,6 +22,7 @@ import {
 import {
   DataCorrectionRegistry,
   createDataCorrectionOperationHandler,
+  type DataCorrectionExecutionResult,
 } from "./data-correction";
 import { createRestoreSoftDeletedExampleResourceAdapter } from "./example-resource-corrections";
 
@@ -251,7 +252,7 @@ export const handleDataCorrectionApi = async (
     return idempotencyReplayResponse(idempotencyDecision, requestId);
   }
 
-  let correctionResult;
+  let correctionResult: DataCorrectionExecutionResult | undefined;
   const handler = createDataCorrectionOperationHandler({
     adapter,
     actorId,
