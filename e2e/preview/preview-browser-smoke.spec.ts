@@ -19,15 +19,22 @@ test("fixed Preview WORKHUB login and home shell render without business-data mu
   );
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   const loginResponse = await loginResponsePromise;
-  const loginBody = await loginResponse.text();
+  const loginStatus = loginResponse.status();
+  console.log("Preview Aoi login status", {
+    status: loginStatus,
+    requestId: loginResponse.headers()["x-request-id"] ?? null,
+    dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
+    dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
+  });
+  const loginBody = loginStatus === 200 ? "" : await loginResponse.text();
   console.log("Preview Aoi login evidence", {
-    status: loginResponse.status(),
+    status: loginStatus,
     requestId: loginResponse.headers()["x-request-id"] ?? null,
     dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
     dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
     body: loginBody,
   });
-  expect(loginResponse.status(), loginBody).toBe(200);
+  expect(loginStatus, loginBody).toBe(200);
 
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
   await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
@@ -53,15 +60,22 @@ test("fixed Preview administration portal renders for System Admin without mutat
   );
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   const loginResponse = await loginResponsePromise;
-  const loginBody = await loginResponse.text();
+  const loginStatus = loginResponse.status();
+  console.log("Preview Kai login status", {
+    status: loginStatus,
+    requestId: loginResponse.headers()["x-request-id"] ?? null,
+    dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
+    dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
+  });
+  const loginBody = loginStatus === 200 ? "" : await loginResponse.text();
   console.log("Preview Kai login evidence", {
-    status: loginResponse.status(),
+    status: loginStatus,
     requestId: loginResponse.headers()["x-request-id"] ?? null,
     dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
     dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
     body: loginBody,
   });
-  expect(loginResponse.status(), loginBody).toBe(200);
+  expect(loginStatus, loginBody).toBe(200);
   await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
 
   const response = await page.goto("/admin", { waitUntil: "networkidle" });
