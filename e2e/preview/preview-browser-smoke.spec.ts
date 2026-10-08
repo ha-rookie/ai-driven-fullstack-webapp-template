@@ -116,7 +116,8 @@ test("fixed Preview administration portal renders for System Admin without mutat
     } else {
       const retryButton = recoveryJobRow.getByRole("button", { name: "再実行を確認" });
       if (await retryButton.count()) {
-        await retryButton.click();
+        await recoveryJobRow.scrollIntoViewIfNeeded();
+        await retryButton.click({ force: true });
         const retryPanel = page.locator(".admin-retry-panel");
         await retryPanel.getByLabel("再実行理由").fill("Preview acceptance: search dependency recovered");
         await retryPanel.getByLabel("対象・環境・影響範囲を確認しました").check();
