@@ -161,3 +161,19 @@ Admin Portalは、まずProjectが許可したMaster Definitionの参照から�
 - #298 Master ItemにScope列はない。Reference APIは信頼できるProject Scopeに明示的に紐付け、別Scopeへの無条件共有を許さない
 
 次Stageのmutation（future-effective revision追加、retire等）は、CSRF、expectedVersion、reason、Audit、Operations Core、Production Human Gateの設計とAcceptanceを終えるまでUIから開放しません。
+
+## #418 Stage 2a: Preview controlled retirement
+
+`RETIRE_MASTER_ITEM` は物理削除や任意行編集を行わず、#298 `MasterDataService.retireItem(expectedItemVersion)` を呼ぶ明示的なCommand。
+
+- `GET /api/admin/master-operations/retire/preview` / `POST /api/admin/master-operations/retire/execute`
+- `master_data:retire` のserver-side scoped authorizationが必要
+- WORKHUB Referenceでは、出張申請に使用されない `workhub-office-legacy` のみ明示的に許可
+- CSRF / Idempotency-Key / expectedVersion / reason / confirmation / policy versionを確認し、#429 Operations Coreの `CONTROLLED_CHANGE` とAudit/Verificationを通す
+- Operation Modeがread-only/maintenance/unavailableのときは拒否
+- Productionはendpointでも明示的に拒否し、Human Gate維持。Preview fixtureだけを対象に実行する
+- 競合やすでに廃止された状態は409として扱う。成功後は再読込したVersion・retiredAt・actorをVerification
+- 履歴Revisionは削除しない。過去の出張申請snapshotを書き換えない
+- 追加fixtureは既存のPreview seed後に実行。対象アイテムだけをVersion 2の未廃止状態にリセット
+
+**今後:** 有効期間がopen-endedなRevisionに対して、新しいfuture-effective Revisionをそのままappendするとperiod overlapで拒否される。既存期間終了と次Revisionの追加を同一トランザクションで扱うかはStage 2bで独立設計・検証する。
