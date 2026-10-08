@@ -178,7 +178,7 @@ test("fixed Preview administration portal renders for System Admin without mutat
       await expect(correctionPanel.getByText("他の操作で対象状態が更新されました。最新状態を再取得しました")).toBeVisible();
     }
   }
-  await expect(correctionPanel.getByText("NO", { exact: true })).toBeVisible();
+  await expect(correctionPanel.getByTestId("correction-deleted-state")).toHaveText("NO");
 
   await expect(page.getByRole("heading", { name: "監査ログ" })).toBeVisible();
   await expect(page.getByText("監査ログを取得できませんでした")).toHaveCount(0);
