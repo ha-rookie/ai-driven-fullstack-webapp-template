@@ -11,3 +11,6 @@ export * from "./audit-log-viewer-api";
 export * from "./job-operations-api";
 
 export * from "./job-recovery";
+
+export * from "./data-correction";
+export * from "./example-resource-corrections";
