@@ -18,7 +18,7 @@ import {
   JobRecoveryRegistry,
   type JobRecoveryAdapter,
   type RecoverableJobRecord,
-} from "../../worker/administration";
+} from "../../worker/administration/job-recovery";
 
 const SEARCH_JOB_TYPE = "search.index_projection";
 const SEARCH_IDEMPOTENCY_PREFIX = "search-index:";
