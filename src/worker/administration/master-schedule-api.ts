@@ -53,9 +53,13 @@ const isoFuture = (value: unknown, now: string): value is string =>
   typeof value === "string" && value.length === 24
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value
     && value > now;
-const validLabel = (value: unknown): value is string =>
-  typeof value === "string" && value.trim().length > 0 && value.trim().length <= 256
-    && !/[\x00-\x1F\x7F]/u.test(value);
+const validLabel = (value: unknown): value is string => {
+  if (typeof value !== "string" || !value.trim() || value.trim().length > 256) return false;
+  return [...value].every((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && codePoint >= 32 && codePoint !== 127;
+  });
+};
 
 export const createScheduleMasterHandler = (input: {
   readonly db: D1Database;
