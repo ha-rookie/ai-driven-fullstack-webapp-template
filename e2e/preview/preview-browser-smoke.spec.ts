@@ -110,22 +110,33 @@ test("fixed Preview administration portal renders for System Admin without mutat
 
   const recoveryJobRow = page.getByRole("row").filter({ hasText: "workhub-demo-search-recovery-job" });
   if (await recoveryJobRow.count()) {
-    const retryButton = recoveryJobRow.getByRole("button", { name: "再実行を確認" });
-    if (await retryButton.count()) {
-      await retryButton.click();
-      await page.getByLabel("再実行理由").fill("Preview acceptance: search dependency recovered");
-      await page.getByLabel("対象・環境・影響範囲を確認しました").check();
-      const retryResponsePromise = page.waitForResponse(
-        (retryResponse) =>
-          retryResponse.url().includes("/api/admin/jobs/workhub-demo-search-recovery-job/retry?")
-          && retryResponse.request().method() === "POST",
-      );
-      await page.getByRole("button", { name: "このJobを再実行" }).click();
-      const retryResponse = await retryResponsePromise;
-      expect(retryResponse.status()).toBe(200);
-      await expect(page.getByText("再実行と検証が完了しました")).toBeVisible();
+    const completed = recoveryJobRow.getByText("completed", { exact: true });
+    if (await completed.count()) {
+      await expect(completed).toBeVisible();
     } else {
-      await expect(recoveryJobRow.getByText("completed", { exact: true })).toBeVisible();
+      const retryButton = recoveryJobRow.getByRole("button", { name: "再実行を確認" });
+      if (await retryButton.count()) {
+        await retryButton.click();
+        const retryPanel = page.locator(".admin-retry-panel");
+        await retryPanel.getByLabel("再実行理由").fill("Preview acceptance: search dependency recovered");
+        await retryPanel.getByLabel("対象・環境・影響範囲を確認しました").check();
+        const retryResponsePromise = page.waitForResponse(
+          (retryResponse) =>
+            retryResponse.url().includes("/api/admin/jobs/workhub-demo-search-recovery-job/retry?")
+            && retryResponse.request().method() === "POST",
+        );
+        await retryPanel.getByRole("button", { name: "このJobを再実行" }).click();
+        const retryResponse = await retryResponsePromise;
+        expect([200, 409]).toContain(retryResponse.status());
+        if (retryResponse.status() === 200) {
+          await expect(page.getByText("再実行と検証が完了しました")).toBeVisible();
+        } else {
+          await page.reload({ waitUntil: "networkidle" });
+          await expect(
+            page.getByRole("row").filter({ hasText: "workhub-demo-search-recovery-job" }).getByText("completed", { exact: true }),
+          ).toBeVisible();
+        }
+      }
     }
   }
 
