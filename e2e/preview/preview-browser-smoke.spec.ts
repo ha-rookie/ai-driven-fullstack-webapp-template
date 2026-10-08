@@ -107,6 +107,28 @@ test("fixed Preview administration portal renders for System Admin without mutat
   await expect(page.getByRole("heading", { name: "監査・セキュリティ" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "ジョブ運用" })).toBeVisible();
   await expect(page.getByText("ジョブ状態を取得できませんでした")).toHaveCount(0);
+
+  const recoveryJobRow = page.getByRole("row").filter({ hasText: "workhub-demo-search-recovery-job" });
+  if (await recoveryJobRow.count()) {
+    const retryButton = recoveryJobRow.getByRole("button", { name: "再実行を確認" });
+    if (await retryButton.count()) {
+      await retryButton.click();
+      await page.getByLabel("再実行理由").fill("Preview acceptance: search dependency recovered");
+      await page.getByLabel("対象・環境・影響範囲を確認しました").check();
+      const retryResponsePromise = page.waitForResponse(
+        (retryResponse) =>
+          retryResponse.url().includes("/api/admin/jobs/workhub-demo-search-recovery-job/retry?")
+          && retryResponse.request().method() === "POST",
+      );
+      await page.getByRole("button", { name: "このJobを再実行" }).click();
+      const retryResponse = await retryResponsePromise;
+      expect(retryResponse.status()).toBe(200);
+      await expect(page.getByText("再実行と検証が完了しました")).toBeVisible();
+    } else {
+      await expect(recoveryJobRow.getByText("completed", { exact: true })).toBeVisible();
+    }
+  }
+
   await expect(page.getByRole("heading", { name: "監査ログ" })).toBeVisible();
   await expect(page.getByText("監査ログを取得できませんでした")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "危険な操作ほど、理由と確認を残す" })).toBeVisible();
