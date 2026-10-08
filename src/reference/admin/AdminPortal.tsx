@@ -131,6 +131,12 @@ const JobOperationsViewer = () => {
           }),
         },
       );
+      if (response.status === 409) {
+        setRetryStatus("他の操作でJob状態が更新されました。最新状態を再取得しました");
+        setRetryJob(null);
+        await load();
+        return;
+      }
       if (!response.ok) {
         setRetryStatus(`再実行できませんでした (HTTP ${response.status})`);
         return;
