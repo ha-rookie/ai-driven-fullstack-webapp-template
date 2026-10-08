@@ -120,3 +120,62 @@ test("retired item cannot be scheduled even if a revision remains queryable", as
     (e: unknown) => e instanceof MasterDataError && e.code === "retired",
   );
 });
+
+test("future disable removes selection only after cutoff but preserves historical Revision ID", async () => {
+  const { service, advance } = createFixture();
+  const { item, first } = await seeded(service);
+  const result = await service.scheduleRevision({
+    itemId: item.id, priorRevisionId: first.revision.id,
+    actorId: "admin", expectedItemVersion: first.item.version,
+    effectiveFrom: cutoff, label: first.revision.label, enabled: false,
+  });
+  assert.equal(result.revision.enabled, false);
+  assert.equal((await service.resolveCurrent(item.id))?.revision.id, first.revision.id);
+  advance(cutoff);
+  assert.equal(await service.resolveCurrent(item.id), null);
+  assert.deepEqual(await service.listSelectable("office"), []);
+  assert.equal(
+    (await service.resolveAsOf(item.id, cutoff, { includeDisabled: true }))?.revision.id,
+    result.revision.id,
+  );
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.label, "Tokyo Original");
+  assert.equal(
+    (await service.resolveAsOf(item.id, "2027-03-31T23:59:59.999Z"))?.revision.id,
+    first.revision.id,
+  );
+});
+
+test("future enable makes previously disabled current Master selectable only at cutoff", async () => {
+  const { service, advance } = createFixture();
+  const item = await service.createItem({ masterKey: "office", code: "DISABLED", actorId: "admin" });
+  const first = await service.addRevision({
+    itemId: item.id, actorId: "admin", expectedItemVersion: 1,
+    label: "Re-enable Candidate", enabled: false,
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
+  });
+  const result = await service.scheduleRevision({
+    itemId: item.id, priorRevisionId: first.revision.id,
+    actorId: "admin", expectedItemVersion: first.item.version,
+    effectiveFrom: cutoff, label: first.revision.label, enabled: true,
+  });
+  assert.equal(await service.resolveCurrent(item.id), null);
+  advance(cutoff);
+  assert.equal((await service.resolveCurrent(item.id))?.revision.id, result.revision.id);
+  assert.equal((await service.listSelectable("office")).length, 1);
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.enabled, false);
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.effectiveTo, cutoff);
+});
+
+test("failed stale disable cannot create a second overlapping status change", async () => {
+  const { service } = createFixture();
+  const { item, first } = await seeded(service);
+  const command = {
+    itemId: item.id, priorRevisionId: first.revision.id, actorId: "admin",
+    expectedItemVersion: first.item.version, effectiveFrom: cutoff,
+    label: first.revision.label, enabled: false,
+  };
+  await service.scheduleRevision(command);
+  await assert.rejects(() => service.scheduleRevision(command),
+    (error: unknown) => error instanceof MasterDataError && error.code === "conflict");
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.effectiveTo, cutoff);
+});
