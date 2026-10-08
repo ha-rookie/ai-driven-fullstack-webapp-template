@@ -56,6 +56,17 @@ const isoFuture = (value: unknown, now: string): value is string =>
   typeof value === "string" && value.length === 24
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value
     && value > now;
+const validEnabled = (value: unknown): value is boolean =>
+  value === true || value === false;
+const validDisplayOrder = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= -1_000_000 && value <= 1_000_000;
+const queryDisplayOrder = (value: string | null): number | undefined | null => {
+  if (value === null) return undefined;
+  if (!/^-?(0|[1-9][0-9]{0,6})$/u.test(value)) return null;
+  const order = Number(value);
+  return validDisplayOrder(order) ? order : null;
+};
+
 const validLabel = (value: unknown): value is string => {
   if (typeof value !== "string" || !value.trim() || value.trim().length > 256) return false;
   return [...value].every((character) => {
@@ -73,6 +84,8 @@ export const createScheduleMasterHandler = (input: {
   readonly priorRevisionId: string;
   readonly effectiveFrom: string;
   readonly label: string;
+  readonly enabled: boolean;
+  readonly displayOrder?: number;
   readonly now: () => Date;
   readonly onScheduled?: (value: ResolvedMasterValue) => void;
   readonly getAudit?: () => PreparedDurableAuditRecord | undefined;
@@ -98,7 +111,8 @@ export const createScheduleMasterHandler = (input: {
           actorId: input.actorId,
           effectiveFrom: input.effectiveFrom,
           label: input.label,
-          enabled: true,
+          enabled: input.enabled,
+          displayOrder: input.displayOrder,
           durableAudit: input.getAudit?.(),
         });
         input.onScheduled?.(scheduled);
@@ -128,6 +142,8 @@ export const createScheduleMasterHandler = (input: {
         && previous?.revision.effectiveTo === input.effectiveFrom
         && newValue?.revision.effectiveFrom === input.effectiveFrom
         && newValue.revision.label === input.label
+        && newValue.revision.enabled === input.enabled
+        && (input.displayOrder === undefined || newValue.revision.displayOrder === input.displayOrder)
         && newValue.revision.id !== input.priorRevisionId
         ? { status: "PASSED", summary: "Previous interval closed and future revision resolves at cutoff" }
         : { status: "FAILED", summary: "Master future cutover post-state mismatch" };
@@ -179,6 +195,12 @@ export const handleMasterScheduleApi = async (
   let expectedVersion = isPreview ? queryVersion(url.searchParams.get("expectedVersion")) : null;
   let effectiveFrom: unknown = isPreview ? url.searchParams.get("effectiveFrom") : undefined;
   let label: unknown = isPreview ? url.searchParams.get("label") : undefined;
+  let enabled: unknown = isPreview ? url.searchParams.get("enabled") !== "false" : undefined;
+  let displayOrder: unknown = isPreview ? queryDisplayOrder(url.searchParams.get("displayOrder")) : undefined;
+  if (isPreview && url.searchParams.has("enabled")
+    && url.searchParams.get("enabled") !== "true" && url.searchParams.get("enabled") !== "false") {
+    return error(requestId, 400, "invalid_schedule_state", "Master enabled state is invalid");
+  }
   let priorRevisionId = "";
   let reason = "", policyVersion = "", confirmed = false;
   if (!isPreview) {
@@ -190,12 +212,15 @@ export const handleMasterScheduleApi = async (
     expectedVersion = positive(body?.expectedVersion);
     effectiveFrom = body?.effectiveFrom;
     label = body?.label;
+    enabled = body?.enabled === undefined ? true : body.enabled;
+    displayOrder = body?.displayOrder;
     priorRevisionId = typeof body?.priorRevisionId === "string" ? body.priorRevisionId : "";
     reason = typeof body?.reason === "string" ? body.reason.trim() : "";
     policyVersion = typeof body?.previewPolicyVersion === "string" ? body.previewPolicyVersion : "";
     confirmed = body?.confirmed === true;
   }
   if (!expectedVersion || !isoFuture(effectiveFrom, at) || !validLabel(label)
+    || !validEnabled(enabled) || (displayOrder !== undefined && !validDisplayOrder(displayOrder))
     || (!isPreview && (!/^[A-Za-z0-9_.:-]{1,128}$/u.test(priorRevisionId)
       || reason.length < 1 || reason.length > 200 || !confirmed || !policyVersion))) {
     return error(requestId, 400, "invalid_schedule_request", "Valid future timestamp, label, version, and safeguards are required");
@@ -222,7 +247,7 @@ export const handleMasterScheduleApi = async (
   const handler = createScheduleMasterHandler({
     db: env.DB, environment, definition: options.definition, actorId: auth.user.id,
     expectedVersion, priorRevisionId: isPreview ? (expectedPrior ?? "") : priorRevisionId,
-    effectiveFrom, label: newLabel, now,
+    effectiveFrom, label: newLabel, enabled, displayOrder, now,
     onScheduled: (value) => { scheduled = value; },
     getAudit: () => auditReceipt,
   });
@@ -242,6 +267,9 @@ export const handleMasterScheduleApi = async (
         id: item.id, code: item.code, version: item.version, retiredAt: item.retiredAt,
       },
       priorRevisionId: expectedPrior, currentLabel: current?.revision.label ?? null,
+      currentEnabled: current?.revision.enabled ?? null,
+      currentDisplayOrder: current?.revision.displayOrder ?? null,
+      enabled, displayOrder: displayOrder ?? current?.revision.displayOrder ?? null,
       available,
       reasonCode: item.retiredAt !== null ? "retired" : item.version !== expectedVersion
         ? "stale_version" : !current ? "no_current_revision"
@@ -287,7 +315,9 @@ export const handleMasterScheduleApi = async (
   const response = json({
     ...result, scheduled: scheduled ? {
       itemVersion: scheduled.item.version, revisionId: scheduled.revision.id,
-      label: scheduled.revision.label, effectiveFrom: scheduled.revision.effectiveFrom,
+      label: scheduled.revision.label, enabled: scheduled.revision.enabled,
+      displayOrder: scheduled.revision.displayOrder,
+      effectiveFrom: scheduled.revision.effectiveFrom,
     } : null,
   }, status);
   if (verified) await idempotency.completeWithResponse(decision.execution, response.clone());
