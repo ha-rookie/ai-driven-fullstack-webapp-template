@@ -1,3 +1,4 @@
+import type { PreparedDurableAuditRecord } from "../audit/durable-audit-store";
 import type {
   AppendMasterRevisionBundle,
   CreateMasterItemBundle,
@@ -125,6 +126,46 @@ export class MasterDataStoreIntegrityError extends Error {
     this.name = "MasterDataStoreIntegrityError";
   }
 }
+
+/**
+ * Pre-hashed audit proof is written inside the *same* D1 transaction.
+ * A missing mutation marker creates a NOT NULL error, forcing the whole batch
+ * to roll back (zero-row conditional inserts alone do NOT roll back a batch).
+ */
+const prepareMasterAuditInsert = (
+  db: D1Database,
+  receipt: PreparedDurableAuditRecord,
+  item: MasterItemRecord,
+  mutationId: string,
+): D1PreparedStatement => {
+  if (receipt.environment !== item.environment
+    || receipt.record.resourceId !== item.id
+    || receipt.record.resourceType !== "master_item"
+    || receipt.record.actorId !== item.updatedBy
+    || receipt.record.outcome !== "success"
+    || receipt.record.category !== "system"
+    || !receipt.record.action.startsWith("operation.")) {
+    throw new MasterDataStoreIntegrityError("master mutation audit metadata mismatch");
+  }
+  return db.prepare(`
+    INSERT INTO durable_audit_events (
+      id, environment, occurred_at, request_id, category, action, outcome,
+      actor_id, scope_id, resource_type, resource_id, record_json, record_sha256, created_at
+    )
+    SELECT CASE WHEN EXISTS (
+      SELECT 1 FROM master_items i
+      WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ? AND i.version = ?
+    ) THEN ? ELSE NULL END,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+  `).bind(
+    item.id, item.environment, mutationId, item.version, receipt.id,
+    receipt.environment, receipt.occurredAt, receipt.record.requestId,
+    receipt.record.category, receipt.record.action, receipt.record.outcome,
+    receipt.record.actorId ?? null, receipt.record.scopeId ?? null,
+    receipt.record.resourceType ?? null, receipt.record.resourceId ?? null,
+    receipt.recordJson, receipt.recordSha256, receipt.occurredAt,
+  );
+};
 
 export class D1MasterDataStore implements MasterDataStore {
   constructor(private readonly db: D1Database) {}
@@ -300,27 +341,31 @@ export class D1MasterDataStore implements MasterDataStore {
         effective_from, effective_to, display_order, parent_item_id,
         attributes_json, created_at, created_by
       )
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-      WHERE EXISTS (
+      SELECT CASE WHEN EXISTS (
         SELECT 1 FROM master_items i
         JOIN master_revisions prior
           ON prior.master_item_id = i.id AND prior.environment = i.environment
         WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ?
-          AND prior.id = ? AND prior.effective_to = ?
-      )
+          AND i.version = ? AND prior.id = ? AND prior.effective_to = ?
+      ) THEN ? ELSE NULL END,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     `).bind(
-      revision.id, revision.environment, revision.masterItemId, revision.revision,
+      item.id, item.environment, mutationId, item.version,
+      priorRevisionId, revision.effectiveFrom, revision.id,
+      revision.environment, revision.masterItemId, revision.revision,
       revision.label, revision.enabled ? 1 : 0, revision.effectiveFrom, null,
       revision.displayOrder, revision.parentItemId, JSON.stringify(revision.attributes),
       revision.createdAt, revision.createdBy,
-      item.id, item.environment, mutationId, priorRevisionId, revision.effectiveFrom,
     );
+    const statements = [itemUpdate, closePrior, nextInsert];
+    if (bundle.durableAudit) {
+      statements.push(prepareMasterAuditInsert(this.db, bundle.durableAudit, item, mutationId));
+    }
 
     try {
-      const results = await this.db.batch([itemUpdate, closePrior, nextInsert]);
-      if (!results[0] || changesOf(results[0]) === 0) return false;
-      if (results.length !== 3 || results.some((result) => changesOf(result) !== 1)) {
-        throw new MasterDataStoreIntegrityError("master cutover batch persisted an unexpected number of rows");
+      const results = await this.db.batch(statements);
+      if (results.length !== statements.length || results.some((result) => changesOf(result) !== 1)) {
+        throw new MasterDataStoreIntegrityError("master cutover transaction returned unexpected result counts");
       }
       return true;
     } catch (error) {
@@ -331,7 +376,7 @@ export class D1MasterDataStore implements MasterDataStore {
 
   async retireItem(bundle: RetireMasterItemBundle): Promise<boolean> {
     const { item, mutationId } = bundle;
-    const result = await this.db.prepare(`
+    const update = this.db.prepare(`
       UPDATE master_items
       SET version = ?, last_mutation_id = ?, retired_at = ?, updated_at = ?, updated_by = ?
       WHERE id = ? AND environment = ? AND version = ? AND retired_at IS NULL
@@ -344,8 +389,22 @@ export class D1MasterDataStore implements MasterDataStore {
       item.id,
       item.environment,
       bundle.expectedItemVersion,
-    ).run();
-    return changesOf(result) === 1;
+    );
+    if (!bundle.durableAudit) {
+      const result = await update.run();
+      return changesOf(result) === 1;
+    }
+    const proof = prepareMasterAuditInsert(this.db, bundle.durableAudit, item, mutationId);
+    try {
+      const results = await this.db.batch([update, proof]);
+      if (results.length !== 2 || results.some((result) => changesOf(result) !== 1)) {
+        throw new MasterDataStoreIntegrityError("master retirement transaction returned unexpected result counts");
+      }
+      return true;
+    } catch (error) {
+      if (isConstraintError(error)) return false;
+      throw error;
+    }
   }
 
   async resolveAt(
