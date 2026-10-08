@@ -175,9 +175,10 @@ const DataCorrectionViewer = () => {
   useEffect(() => { void loadPreview(); }, []);
 
   const before = preview?.correctionPreview.before;
-  const currentState = before?.state;
+  const currentProjection = lastResult?.correction?.after ?? before;
+  const currentState = currentProjection?.state;
   const deleted = currentState?.deleted;
-  const previewAvailable = preview?.correctionPreview.available === true;
+  const previewAvailable = preview?.correctionPreview.available === true && !lastResult?.correction?.after;
 
   return <section className="admin-audit-panel" id="admin-business-operations" aria-labelledby="admin-correction-title">
     <div className="admin-audit-heading">
@@ -195,8 +196,8 @@ const DataCorrectionViewer = () => {
       <div className="admin-correction-summary">
         <span>Command</span><strong>{DATA_CORRECTION_COMMAND}</strong>
         <span>Resource</span><code>{DATA_CORRECTION_RESOURCE_ID}</code>
-        <span>Current version</span><strong>{before?.version ?? "—"}</strong>
-        <span>Deleted</span><strong>{deleted === true ? "YES" : deleted === false ? "NO" : "—"}</strong>
+        <span>Current version</span><strong>{currentProjection?.version ?? "—"}</strong>
+        <span>Deleted</span><strong data-testid="correction-deleted-state">{deleted === true ? "YES" : deleted === false ? "NO" : "—"}</strong>
         <span>Policy</span><strong>{preview.preview.policyDecision} / {preview.preview.risk}</strong>
         {!previewAvailable && <small>現在は実行不可: {preview.correctionPreview.reasonCode ?? "precondition_not_met"}</small>}
       </div>
