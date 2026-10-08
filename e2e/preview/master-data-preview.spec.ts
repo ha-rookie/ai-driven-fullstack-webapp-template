@@ -307,3 +307,122 @@ test("controlled master retire and schedule preserve a queryable durable audit r
     expect(audited.items[0].reason).toMatch(/^reason_sha256:[a-f0-9]{64}$/u);
   }
 });
+
+test("system admin can schedule a future Master disable and reorder with durable audit", async ({ page }) => {
+  await loginAs(page, "Kai Admin");
+  await page.goto("/admin", { waitUntil: "networkidle" });
+  const panel = page.locator("#admin-master-state-demo");
+  await expect(panel.getByRole("heading", { name: "マスタ有効・無効／表示順（専用デモ）" })).toBeVisible();
+  const history = panel.getByTestId("master-schedule-history");
+  if ((await history.textContent())?.includes("1 Revision")) {
+    await expect(panel.getByLabel("改訂後の有効状態")).toHaveValue("disabled");
+    await expect(panel.getByLabel("改訂後の表示順")).toHaveValue("70");
+    await panel.getByRole("button", { name: "切替内容を下見" }).click();
+    await expect(panel.getByTestId("master-state-preview")).toContainText("有効 → 無効");
+    await expect(panel.getByTestId("master-state-preview")).toContainText("91 → 70");
+    await panel.getByLabel("変更理由").fill("Preview Stage 3: future disable with order audit");
+    await panel.getByLabel("現行期間の終了・将来改訂の開始日時・過去履歴の保持を確認しました").check();
+    const responsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/admin/master-operations/schedule/execute?")
+      && response.request().method() === "POST",
+    );
+    await panel.getByRole("button", { name: "将来改訂を予約" }).click();
+    const result = await responsePromise;
+    expect(result.status()).toBe(200);
+    const body = await result.json() as {
+      readonly execution: { readonly result: string };
+      readonly verification: { readonly status: string };
+      readonly scheduled: { readonly enabled: boolean; readonly displayOrder: number };
+    };
+    expect(body.execution.result).toBe("SUCCESS");
+    expect(body.verification.status).toBe("PASSED");
+    expect(body.scheduled.enabled).toBe(false);
+    expect(body.scheduled.displayOrder).toBe(70);
+  }
+  await expect(history).toHaveText("2 Revision");
+  const data = await page.evaluate(async () => {
+    const scope = "scopeId=workhub-company";
+    const id = "workhub-office-state";
+    const detail = await fetch("/api/admin/master-data?" + scope + "&masterKey=workhub.office&itemId=" + id);
+    const audit = await fetch("/api/admin/audit?" + scope +
+      "&resourceType=master_item&resourceId=" + id + "&action=operation.SCHEDULE_MASTER_REVISION");
+    return { detailStatus: detail.status, detail: await detail.json(),
+      auditStatus: audit.status, audit: await audit.json() };
+  });
+  expect(data.detailStatus).toBe(200);
+  const detail = data.detail as {
+    revisions: readonly { readonly enabled: boolean; readonly displayOrder: number;
+      readonly effectiveFrom: string; readonly effectiveTo: string | null; readonly label: string }[];
+  };
+  const old = detail.revisions.find((revision) => revision.effectiveFrom === "2026-01-01T00:00:00.000Z");
+  const next = detail.revisions.find((revision) => revision.effectiveFrom === "2027-07-01T00:00:00.000Z");
+  expect(old?.enabled).toBe(true);
+  expect(old?.displayOrder).toBe(91);
+  expect(old?.effectiveTo).toBe("2027-07-01T00:00:00.000Z");
+  expect(next?.enabled).toBe(false);
+  expect(next?.displayOrder).toBe(70);
+  expect(data.auditStatus).toBe(200);
+  const record = data.audit as { items: readonly { actorId: string; resourceId: string;
+    reason: string; outcome: string }[] };
+  expect(record.items.length).toBeGreaterThanOrEqual(1);
+  expect(record.items[0].actorId).toBe("workhub-demo-kai");
+  expect(record.items[0].resourceId).toBe("workhub-office-state");
+  expect(record.items[0].reason).toMatch(/^reason_sha256:[a-f0-9]{64}$/u);
+  expect(record.items[0].outcome).toBe("success");
+});
+
+test("admin can schedule disabled-to-enabled Master reactivation, preserving disabled history", async ({ page }) => {
+  await loginAs(page, "Kai Admin");
+  await page.goto("/admin", { waitUntil: "networkidle" });
+  const panel = page.locator("#admin-master-reactivate-demo");
+  await expect(panel.getByRole("heading", { name: "マスタ再有効化（専用デモ）" })).toBeVisible();
+  const history = panel.getByTestId("master-schedule-history");
+  if ((await history.textContent())?.includes("1 Revision")) {
+    await expect(panel.getByLabel("改訂後の有効状態")).toHaveValue("enabled");
+    await expect(panel.getByLabel("改訂後の表示順")).toHaveValue("75");
+    await panel.getByRole("button", { name: "切替内容を下見" }).click();
+    await expect(panel.getByTestId("master-state-preview")).toContainText("無効 → 有効");
+    await panel.getByLabel("変更理由").fill("Preview Stage 3: reactivate disabled Master at future cutoff");
+    await panel.getByLabel("現行期間の終了・将来改訂の開始日時・過去履歴の保持を確認しました").check();
+    const responsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/admin/master-operations/schedule/execute?")
+      && response.request().method() === "POST",
+    );
+    await panel.getByRole("button", { name: "将来改訂を予約" }).click();
+    const result = await responsePromise;
+    expect(result.status()).toBe(200);
+    const body = await result.json() as {
+      readonly execution: { readonly result: string };
+      readonly verification: { readonly status: string };
+      readonly scheduled: { readonly enabled: boolean; readonly displayOrder: number };
+    };
+    expect(body.execution.result).toBe("SUCCESS");
+    expect(body.verification.status).toBe("PASSED");
+    expect(body.scheduled.enabled).toBe(true);
+    expect(body.scheduled.displayOrder).toBe(75);
+  }
+  await expect(history).toHaveText("2 Revision");
+  const response = await page.evaluate(async () => {
+    const id = "workhub-office-reactivate";
+    const r = await fetch("/api/admin/master-data?scopeId=workhub-company&masterKey=workhub.office&itemId=" + id);
+    return { status: r.status, body: await r.json() };
+  });
+  expect(response.status).toBe(200);
+  const revisions = (response.body as {
+    revisions: readonly { effectiveTo: string | null; effectiveFrom: string;
+      enabled: boolean; displayOrder: number }[];
+  }).revisions;
+  expect(revisions.find((revision) => revision.effectiveFrom === "2026-01-01T00:00:00.000Z")?.enabled).toBe(false);
+  expect(revisions.find((revision) => revision.effectiveFrom === "2026-01-01T00:00:00.000Z")?.effectiveTo)
+    .toBe("2027-07-01T00:00:00.000Z");
+  expect(revisions.find((revision) => revision.effectiveFrom === "2027-07-01T00:00:00.000Z")?.enabled).toBe(true);
+  expect(revisions.find((revision) => revision.effectiveFrom === "2027-07-01T00:00:00.000Z")?.displayOrder).toBe(75);
+});
+
+test("ordinary employee cannot preview Master state changes", async ({ page }) => {
+  await loginAs(page, "Aoi Employee");
+  const status = await page.evaluate(async () =>
+    (await fetch("/api/admin/master-operations/schedule/preview?scopeId=workhub-company&itemId=workhub-office-state&expectedVersion=2&effectiveFrom=2027-07-01T00%3A00%3A00.000Z&label=State&enabled=false&displayOrder=70")).status,
+  );
+  expect(status).toBe(403);
+});
