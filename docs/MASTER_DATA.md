@@ -194,3 +194,21 @@ A future revision cannot be naively appended when the current interval has `effe
 ### Remaining gate
 
 Operations Core emits structured audit events to its configured AuditLogger. Do not claim the Master mutation and durable D1 Audit record are transactionally committed together. Atomic audit/outbox design is a separate requirement before #418 is fully closed.
+
+## #418 Stage 2c: atomic durable audit and zero-row rollback guard
+
+**Important:** D1 `batch()` rolls back on SQL *error*, not when an ordinary conditional statement affects zero rows. Merely checking `result.meta.changes` **after** `batch()` returns cannot undo a previously committed Item version update.
+
+Hardening in this stage:
+
+- Append and scheduled-cutover guarded revision inserts use `CASE WHEN EXISTS(...) THEN revision_id ELSE NULL END`: a failed mutation marker or previous-period predicate violates the non-null Revision primary key **inside the batch**, so the entire transaction aborts before commit.
+- The controlled Preview `RETIRE_MASTER_ITEM` and `SCHEDULE_MASTER_REVISION` commands create a structured and SHA-256-hashed audit receipt **before** business mutation. The payload contains actor, scope, resource, requestId, action, time and hashed operator reason (not free-text reason).
+- `D1MasterDataStore` inserts the prepared receipt into the existing `durable_audit_events` table in **the same batch** as the master mutation. Receipt insert verifies item version, mutation marker and actor. Receipt table missing, hash insert failure, duplicate key or validation error cause an SQL error and roll back all the batch statements.
+- The previously supported `D1DurableAuditStore.search` verifies hashes at read-time, so administrators can inspect the same receipts via existing Audit viewer.
+- In-memory Store does not pretend to provide this guarantee; tested D1 SQL path is the persistent implementation.
+- The generic `addRevision()` foundation has a separate no-audit path but now also aborts when its guarded revision insert fails.
+- Tests execute the **real SQLite SQL** using an in-memory Node SQLite D1 adapter, including stale versions, injected failure during period close, and deliberately missing Audit table (assert no Item or Revision change).
+
+Residual bounds: transactionally durable does not mean tamper-proof against a privileged DB writer. A SHA-256 checksum detects corruption during application reads but an attacker who rewrites both record and checksum can bypass it; stronger signed append-only logs / independent export remain a separate security hardening area. No Production mutation is enabled; Production operations remain Human Gate.
+
+Official D1 API: https://developers.cloudflare.com/d1/worker-api/d1-database/#batch
