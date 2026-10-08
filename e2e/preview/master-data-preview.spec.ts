@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { WORKHUB_DEMO_PASSWORD } from "../../src/reference/workhub/personas";
+import { submitPreviewLogin } from "./preview-login-evidence";
 
 const masterListUrl = "/api/admin/master-data?scopeId=workhub-company&masterKey=workhub.office";
 
@@ -10,12 +11,8 @@ const loginAs = async (page: Page, user: "Aoi Employee" | "Kai Admin") => {
     .getByRole("button", { name: new RegExp(user, "u") }).click();
   await page.getByLabel("パスワード", { exact: true }).fill(WORKHUB_DEMO_PASSWORD);
 
-  const loginResponsePromise = page.waitForResponse((response) =>
-    response.url().endsWith("/api/auth/login") && response.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  const loginResponse = await loginResponsePromise;
-  expect(loginResponse.status()).toBe(200);
+  const loginResponse = await submitPreviewLogin(page, user);
+  expect(loginResponse.status(), "Preview login failed; see sanitized login attempt evidence").toBe(200);
 };
 
 test("master administration fails closed for ordinary employee", async ({ page }) => {
