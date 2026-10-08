@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../../frontend/auth";
 import MasterDataViewer from "./MasterDataViewer";
+import MasterRetireDemo from "./MasterRetireDemo";
 import "./admin-portal.css";
 
 const ADMIN_USER_ID = "workhub-demo-kai";
@@ -517,6 +518,7 @@ export default function AdminPortal() {
           {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Audit & Security" ? <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a> : key === "Jobs & Integrations" ? <a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> : key === "Business Operations" ? <><a className="admin-section-link" href="#admin-master-data">マスタ管理を見る</a> <a className="admin-section-link" href="#admin-business-operations">安全なデータ補正を見る</a></> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
         </section>
         <MasterDataViewer />
+        <MasterRetireDemo />
         <DataCorrectionViewer />
         <JobOperationsViewer />
         <AuditViewer />
