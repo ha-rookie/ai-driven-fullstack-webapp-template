@@ -307,3 +307,91 @@ test("controlled master retire and schedule preserve a queryable durable audit r
     expect(audited.items[0].reason).toMatch(/^reason_sha256:[a-f0-9]{64}$/u);
   }
 });
+
+test("Preview master enable/disable cutovers retain historical and durable audit evidence", async ({ page }) => {
+  await loginAs(page, "Kai Admin");
+  await page.goto("/admin", { waitUntil: "networkidle" });
+  const panel = page.locator("#admin-master-availability");
+  await expect(panel.getByRole("heading", { name: "マスタ有効・無効の将来予約" })).toBeVisible();
+
+  for (const target of [
+    { id: "workhub-office-availability-disable", code: "AVAIL_DISABLE", current: true, desired: false,
+      original: "Availability demo A" },
+    { id: "workhub-office-availability-enable", code: "AVAIL_ENABLE", current: false, desired: true,
+      original: "Availability demo B" },
+  ]) {
+    await panel.getByLabel("対象デモ").selectOption(target.id);
+    // Wait for the newly selected item's network fetch, not a stale prior item's history.
+    await expect(panel.getByText(target.code, { exact: true })).toBeVisible();
+    const versions = panel.getByTestId("master-availability-history");
+    await expect(versions).toContainText("Revision：");
+    const before = await versions.textContent();
+    if (before?.includes("1 件")) {
+      await panel.getByRole("button", { name: "状態変更を下見" }).click();
+      await expect(panel.getByTestId("master-availability-preview")).toContainText(
+        String(target.current) + " → " + String(target.desired),
+      );
+      await panel.getByLabel("状態変更の理由").fill("Preview acceptance: safe availability transition");
+      await panel.getByLabel("新規選択への影響、切替日時、過去履歴の保持を確認しました").check();
+      const done = page.waitForResponse((r) =>
+        r.url().includes("/api/admin/master-operations/schedule/execute?")
+          && r.request().method() === "POST",
+      );
+      await panel.getByRole("button", { name: "状態変更を予約" }).click();
+      const executed = await done;
+      expect(executed.status()).toBe(200);
+      const outcome = await executed.json() as {
+        execution: { result: string }; verification: { status: string };
+        scheduled: { enabled: boolean };
+      };
+      expect(outcome.execution.result).toBe("SUCCESS");
+      expect(outcome.verification.status).toBe("PASSED");
+      expect(outcome.scheduled.enabled).toBe(target.desired);
+    }
+    await expect(versions).toHaveText("Revision：2 件");
+    const detail = await page.evaluate(async (id) => {
+      const q = new URLSearchParams({
+        scopeId: "workhub-company", masterKey: "workhub.office", itemId: id,
+      });
+      const r = await fetch("/api/admin/master-data?" + q);
+      return { status: r.status, body: await r.json() };
+    }, target.id);
+    expect(detail.status).toBe(200);
+    const record = detail.body as {
+      revisions: readonly { label: string; enabled: boolean; effectiveTo: string | null;
+        effectiveFrom: string; lifecycle: string }[];
+    };
+    expect(record.revisions.find((rev) => rev.label === target.original && rev.enabled === target.current)?.effectiveTo)
+      .toBe("2027-04-01T00:00:00.000Z");
+    expect(record.revisions.find((rev) => rev.label === target.original && rev.enabled === target.desired)?.effectiveFrom)
+      .toBe("2027-04-01T00:00:00.000Z");
+    expect(record.revisions.find((rev) => rev.enabled === target.desired)?.lifecycle).toBe("future");
+
+    const audit = await page.evaluate(async (id) => {
+      const q = new URLSearchParams({
+        scopeId: "workhub-company", resourceId: id, resourceType: "master_item",
+        action: "operation.SCHEDULE_MASTER_REVISION", category: "system", outcome: "success",
+      });
+      const r = await fetch("/api/admin/audit?" + q);
+      return { status: r.status, body: await r.json() };
+    }, target.id);
+    expect(audit.status).toBe(200);
+    const entries = audit.body as { items: readonly {
+      actorId: string; resourceId: string; reason: string;
+    }[] };
+    expect(entries.items.length).toBeGreaterThanOrEqual(1);
+    expect(entries.items[0].resourceId).toBe(target.id);
+    expect(entries.items[0].reason).toMatch(/^reason_sha256:[a-f0-9]{64}$/u);
+  }
+
+  // Only the explicitly wired Preview fixtures can change availability.
+  const outside = await page.evaluate(async () => {
+    const q = new URLSearchParams({
+      scopeId: "workhub-company", itemId: "workhub-office-tokyo",
+      expectedVersion: "2", effectiveFrom: "2027-04-01T00:00:00.000Z",
+      label: "Tokyo Office", enabled: "false",
+    });
+    return (await fetch("/api/admin/master-operations/schedule/preview?" + q)).status;
+  });
+  expect(outside).toBe(404);
+});

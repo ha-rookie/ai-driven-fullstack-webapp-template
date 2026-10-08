@@ -201,7 +201,7 @@ Operations Core emits structured audit events to its configured AuditLogger. Do 
 
 Hardening in this stage:
 
-- Append and scheduled-cutover guarded revision inserts use `CASE WHEN EXISTS(...) THEN revision_id ELSE NULL END`: a failed mutation marker or previous-period predicate violates the non-null Revision primary key **inside the batch**, so the entire transaction aborts before commit.
+- Append and scheduled-cutover guarded revision inserts use `CASE WHEN EXISTS(...) THEN environment ELSE NULL END`: a failed mutation marker or previous-period predicate violates the **explicitly NOT NULL environment column** inside the batch, so the entire transaction aborts before commit. SQLite's normal rowid-table `TEXT PRIMARY KEY` is not a reliable NOT NULL guard.
 - The controlled Preview `RETIRE_MASTER_ITEM` and `SCHEDULE_MASTER_REVISION` commands create a structured and SHA-256-hashed audit receipt **before** business mutation. The payload contains actor, scope, resource, requestId, action, time and hashed operator reason (not free-text reason).
 - `D1MasterDataStore` inserts the prepared receipt into the existing `durable_audit_events` table in **the same batch** as the master mutation. Receipt insert verifies item version, mutation marker and actor. Receipt table missing, hash insert failure, duplicate key or validation error cause an SQL error and roll back all the batch statements.
 - The previously supported `D1DurableAuditStore.search` verifies hashes at read-time, so administrators can inspect the same receipts via existing Audit viewer.
@@ -212,3 +212,17 @@ Hardening in this stage:
 Residual bounds: transactionally durable does not mean tamper-proof against a privileged DB writer. A SHA-256 checksum detects corruption during application reads but an attacker who rewrites both record and checksum can bypass it; stronger signed append-only logs / independent export remain a separate security hardening area. No Production mutation is enabled; Production operations remain Human Gate.
 
 Official D1 API: https://developers.cloudflare.com/d1/worker-api/d1-database/#batch
+
+## #418 Stage 3a: Future-enabled / disabled controlled availability
+
+Master's **availability** (`MasterRevision.enabled`) is separate from **retirement** (`MasterItem.retiredAt`). A scheduled disabled Revision suppresses *new selections at and after the cutover*, not historical IDs, previous labels, or business fact snapshots. An enabled future Revision can re-enable an item whose current Revision is disabled.
+
+- Reuse `MasterDataService.scheduleRevision`, so item Version guard, old interval close, new interval insert and durable audit receipt remain in the **same D1 transaction**; do not add an unsafe in-place `enabled` UPDATE.
+- Existing bounded `SCHEDULE_MASTER_REVISION` endpoints accept an explicit `enabled` boolean. For existing label-change demos, omitted value continues to mean `true` and disabling remains rejected.
+- WORKHUB-specific `availabilityTransitions` restricts `AVAIL_DISABLE` to current `true`→future `false`, and `AVAIL_ENABLE` to current `false`→future `true`; label changes on these items are forbidden. Targets must match explicit server allowlist; TOKYO/NAGOYA are not mutation targets.
+- Preview-only admin UI exposes two separate demos, reason/confirmation, Version, future UTC instant, before/after state and Revision history. Existing CSRF, scoped system_admin authorization, Operation Mode, policy gate, idempotency and post-write verification remain.
+- Preview fixture uses `INSERT ... ON CONFLICT DO NOTHING`, not resetting, overwriting or deleting prior history. Repeated Preview browser runs inspect already-completed transitions.
+- Domain tests assert `listSelectable`, `resolveCurrent`, `resolveAsOf(includeDisabled)` and old Revision ID at the exact half-open cutoff boundary. Browser tests check both operations, persisted Audit evidence, unauthorized target denial and desktop/mobile.
+- **Current limitation:** a new future cutover cannot be scheduled on top of an already-scheduled future cutover before its effective date, as `scheduleRevision` only replaces the *currently effective* open-ended Revision. Multi-step chained future plans and cancellation/rescheduling require an independent design/gate.
+
+No Production mutation is enabled. This vertical slice does not imply the entire #418 generic Master Administration UX is complete.

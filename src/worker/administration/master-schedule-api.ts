@@ -37,6 +37,8 @@ export interface MasterScheduleOptions {
   readonly scopeId: string;
   readonly definition: MasterDefinition;
   readonly allowedItemIds: readonly string[];
+  /** Per-reference-item permitted status transition: false=disable, true=enable. */
+  readonly availabilityTransitions?: Readonly<Record<string, boolean>>;
   readonly authorizationPolicy?: RolePolicy;
   readonly auditLogger?: AuditLogger;
   readonly now?: () => Date;
@@ -73,6 +75,7 @@ export const createScheduleMasterHandler = (input: {
   readonly priorRevisionId: string;
   readonly effectiveFrom: string;
   readonly label: string;
+  readonly enabled: boolean;
   readonly now: () => Date;
   readonly onScheduled?: (value: ResolvedMasterValue) => void;
   readonly getAudit?: () => PreparedDurableAuditRecord | undefined;
@@ -98,7 +101,7 @@ export const createScheduleMasterHandler = (input: {
           actorId: input.actorId,
           effectiveFrom: input.effectiveFrom,
           label: input.label,
-          enabled: true,
+          enabled: input.enabled,
           durableAudit: input.getAudit?.(),
         });
         input.onScheduled?.(scheduled);
@@ -128,6 +131,7 @@ export const createScheduleMasterHandler = (input: {
         && previous?.revision.effectiveTo === input.effectiveFrom
         && newValue?.revision.effectiveFrom === input.effectiveFrom
         && newValue.revision.label === input.label
+        && newValue.revision.enabled === input.enabled
         && newValue.revision.id !== input.priorRevisionId
         ? { status: "PASSED", summary: "Previous interval closed and future revision resolves at cutoff" }
         : { status: "FAILED", summary: "Master future cutover post-state mismatch" };
@@ -179,6 +183,7 @@ export const handleMasterScheduleApi = async (
   let expectedVersion = isPreview ? queryVersion(url.searchParams.get("expectedVersion")) : null;
   let effectiveFrom: unknown = isPreview ? url.searchParams.get("effectiveFrom") : undefined;
   let label: unknown = isPreview ? url.searchParams.get("label") : undefined;
+  let enabled: unknown = isPreview ? (url.searchParams.get("enabled") ?? "true") : undefined;
   let priorRevisionId = "";
   let reason = "", policyVersion = "", confirmed = false;
   if (!isPreview) {
@@ -190,12 +195,18 @@ export const handleMasterScheduleApi = async (
     expectedVersion = positive(body?.expectedVersion);
     effectiveFrom = body?.effectiveFrom;
     label = body?.label;
+    enabled = body?.enabled ?? true;
     priorRevisionId = typeof body?.priorRevisionId === "string" ? body.priorRevisionId : "";
     reason = typeof body?.reason === "string" ? body.reason.trim() : "";
     policyVersion = typeof body?.previewPolicyVersion === "string" ? body.previewPolicyVersion : "";
     confirmed = body?.confirmed === true;
   }
+  if (typeof enabled === "string" && isPreview) {
+    if (enabled === "true") enabled = true;
+    else if (enabled === "false") enabled = false;
+  }
   if (!expectedVersion || !isoFuture(effectiveFrom, at) || !validLabel(label)
+    || typeof enabled !== "boolean"
     || (!isPreview && (!/^[A-Za-z0-9_.:-]{1,128}$/u.test(priorRevisionId)
       || reason.length < 1 || reason.length > 200 || !confirmed || !policyVersion))) {
     return error(requestId, 400, "invalid_schedule_request", "Valid future timestamp, label, version, and safeguards are required");
@@ -213,7 +224,13 @@ export const handleMasterScheduleApi = async (
     return error(requestId, 404, "master_item_not_found", "Master item was not found");
   }
   const expectedPrior = current?.revision.id ?? null;
-  const available = item.retiredAt === null && item.version === expectedVersion
+  const availabilityTransition = options.availabilityTransitions?.[itemId];
+  // Do not let a general revision-label command silently become an enable/disable API.
+  const allowedTransition = availabilityTransition === undefined
+    ? enabled === true
+    : enabled === availabilityTransition && current !== null
+      && enabled !== current.revision.enabled && newLabel === current.revision.label;
+  const available = allowedTransition && item.retiredAt === null && item.version === expectedVersion
     && current?.revision.effectiveTo === null
     && current.revision.effectiveFrom < effectiveFrom
     && (isPreview || priorRevisionId === expectedPrior);
@@ -222,7 +239,7 @@ export const handleMasterScheduleApi = async (
   const handler = createScheduleMasterHandler({
     db: env.DB, environment, definition: options.definition, actorId: auth.user.id,
     expectedVersion, priorRevisionId: isPreview ? (expectedPrior ?? "") : priorRevisionId,
-    effectiveFrom, label: newLabel, now,
+    effectiveFrom, label: newLabel, enabled, now,
     onScheduled: (value) => { scheduled = value; },
     getAudit: () => auditReceipt,
   });
@@ -242,10 +259,11 @@ export const handleMasterScheduleApi = async (
         id: item.id, code: item.code, version: item.version, retiredAt: item.retiredAt,
       },
       priorRevisionId: expectedPrior, currentLabel: current?.revision.label ?? null,
-      available,
+      currentEnabled: current?.revision.enabled ?? null, enabled, available,
       reasonCode: item.retiredAt !== null ? "retired" : item.version !== expectedVersion
         ? "stale_version" : !current ? "no_current_revision"
-          : current.revision.effectiveTo !== null ? "not_open_ended" : null,
+          : current.revision.effectiveTo !== null ? "not_open_ended"
+            : !allowedTransition ? "availability_transition_not_allowed" : null,
       preview, policyVersion: OPERATIONS_POLICY_VERSION, effectiveFrom, label: newLabel,
     });
   }
@@ -287,7 +305,8 @@ export const handleMasterScheduleApi = async (
   const response = json({
     ...result, scheduled: scheduled ? {
       itemVersion: scheduled.item.version, revisionId: scheduled.revision.id,
-      label: scheduled.revision.label, effectiveFrom: scheduled.revision.effectiveFrom,
+      label: scheduled.revision.label, enabled: scheduled.revision.enabled,
+      effectiveFrom: scheduled.revision.effectiveFrom,
     } : null,
   }, status);
   if (verified) await idempotency.completeWithResponse(decision.execution, response.clone());
