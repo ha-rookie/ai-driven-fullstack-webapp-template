@@ -63,3 +63,59 @@ test("system administrator sees scoped office master and revision history", asyn
   await expect(panel.getByText("current", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: /登録|更新|削除|廃止/u })).toHaveCount(0);
 });
+
+test("ordinary employee cannot preview a privileged master retirement", async ({ page }) => {
+  await loginAs(page, "Aoi Employee");
+  const result = await page.evaluate(async () =>
+    (await fetch("/api/admin/master-operations/retire/preview?scopeId=workhub-company&itemId=workhub-office-legacy&expectedVersion=2")).status,
+  );
+  expect(result).toBe(403);
+});
+
+test("admin can retire only the isolated Preview master with verified post-state", async ({ page }) => {
+  await loginAs(page, "Kai Admin");
+  await page.goto("/admin", { waitUntil: "networkidle" });
+  const panel = page.locator("#admin-master-retire-demo");
+  await expect(panel.getByRole("heading", { name: "拠点マスタ廃止（専用デモ）" })).toBeVisible();
+  await expect(panel.getByText("RETIRE_MASTER_ITEM", { exact: true })).toBeVisible();
+  const retired = panel.getByTestId("master-retired-state");
+  const initialState = await retired.textContent();
+  if (initialState?.includes("NO")) {
+    await panel.getByLabel("廃止理由").fill("Preview acceptance: obsolete demo office should not be selected");
+    await panel.getByLabel("LEGACY拠点・環境・変更の影響を確認しました").check();
+    const responsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/admin/master-operations/retire/execute?") &&
+      response.request().method() === "POST",
+    );
+    await panel.getByRole("button", { name: "デモ拠点を廃止" }).click();
+    const response = await responsePromise;
+    expect([200, 409]).toContain(response.status());
+    if (response.status() === 200) {
+      const body = await response.json() as {
+        readonly execution: { readonly result: string };
+        readonly verification: { readonly status: string };
+      };
+      expect(body.execution.result).toBe("SUCCESS");
+      expect(body.verification.status).toBe("PASSED");
+      await expect(panel.getByText("廃止と検証が完了しました")).toBeVisible();
+    }
+  }
+  await expect(retired).toContainText("YES");
+
+  // Retirement keeps the existing historical revision available via the viewer.
+  const history = await page.evaluate(async (url) => {
+    const response = await fetch(url);
+    return { status: response.status, body: await response.json() };
+  }, masterListUrl + "&itemId=workhub-office-legacy");
+  expect(history.status).toBe(200);
+  const detail = history.body as {
+    readonly item: { readonly retiredAt: string | null };
+    readonly revisions: readonly { readonly label: string; readonly lifecycle: string }[];
+  };
+  expect(detail.item.retiredAt).not.toBeNull();
+  expect(detail.revisions.some((revision) => revision.label === "Retire demo office" && revision.lifecycle === "retired")).toBe(true);
+  const wrongTarget = await page.evaluate(async () =>
+    (await fetch("/api/admin/master-operations/retire/preview?scopeId=workhub-company&itemId=workhub-office-tokyo&expectedVersion=2")).status,
+  );
+  expect(wrongTarget).toBe(404);
+});
