@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_STATE_DEMO_ITEM_ID } from "../workhub/travel-request";
+import { WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_STATE_DEMO_ITEM_ID, WORKHUB_REACTIVATE_DEMO_ITEM_ID } from "../workhub/travel-request";
 
 const path = "/api/admin/master-operations/schedule";
 interface Item {
@@ -35,9 +35,11 @@ interface SchedulePreview {
 }
 type Status = "loading" | "ready" | "error";
 
-export default function MasterScheduleDemo({ variant = "revision" }: { readonly variant?: "revision" | "state" }) {
-  const stateVariant = variant === "state";
-  const demoItemId = stateVariant ? WORKHUB_STATE_DEMO_ITEM_ID : WORKHUB_SCHEDULE_DEMO_ITEM_ID;
+export default function MasterScheduleDemo({ variant = "revision" }: { readonly variant?: "revision" | "state" | "reactivate" }) {
+  const stateVariant = variant !== "revision";
+  const isReactivate = variant === "reactivate";
+  const demoItemId = isReactivate ? WORKHUB_REACTIVATE_DEMO_ITEM_ID
+    : stateVariant ? WORKHUB_STATE_DEMO_ITEM_ID : WORKHUB_SCHEDULE_DEMO_ITEM_ID;
   const itemQuery = new URLSearchParams({
     scopeId: "workhub-company", masterKey: "workhub.office", itemId: demoItemId,
   });
@@ -49,10 +51,11 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
   const [effectiveFrom, setEffectiveFrom] = useState(
     stateVariant ? "2027-07-01T00:00:00.000Z" : "2027-04-01T00:00:00.000Z",
   );
-  const [label, setLabel] = useState(stateVariant ? "State demo unchanged" : "Scheduled Office Next");
-  const [enabled, setEnabled] = useState(!stateVariant);
+  const [label, setLabel] = useState(isReactivate ? "Reactivation demo unchanged"
+    : stateVariant ? "State demo unchanged" : "Scheduled Office Next");
+  const [enabled, setEnabled] = useState(variant !== "state");
   const [displayOrder, setDisplayOrder] = useState<number | undefined>(
-    stateVariant ? 70 : undefined,
+    isReactivate ? 75 : stateVariant ? 70 : undefined,
   );
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -147,12 +150,12 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
     }
   };
 
-  return <section className="admin-audit-panel" id={stateVariant ? "admin-master-state-demo" : "admin-master-schedule-demo"} aria-labelledby={stateVariant ? "admin-master-state-title" : "admin-master-schedule-title"}>
+  return <section className="admin-audit-panel" id={isReactivate ? "admin-master-reactivate-demo" : stateVariant ? "admin-master-state-demo" : "admin-master-schedule-demo"} aria-labelledby={isReactivate ? "admin-master-reactivate-title" : stateVariant ? "admin-master-state-title" : "admin-master-schedule-title"}>
     <div className="admin-audit-heading">
       <div>
         <p className="admin-eyebrow">FUTURE CUTOVER / PREVIEW DEMO</p>
-        <h2 id={stateVariant ? "admin-master-state-title" : "admin-master-schedule-title"}>{stateVariant ? "マスタ有効・無効／表示順（専用デモ）" : "マスタの将来改訂（専用デモ）"}</h2>
-        <p>{stateVariant ? "出張申請で使わないSTATE_DEMO拠点のみ。将来の有効/無効と表示順をRevisionとして予約し、履歴を保存します。" : "出張申請で使わないSCHEDULE_DEMO拠点のみ。現行Revisionの終了と将来Revisionの追加を一体で行い、過去の履歴は残します。"}</p>
+        <h2 id={isReactivate ? "admin-master-reactivate-title" : stateVariant ? "admin-master-state-title" : "admin-master-schedule-title"}>{isReactivate ? "マスタ再有効化（専用デモ）" : stateVariant ? "マスタ有効・無効／表示順（専用デモ）" : "マスタの将来改訂（専用デモ）"}</h2>
+        <p>{isReactivate ? "現在無効なREACTIVATE_DEMO拠点のみ。将来の再有効化と表示順を履歴つきで予約します。" : stateVariant ? "出張申請で使わないSTATE_DEMO拠点のみ。将来の有効/無効と表示順をRevisionとして予約し、履歴を保存します。" : "出張申請で使わないSCHEDULE_DEMO拠点のみ。現行Revisionの終了と将来Revisionの追加を一体で行い、過去の履歴は残します。"}</p>
       </div>
     </div>
     {status === "loading" && <div role="status" className="admin-audit-state">マスタを取得しています…</div>}
