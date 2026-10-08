@@ -1,5 +1,10 @@
-import type { AsyncJobState } from "../../shared/async-job";
-import type { RuntimeEnvironment } from "../../shared/runtime";
+import {
+  verifyAsyncJobEnvelope,
+  type AsyncJobEnvelope,
+  type AsyncJobPublisher,
+  type AsyncJobState,
+} from "../../shared/async-job";
+import { systemClock, type Clock, type RuntimeEnvironment } from "../../shared/runtime";
 import type { OperationHandler, OperationHandlerResult } from "../operations";
 import type { OperationDefinition, OperationRequest } from "../operations";
 
@@ -7,6 +12,7 @@ export interface RecoverableJobRecord {
   readonly jobId: string;
   readonly type: string;
   readonly idempotencyKey: string;
+  readonly payloadFingerprint: string;
   readonly state: AsyncJobState;
   readonly attempt: number;
   readonly updatedAt: string;
@@ -38,6 +44,79 @@ export class JobRecoveryRegistry {
     return this.adapters.get(jobType) ?? null;
   }
 }
+
+
+export const createD1RequeueJobRecoveryAdapter = (input: {
+  readonly jobType: string;
+  readonly db: D1Database;
+  readonly publisher: AsyncJobPublisher;
+  readonly rebuildEnvelope: (job: RecoverableJobRecord) => Promise<AsyncJobEnvelope>;
+  readonly clock?: Clock;
+}): JobRecoveryAdapter => ({
+  jobType: input.jobType,
+  async recover({ environment, job }): Promise<OperationHandlerResult> {
+    if (job.type !== input.jobType || (job.state !== "failed" && job.state !== "dead_letter")) {
+      return { result: "CONFLICT" };
+    }
+
+    let envelope: AsyncJobEnvelope;
+    try {
+      envelope = await input.rebuildEnvelope(job);
+      await verifyAsyncJobEnvelope(envelope);
+    } catch {
+      return { result: "FAILED" };
+    }
+
+    if (
+      envelope.jobId !== job.jobId
+      || envelope.type !== job.type
+      || envelope.idempotencyKey !== job.idempotencyKey
+      || envelope.payloadFingerprint !== job.payloadFingerprint
+    ) {
+      return { result: "CONFLICT" };
+    }
+
+    const now = (input.clock ?? systemClock).now().toISOString();
+    const reopened = await input.db.prepare(`
+      UPDATE async_job_runs
+      SET
+        state = 'retrying',
+        updated_at = ?,
+        completed_at = NULL,
+        next_attempt_at = ?,
+        lease_token = NULL,
+        lease_expires_at = NULL
+      WHERE environment = ?
+        AND job_id = ?
+        AND idempotency_key = ?
+        AND payload_fingerprint = ?
+        AND updated_at = ?
+        AND state IN ('failed', 'dead_letter')
+    `).bind(
+      now,
+      now,
+      environment,
+      job.jobId,
+      job.idempotencyKey,
+      job.payloadFingerprint,
+      job.updatedAt,
+    ).run();
+
+    if ((reopened.meta.changes ?? 0) !== 1) {
+      return { result: "CONFLICT" };
+    }
+
+    try {
+      await input.publisher.publish(envelope);
+      return { result: "SUCCESS" };
+    } catch {
+      // The durable state is intentionally left as retrying. A reconciliation
+      // operation can safely detect and republish it; claiming success here
+      // would hide an unknown delivery outcome.
+      return { result: "PARTIAL" };
+    }
+  },
+});
 
 export const JOB_RETRY_OPERATION: OperationDefinition = Object.freeze({
   id: "JOB_RETRY",
