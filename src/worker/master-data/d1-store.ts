@@ -254,36 +254,24 @@ export class D1MasterDataStore implements MasterDataStore {
         effective_from, effective_to, display_order, parent_item_id,
         attributes_json, created_at, created_by
       )
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-      WHERE EXISTS (
+      SELECT CASE WHEN EXISTS (
         SELECT 1 FROM master_items i
         WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ?
-      )
+          AND i.version = ?
+      ) THEN ? ELSE NULL END,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     `).bind(
-      revision.id,
-      revision.environment,
-      revision.masterItemId,
-      revision.revision,
-      revision.label,
-      revision.enabled ? 1 : 0,
-      revision.effectiveFrom,
-      revision.effectiveTo,
-      revision.displayOrder,
-      revision.parentItemId,
-      JSON.stringify(revision.attributes),
-      revision.createdAt,
-      revision.createdBy,
-      item.id,
-      item.environment,
-      mutationId,
+      item.id, item.environment, mutationId, item.version,
+      revision.id, revision.environment, revision.masterItemId, revision.revision,
+      revision.label, revision.enabled ? 1 : 0, revision.effectiveFrom,
+      revision.effectiveTo, revision.displayOrder, revision.parentItemId,
+      JSON.stringify(revision.attributes), revision.createdAt, revision.createdBy,
     );
 
     try {
       const results = await this.db.batch([itemUpdate, revisionInsert]);
-      const first = results[0];
-      if (!first || changesOf(first) === 0) return false;
       if (results.length !== 2 || results.some((result) => changesOf(result) !== 1)) {
-        throw new MasterDataStoreIntegrityError("master revision batch persisted an unexpected number of rows");
+        throw new MasterDataStoreIntegrityError("master revision transaction returned unexpected result counts");
       }
       return true;
     } catch (error) {
