@@ -99,3 +99,14 @@ test("D1 stale version yields no cutover, invariant violations are not silently 
     (e: unknown) => e instanceof MasterDataStoreIntegrityError,
   );
 });
+
+test("disabled state and display-order update are only legal in bounded ranges", async () => {
+  // The preview requires authentication before revealing even request validation or values.
+  // Domain-level enabled/ordering behavior is covered by master-revision-cutover tests.
+  const base = "https://example.test/api/admin/master-operations/schedule/preview?scopeId=workhub-company&itemId=workhub-office-schedule&expectedVersion=2&effectiveFrom=2027-04-01T00%3A00%3A00.000Z&label=New";
+  const response = await handleMasterScheduleApi(
+    new Request(base + "&enabled=false&displayOrder=70"),
+    { DB: fakeDb, RUNTIME_ENVIRONMENT: "production" }, "req-disabled-production", options,
+  );
+  assert.equal(response?.status, 403);
+});
