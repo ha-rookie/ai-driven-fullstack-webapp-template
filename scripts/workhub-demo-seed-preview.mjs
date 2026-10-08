@@ -110,6 +110,59 @@ ${credentialSql}
 ${membershipSql}
 ${officeItemSql}
 ${officeRevisionSql}
+
+INSERT INTO reference_travel_requests (
+  id, environment, requester_id, destination_office_item_id,
+  destination_office_revision_id, start_date, end_date, purpose, status,
+  submission_key, workflow_instance_id, submitted_at, version, created_at, updated_at
+) VALUES (
+  'workhub-demo-recovery-travel', 'preview', 'workhub-demo-aoi', 'workhub-office-nagoya',
+  NULL, '2026-10-15', '2026-10-16', 'Preview recovery fixture', 'draft',
+  NULL, NULL, NULL, 1, ${quote(timestamp)}, ${quote(timestamp)}
+)
+ON CONFLICT(id) DO UPDATE SET
+  environment = excluded.environment,
+  requester_id = excluded.requester_id,
+  destination_office_item_id = excluded.destination_office_item_id,
+  destination_office_revision_id = NULL,
+  start_date = excluded.start_date,
+  end_date = excluded.end_date,
+  purpose = excluded.purpose,
+  status = 'draft',
+  submission_key = NULL,
+  workflow_instance_id = NULL,
+  submitted_at = NULL,
+  version = 1,
+  updated_at = excluded.updated_at;
+
+INSERT INTO async_job_runs (
+  environment, job_id, job_type, idempotency_key, payload_fingerprint,
+  state, attempt, requested_at, started_at, updated_at, completed_at,
+  lease_token, lease_expires_at, next_attempt_at,
+  progress_percent, progress_code, failure_code
+) VALUES (
+  'preview', 'workhub-demo-search-recovery-job', 'search.index_projection',
+  'search-index:preview:workhub.travel_request:workhub-demo-recovery-travel',
+  'c4bd6af31a39fea83138bf933e04b478150a0526e2eb4450d5f2d8662bb27ac9',
+  'failed', 2, ${quote(timestamp)}, ${quote(timestamp)}, ${quote(timestamp)}, ${quote(timestamp)},
+  NULL, NULL, NULL, NULL, NULL, 'preview_demo_failure'
+)
+ON CONFLICT(environment, job_id) DO UPDATE SET
+  job_type = excluded.job_type,
+  idempotency_key = excluded.idempotency_key,
+  payload_fingerprint = excluded.payload_fingerprint,
+  state = 'failed',
+  attempt = 2,
+  requested_at = excluded.requested_at,
+  started_at = excluded.started_at,
+  updated_at = excluded.updated_at,
+  completed_at = excluded.completed_at,
+  lease_token = NULL,
+  lease_expires_at = NULL,
+  next_attempt_at = NULL,
+  progress_percent = NULL,
+  progress_code = NULL,
+  failure_code = 'preview_demo_failure';
 `;
 
 const run = (args) => execFileSync("npx", ["wrangler", ...args], {
@@ -137,4 +190,4 @@ ORDER BY c.identifier_normalized;
 `;
 run(["d1", "execute", "DB", "--remote", "--env", "preview", "--command", credentialProbeSql]);
 
-console.log("WORKHUB Preview demo users, Office master, and normal operation mode seeded and credential join probed.");
+console.log("WORKHUB Preview demo users, Office master, recovery travel/job fixture, and normal operation mode seeded and credential join probed.");
