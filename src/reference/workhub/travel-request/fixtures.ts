@@ -6,6 +6,7 @@ import type {
 
 export const WORKHUB_OFFICE_MASTER_KEY = "workhub.office";
 export const WORKHUB_RETIRE_DEMO_ITEM_ID = "workhub-office-legacy";
+export const WORKHUB_SCHEDULE_DEMO_ITEM_ID = "workhub-office-schedule";
 export const WORKHUB_TRAVEL_WORKFLOW_KEY = "workhub.travel_request_approval";
 export const WORKHUB_TRAVEL_WORKFLOW_VERSION = 1;
 export const WORKHUB_TRAVEL_MANAGER_RESOLVER_KEY = "workhub.manager";
