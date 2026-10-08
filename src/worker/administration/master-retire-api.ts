@@ -215,10 +215,6 @@ export const handleMasterRetireApi = async (
     });
   }
 
-  // Fail closed before reserving an idempotency key, so stale attempts can refresh.
-  if (!available) {
-    return error(requestId, 409, "master_state_conflict", "Master state has changed");
-  }
   const mode = await new OperationModeGuard(
     new D1OperationModeStore(env.DB, environment), { environment, retryAfterSeconds: 60 },
   ).check(request);
@@ -235,6 +231,11 @@ export const handleMasterRetireApi = async (
   }
   if (idempotency.kind === "reject") return idempotencyRejectionResponse(idempotency, requestId);
   if (idempotency.kind === "replay") return idempotencyReplayResponse(idempotency, requestId);
+  // A completed retry replays its original receipt; new requests against a stale state fail closed.
+  if (!available) {
+    await guard.fail(idempotency.execution);
+    return error(requestId, 409, "master_state_conflict", "Master state has changed");
+  }
 
   const result = await operations.execute(operationRequest, preview, {
     actorId,
