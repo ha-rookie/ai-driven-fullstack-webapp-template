@@ -522,6 +522,7 @@ export default function AdminPortal() {
         <MasterDataViewer />
         <MasterRetireDemo />
         <MasterScheduleDemo />
+        <MasterScheduleDemo variant="order" />
         <MasterAvailabilityDemo />
         <DataCorrectionViewer />
         <JobOperationsViewer />
