@@ -239,3 +239,15 @@ Following #517, `SCHEDULE_MASTER_REVISION` already supports strictly allowed fut
 - Non-destructive Preview fixture uses only the dedicated `ORDER_DEMO` Master. TOKYO/NAGOYA are not allowed.
 - This does **not** add an unrestricted UI for arbitrary Master Definitions or a hierarchy editor. Their policy/validation model remains subsequent #418 work.
 
+
+## Preview authentication 503 acceptance gate (2026-10-09)
+
+Browser acceptance for #418 Stage 3b is **not yet green**. Exact main `35f6946aef65e48e1480a4018238fc4b7248b2da` had two independent runs with 19/24 passing and 5 login-time HTTP 503 failures:
+- https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/actions/runs/37824436881
+- https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/actions/runs/37848757058
+
+The master order D1 mutation itself was not reached in those failed tests. In the original browser log a 503 login lacked both application `x-request-id` and Preview `x-auth-dependency-stage`, unlike an application-formed authentication 503 which attaches both. This is **consistent with**, but not definitive proof of, an upstream/platform response or incomplete Worker response. Application D1 failure cannot yet be ruled out without request-specific Worker/Cloudflare traces.
+
+The test-only `submitPreviewLogin` helper records safely bounded response metadata (status, requestId, auth stage, CF Ray, Retry-After; no passwords/cookies/bodies) for each attempt. Only a 503 with **neither application requestId nor auth stage** is eligible for up to two bounded UI retries. A 503 carrying application evidence, plus all 401/403/429 statuses, immediately fails the acceptance test. Do not change Production auth, password hashing, user lockouts, or scope protection to accommodate Preview smoke.
+
+Next acceptance: PR CI → pinned Preview deployment → isolated fixture seed → desktop/mobile Browser smoke with **24/24 passes**; independently review any reported unattributed retries as unresolved availability incidents (passing after a retry is not evidence that the underlying platform instability was cured). Further investigation needs Cloudflare Worker request logs/health evidence corresponding to the CF Ray at a failure; these are not available from GitHub Actions logs.
