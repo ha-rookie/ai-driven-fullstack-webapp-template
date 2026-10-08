@@ -183,3 +183,127 @@ test("admin schedules future revision atomically without breaking prior history"
   );
   expect(wrongTarget).toBe(404);
 });
+
+test("controlled master retire and schedule preserve a queryable durable audit receipt", async ({ page }) => {
+  await loginAs(page, "Kai Admin");
+  const evidence = await page.evaluate(async () => {
+    const base = "/api/admin/master-data?scopeId=workhub-company&masterKey=workhub.office&itemId=";
+    const scope = "scopeId=workhub-company";
+    const get = async (url: string) => {
+      const response = await fetch(url);
+      return { status: response.status, body: await response.json() };
+    };
+    const getCsrf = async () => {
+      const response = await get("/api/auth/csrf");
+      if (response.status !== 200) throw new Error("CSRF unavailable");
+      return (response.body as { csrfToken: string }).csrfToken;
+    };
+    const execute = async (kind: "retire" | "schedule", itemId: string, payload: Record<string, unknown>) => {
+      const response = await fetch("/api/admin/master-operations/" + kind + "/execute?" + scope + "&itemId=" + itemId, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json", "x-csrf-token": await getCsrf(),
+          "idempotency-key": crypto.randomUUID(),
+        },
+        body: JSON.stringify(payload),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    const scheduledId = "workhub-office-audit-schedule";
+    const retiredId = "workhub-office-audit-retire";
+    const cutoff = "2027-04-01T00:00:00.000Z";
+    const scheduleDetail = await get(base + scheduledId);
+    if (scheduleDetail.status !== 200) throw new Error("Audit schedule fixture missing");
+    const sd = scheduleDetail.body as {
+      item: { version: number };
+      revisions: { id: string; label: string; effectiveTo: string | null }[];
+    };
+    let scheduledExecution: { status: number; body: unknown } | null = null;
+    if (sd.revisions.length === 1) {
+      const q = new URLSearchParams({
+        scopeId: "workhub-company", itemId: scheduledId,
+        expectedVersion: String(sd.item.version), effectiveFrom: cutoff,
+        label: "Audit schedule after",
+      });
+      const preview = await get("/api/admin/master-operations/schedule/preview?" + q);
+      if (preview.status !== 200) throw new Error("Schedule preview failed");
+      const p = preview.body as { priorRevisionId: string; policyVersion: string; available: boolean };
+      if (!p.available) throw new Error("Schedule preview not available");
+      scheduledExecution = await execute("schedule", scheduledId, {
+        priorRevisionId: p.priorRevisionId,
+        expectedVersion: sd.item.version,
+        effectiveFrom: cutoff, label: "Audit schedule after",
+        reason: "Preview transactional audit test", confirmed: true,
+        previewPolicyVersion: p.policyVersion,
+      });
+    }
+    const retireDetail = await get(base + retiredId);
+    if (retireDetail.status !== 200) throw new Error("Audit retire fixture missing");
+    const rd = retireDetail.body as { item: { version: number; retiredAt: string | null } };
+    let retiredExecution: { status: number; body: unknown } | null = null;
+    if (!rd.item.retiredAt) {
+      const q = new URLSearchParams({
+        scopeId: "workhub-company", itemId: retiredId,
+        expectedVersion: String(rd.item.version),
+      });
+      const preview = await get("/api/admin/master-operations/retire/preview?" + q);
+      if (preview.status !== 200) throw new Error("Retire preview failed");
+      const p = preview.body as { policyVersion: string; available: boolean };
+      if (!p.available) throw new Error("Retire preview not available");
+      retiredExecution = await execute("retire", retiredId, {
+        expectedVersion: rd.item.version, reason: "Preview transactional audit test",
+        confirmed: true, previewPolicyVersion: p.policyVersion,
+      });
+    }
+    const scheduleAfter = await get(base + scheduledId);
+    const retireAfter = await get(base + retiredId);
+    const auditQuery = (id: string, action: string) => {
+      const q = new URLSearchParams({
+        scopeId: "workhub-company", resourceType: "master_item", resourceId: id,
+        action, category: "system", outcome: "success",
+      });
+      return "/api/admin/audit?" + q;
+    };
+    const scheduledAudit = await get(auditQuery(scheduledId, "operation.SCHEDULE_MASTER_REVISION"));
+    const retiredAudit = await get(auditQuery(retiredId, "operation.RETIRE_MASTER_ITEM"));
+    return {
+      scheduledExecution, retiredExecution,
+      scheduleAfter, retireAfter, scheduledAudit, retiredAudit,
+    };
+  });
+
+  for (const result of [evidence.scheduledExecution, evidence.retiredExecution]) {
+    if (!result) continue; // Desktop made the change; mobile verifies persisted evidence.
+    expect(result.status).toBe(200);
+    const output = result.body as {
+      execution: { result: string };
+      verification: { status: string };
+    };
+    expect(output.execution.result).toBe("SUCCESS");
+    expect(output.verification.status).toBe("PASSED");
+  }
+  expect(evidence.scheduleAfter.status).toBe(200);
+  const history = evidence.scheduleAfter.body as {
+    revisions: readonly { label: string; effectiveTo: string | null; effectiveFrom: string }[];
+  };
+  expect(history.revisions.find((revision) => revision.label === "Audit schedule before")?.effectiveTo)
+    .toBe("2027-04-01T00:00:00.000Z");
+  expect(history.revisions.find((revision) => revision.label === "Audit schedule after")?.effectiveFrom)
+    .toBe("2027-04-01T00:00:00.000Z");
+  expect(evidence.retireAfter.status).toBe(200);
+  expect((evidence.retireAfter.body as { item: { retiredAt: string | null } }).item.retiredAt).not.toBeNull();
+
+  for (const row of [evidence.scheduledAudit, evidence.retiredAudit]) {
+    expect(row.status).toBe(200);
+    const audited = row.body as {
+      items: readonly { action: string; actorId: string; scopeId: string; resourceId: string;
+        outcome: string; reason: string; requestId: string }[];
+    };
+    expect(audited.items.length).toBeGreaterThanOrEqual(1);
+    expect(audited.items[0].actorId).toBe("workhub-demo-kai");
+    expect(audited.items[0].scopeId).toBe("workhub-company");
+    expect(audited.items[0].outcome).toBe("success");
+    expect(audited.items[0].requestId).toBeTruthy();
+    expect(audited.items[0].reason).toMatch(/^reason_sha256:[a-f0-9]{64}$/u);
+  }
+});

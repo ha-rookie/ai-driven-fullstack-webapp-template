@@ -199,6 +199,34 @@ export const verifyDurableAuditRecord = async (
   }
 };
 
+/** Immutable, pre-hashed record that can be committed in the same D1 batch as a business mutation. */
+export interface PreparedDurableAuditRecord {
+  readonly id: string;
+  readonly environment: RuntimeEnvironment;
+  readonly occurredAt: string;
+  readonly record: StructuredAuditRecord;
+  readonly recordJson: string;
+  readonly recordSha256: string;
+}
+
+export const prepareDurableAuditRecord = async (
+  event: AuditEvent,
+  environment: RuntimeEnvironment,
+  options: { readonly clock?: Clock; readonly idGenerator?: IdGenerator } = {},
+): Promise<PreparedDurableAuditRecord> => {
+  const occurredAt = (options.clock ?? systemClock).now().toISOString();
+  const record = toStructuredAuditRecord(event, occurredAt);
+  const recordJson = serializeDurableAuditRecord(record);
+  return {
+    id: (options.idGenerator ?? cryptoIdGenerator).generate(),
+    environment,
+    occurredAt,
+    record,
+    recordJson,
+    recordSha256: await sha256Text(recordJson),
+  };
+};
+
 export interface D1DurableAuditStoreOptions {
   readonly db: D1Database;
   readonly environment: RuntimeEnvironment;
@@ -216,11 +244,9 @@ export class D1DurableAuditStore implements DurableAuditSink {
   }
 
   async append(event: AuditEvent): Promise<void> {
-    const occurredAt = this.clock.now().toISOString();
-    const record = toStructuredAuditRecord(event, occurredAt);
-    const recordJson = serializeDurableAuditRecord(record);
-    const recordSha256 = await sha256Text(recordJson);
-    const id = this.idGenerator.generate();
+    const { occurredAt, record, recordJson, recordSha256, id } = await prepareDurableAuditRecord(
+      event, this.options.environment, { clock: this.clock, idGenerator: this.idGenerator },
+    );
 
     await this.options.db
       .prepare(`

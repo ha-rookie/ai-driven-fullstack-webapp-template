@@ -351,6 +351,7 @@ export class MasterDataService {
       mutationId: this.generateId(),
       revision,
       priorRevisionId,
+      durableAudit: command.durableAudit,
     });
     if (!persisted) {
       throw new MasterDataError("conflict", "master revision cutover conflicted or overlaps future periods");
@@ -392,6 +393,7 @@ export class MasterDataService {
       item: nextItem,
       expectedItemVersion: command.expectedItemVersion,
       mutationId,
+      durableAudit: command.durableAudit,
     })) {
       throw new MasterDataError("conflict", "master item retirement conflicted with a concurrent update");
     }
