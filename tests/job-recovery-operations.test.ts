@@ -4,9 +4,11 @@ import test from "node:test";
 import {
   JOB_RETRY_OPERATION,
   JobRecoveryRegistry,
+  createD1RequeueJobRecoveryAdapter,
   createJobRetryOperationHandler,
   type RecoverableJobRecord,
 } from "../src/worker/administration";
+import { createAsyncJobEnvelope } from "../src/shared/async-job";
 import {
   OperationRegistry,
   OperationsApplicationService,
@@ -17,6 +19,7 @@ const job: RecoverableJobRecord = {
   jobId: "job-1",
   type: "example.recoverable",
   idempotencyKey: "job-1",
+  payloadFingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   state: "failed",
   attempt: 3,
   updatedAt: "2026-10-08T00:00:00.000Z",
@@ -127,4 +130,145 @@ test("Production JOB_RETRY remains Human Gate and cannot execute directly", asyn
   });
   assert.equal(result.execution.result, "REJECTED");
   assert.equal(recovered, 0);
+});
+
+
+test("D1 requeue recovery only republishes an envelope with the original identity and fingerprint", async () => {
+  const envelope = await createAsyncJobEnvelope({
+    type: "example.recoverable",
+    payload: { resourceId: "resource-1" },
+    jobId: "job-safe-1",
+    idempotencyKey: "job-safe-1",
+  });
+  const terminal: RecoverableJobRecord = {
+    jobId: envelope.jobId,
+    type: envelope.type,
+    idempotencyKey: envelope.idempotencyKey,
+    payloadFingerprint: envelope.payloadFingerprint,
+    state: "dead_letter",
+    attempt: 4,
+    updatedAt: "2026-10-08T00:00:00.000Z",
+    failureCode: "temporary_failure",
+  };
+  const binds: unknown[][] = [];
+  const db = {
+    prepare() {
+      return {
+        bind(...values: unknown[]) {
+          binds.push(values);
+          return { run: async () => ({ meta: { changes: 1 } }) };
+        },
+      };
+    },
+  } as unknown as D1Database;
+  const published: unknown[] = [];
+  const adapter = createD1RequeueJobRecoveryAdapter({
+    jobType: "example.recoverable",
+    db,
+    publisher: { publish: async (message) => { published.push(message); } },
+    rebuildEnvelope: async () => envelope,
+    clock: { now: () => new Date("2026-10-08T01:00:00.000Z") },
+  });
+
+  const result = await adapter.recover({
+    environment: "preview",
+    job: terminal,
+    reason: "manual recovery after dependency restoration",
+  });
+
+  assert.equal(result.result, "SUCCESS");
+  assert.equal(published.length, 1);
+  assert.equal(binds.length, 1);
+  assert.equal(binds[0][2], "preview");
+  assert.equal(binds[0][3], terminal.jobId);
+  assert.equal(binds[0][5], terminal.payloadFingerprint);
+  assert.equal(binds[0][6], terminal.updatedAt);
+});
+
+test("D1 requeue recovery fails closed on rebuilt payload mismatch", async () => {
+  const original = await createAsyncJobEnvelope({
+    type: "example.recoverable",
+    payload: { resourceId: "resource-1" },
+    jobId: "job-safe-2",
+    idempotencyKey: "job-safe-2",
+  });
+  const mismatched = await createAsyncJobEnvelope({
+    type: "example.recoverable",
+    payload: { resourceId: "different-resource" },
+    jobId: original.jobId,
+    idempotencyKey: original.idempotencyKey,
+  });
+  let writes = 0;
+  let publishes = 0;
+  const adapter = createD1RequeueJobRecoveryAdapter({
+    jobType: "example.recoverable",
+    db: {
+      prepare() {
+        return {
+          bind() {
+            return { run: async () => { writes += 1; return { meta: { changes: 1 } }; } };
+          },
+        };
+      },
+    } as unknown as D1Database,
+    publisher: { publish: async () => { publishes += 1; } },
+    rebuildEnvelope: async () => mismatched,
+  });
+
+  const result = await adapter.recover({
+    environment: "preview",
+    job: {
+      jobId: original.jobId,
+      type: original.type,
+      idempotencyKey: original.idempotencyKey,
+      payloadFingerprint: original.payloadFingerprint,
+      state: "failed",
+      attempt: 2,
+      updatedAt: "2026-10-08T00:00:00.000Z",
+    },
+    reason: "retry",
+  });
+
+  assert.equal(result.result, "CONFLICT");
+  assert.equal(writes, 0);
+  assert.equal(publishes, 0);
+});
+
+test("D1 requeue recovery reports PARTIAL when durable reopen succeeds but publish outcome fails", async () => {
+  const envelope = await createAsyncJobEnvelope({
+    type: "example.recoverable",
+    payload: { resourceId: "resource-3" },
+    jobId: "job-safe-3",
+    idempotencyKey: "job-safe-3",
+  });
+  const adapter = createD1RequeueJobRecoveryAdapter({
+    jobType: envelope.type,
+    db: {
+      prepare() {
+        return {
+          bind() {
+            return { run: async () => ({ meta: { changes: 1 } }) };
+          },
+        };
+      },
+    } as unknown as D1Database,
+    publisher: { publish: async () => { throw new Error("queue unavailable"); } },
+    rebuildEnvelope: async () => envelope,
+  });
+
+  const result = await adapter.recover({
+    environment: "preview",
+    job: {
+      jobId: envelope.jobId,
+      type: envelope.type,
+      idempotencyKey: envelope.idempotencyKey,
+      payloadFingerprint: envelope.payloadFingerprint,
+      state: "failed",
+      attempt: 1,
+      updatedAt: "2026-10-08T00:00:00.000Z",
+    },
+    reason: "retry",
+  });
+
+  assert.equal(result.result, "PARTIAL");
 });
