@@ -42,6 +42,7 @@ interface JobRow {
   readonly job_id: string;
   readonly job_type: string;
   readonly idempotency_key: string;
+  readonly payload_fingerprint: string;
   readonly state: AsyncJobState;
   readonly attempt: number;
   readonly requested_at: string;
@@ -92,6 +93,7 @@ const toRecoverable = (row: JobRow): RecoverableJobRecord => ({
   jobId: row.job_id,
   type: row.job_type,
   idempotencyKey: row.idempotency_key,
+  payloadFingerprint: row.payload_fingerprint,
   state: row.state,
   attempt: row.attempt,
   updatedAt: row.updated_at,
@@ -104,7 +106,7 @@ const loadJob = async (
   jobId: string,
 ): Promise<JobRow | null> => db.prepare(`
   SELECT
-    job_id, job_type, idempotency_key, state, attempt, requested_at, started_at, updated_at,
+    job_id, job_type, idempotency_key, payload_fingerprint, state, attempt, requested_at, started_at, updated_at,
     completed_at, next_attempt_at, progress_percent, progress_code, failure_code
   FROM async_job_runs
   WHERE environment = ? AND job_id = ?
@@ -238,7 +240,7 @@ export const handleJobOperationsApi = async (
 
       const result = await env.DB.prepare(`
         SELECT
-          job_id, job_type, idempotency_key, state, attempt, requested_at, started_at, updated_at,
+          job_id, job_type, idempotency_key, payload_fingerprint, state, attempt, requested_at, started_at, updated_at,
           completed_at, next_attempt_at, progress_percent, progress_code, failure_code
         FROM async_job_runs
         WHERE ${where.join(" AND ")}
