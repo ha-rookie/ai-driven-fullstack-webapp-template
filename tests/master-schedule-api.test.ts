@@ -88,7 +88,12 @@ test("D1 future cutover guards item version, old open end and other future perio
 });
 
 test("D1 stale version yields no cutover, invariant violations are not silently accepted", async () => {
-  assert.equal(await mockStore([0, 0, 0]).store.scheduleRevision(bundle), false);
+  // A successful batch response with zero-row writes is an impossible/unsafe transaction
+  // once the SQL NOT NULL guard is in place; fail closed instead of reporting clean conflict.
+  await assert.rejects(
+    () => mockStore([0, 0, 0]).store.scheduleRevision(bundle),
+    (e: unknown) => e instanceof MasterDataStoreIntegrityError,
+  );
   await assert.rejects(
     () => mockStore([1, 0, 0]).store.scheduleRevision(bundle),
     (e: unknown) => e instanceof MasterDataStoreIntegrityError,
