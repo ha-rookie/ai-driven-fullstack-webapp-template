@@ -315,12 +315,14 @@ test("Preview master enable/disable cutovers retain historical and durable audit
   await expect(panel.getByRole("heading", { name: "マスタ有効・無効の将来予約" })).toBeVisible();
 
   for (const target of [
-    { id: "workhub-office-availability-disable", current: true, desired: false,
+    { id: "workhub-office-availability-disable", code: "AVAIL_DISABLE", current: true, desired: false,
       original: "Availability demo A" },
-    { id: "workhub-office-availability-enable", current: false, desired: true,
+    { id: "workhub-office-availability-enable", code: "AVAIL_ENABLE", current: false, desired: true,
       original: "Availability demo B" },
   ]) {
     await panel.getByLabel("対象デモ").selectOption(target.id);
+    // Wait for the newly selected item's network fetch, not a stale prior item's history.
+    await expect(panel.getByText(target.code, { exact: true })).toBeVisible();
     const versions = panel.getByTestId("master-availability-history");
     await expect(versions).toContainText("Revision：");
     const before = await versions.textContent();
