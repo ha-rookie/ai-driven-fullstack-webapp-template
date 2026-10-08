@@ -23,10 +23,7 @@ import {
   DataCorrectionRegistry,
   createDataCorrectionOperationHandler,
 } from "./data-correction";
-import {
-  RESTORE_SOFT_DELETED_RESOURCE,
-  createRestoreSoftDeletedExampleResourceAdapter,
-} from "./example-resource-corrections";
+import { createRestoreSoftDeletedExampleResourceAdapter } from "./example-resource-corrections";
 
 const DEFAULT_POLICY: RolePolicy = {
   "data_correction:restore": ["system_admin"],
