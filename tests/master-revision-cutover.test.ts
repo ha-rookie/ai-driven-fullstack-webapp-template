@@ -120,3 +120,63 @@ test("retired item cannot be scheduled even if a revision remains queryable", as
     (e: unknown) => e instanceof MasterDataError && e.code === "retired",
   );
 });
+
+test("future disable also changes display order without rewriting the earlier selectable period", async () => {
+  const { service, advance } = createFixture();
+  const { item, first } = await seeded(service);
+  const changed = await service.scheduleRevision({
+    itemId: item.id, priorRevisionId: first.revision.id,
+    actorId: "admin", expectedItemVersion: first.item.version,
+    effectiveFrom: cutoff, label: "Tokyo Original", enabled: false,
+    displayOrder: 70,
+  });
+  assert.equal(changed.revision.enabled, false);
+  assert.equal(changed.revision.displayOrder, 70);
+  assert.deepEqual(changed.revision.attributes, { region: "east" });
+  assert.equal((await service.resolveAsOf(item.id, "2027-03-31T23:59:59.999Z"))?.revision.enabled, true);
+  assert.equal((await service.listSelectable("office", { asOf: "2027-03-31T23:59:59.999Z" })).length, 1);
+  assert.equal(await service.resolveAsOf(item.id, cutoff), null);
+  assert.equal((await service.listSelectable("office", { asOf: cutoff })).length, 0);
+  const futureWithDisabled = await service.resolveAsOf(item.id, cutoff, { includeDisabled: true });
+  assert.equal(futureWithDisabled?.revision.enabled, false);
+  assert.equal(futureWithDisabled?.revision.displayOrder, 70);
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.enabled, true);
+  advance(cutoff);
+  assert.equal(await service.resolveCurrent(item.id), null);
+});
+
+test("future reactivation makes a previously disabled Master selectable only at cutover", async () => {
+  const { service } = createFixture();
+  const item = await service.createItem({ masterKey: "office", code: "DORMANT", actorId: "admin" });
+  const first = await service.addRevision({
+    itemId: item.id, actorId: "admin", expectedItemVersion: 1,
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
+    label: "Dormant", enabled: false, displayOrder: 90,
+  });
+  assert.equal(await service.resolveCurrent(item.id), null);
+  const resumed = await service.scheduleRevision({
+    itemId: item.id, priorRevisionId: first.revision.id,
+    actorId: "admin", expectedItemVersion: first.item.version,
+    effectiveFrom: cutoff, label: "Dormant", enabled: true, displayOrder: 75,
+  });
+  assert.equal(resumed.revision.enabled, true);
+  assert.equal(resumed.revision.displayOrder, 75);
+  assert.equal((await service.listSelectable("office", { asOf: "2027-03-31T23:59:59.999Z" })).length, 0);
+  assert.equal((await service.listSelectable("office", { asOf: cutoff })).length, 1);
+  assert.equal((await service.resolveAsOf(item.id, cutoff))?.revision.id, resumed.revision.id);
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.enabled, false);
+});
+
+test("display order validator rejects invalid sort values before mutating revision history", async () => {
+  const { service } = createFixture();
+  const { item, first } = await seeded(service);
+  await assert.rejects(
+    () => service.scheduleRevision({
+      itemId: item.id, priorRevisionId: first.revision.id,
+      actorId: "admin", expectedItemVersion: first.item.version,
+      effectiveFrom: cutoff, label: "Invalid", enabled: false, displayOrder: 1.5,
+    }),
+    (e: unknown) => e instanceof MasterDataError && e.code === "invalid_input",
+  );
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.effectiveTo, null);
+});
