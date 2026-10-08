@@ -17,3 +17,5 @@ export * from "./example-resource-corrections";
 export * from "./data-correction-api";
 
 export * from "./master-data-viewer-api";
+
+export * from "./master-retire-api";
