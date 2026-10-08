@@ -14,7 +14,7 @@ import {
   type AuditEvent,
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
-import { handleAuditLogViewerApi } from "./worker/administration";
+import { handleAuditLogViewerApi, handleJobOperationsApi } from "./worker/administration";
 import { handleLiveness, handleReadiness } from "./worker/health";
 import {
   apiErrorResponse,
@@ -193,6 +193,13 @@ export default {
       requestContext.requestId,
     );
     if (auditViewerResponse) return api(auditViewerResponse);
+
+    const jobOperationsResponse = await handleJobOperationsApi(
+      request,
+      env,
+      requestContext.requestId,
+    );
+    if (jobOperationsResponse) return api(jobOperationsResponse);
 
     const workhubBusinessResponse = await handleWorkhubBusinessApi(request, env);
     if (workhubBusinessResponse) return api(workhubBusinessResponse);

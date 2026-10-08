@@ -14,6 +14,22 @@ const sections = [
   ["System", "システム", "環境・構成・保守情報の確認入口"],
 ] as const;
 
+interface JobItem {
+  readonly jobId: string;
+  readonly type: string;
+  readonly state: string;
+  readonly attempt: number;
+  readonly updatedAt: string;
+  readonly progress: { readonly percent: number; readonly code: string | null } | null;
+  readonly failureCode: string | null;
+  readonly retry: { readonly available: boolean; readonly reason: string };
+}
+
+interface JobResponse {
+  readonly items: readonly JobItem[];
+  readonly limit: number;
+}
+
 interface AuditItem {
   readonly id: string;
   readonly timestamp: string;
@@ -34,6 +50,78 @@ interface AuditResponse {
 const StateCard = ({ title, children }: { readonly title: string; readonly children: ReactNode }) => (
   <article className="admin-state-card"><strong>{title}</strong><div>{children}</div></article>
 );
+
+const JobOperationsViewer = () => {
+  const [jobState, setJobState] = useState("");
+  const [state, setState] = useState<
+    | { readonly kind: "loading" }
+    | { readonly kind: "ready"; readonly data: JobResponse }
+    | { readonly kind: "error"; readonly requestId: string | null }
+  >({ kind: "loading" });
+
+  const load = async () => {
+    setState({ kind: "loading" });
+    const params = new URLSearchParams({ scopeId: WORKHUB_SCOPE_ID, limit: "20" });
+    if (jobState) params.set("state", jobState);
+    try {
+      const response = await fetch(`/api/admin/jobs?${params.toString()}`, {
+        headers: { accept: "application/json" },
+      });
+      const requestId = response.headers.get("x-request-id");
+      if (!response.ok) {
+        setState({ kind: "error", requestId });
+        return;
+      }
+      setState({ kind: "ready", data: await response.json() as JobResponse });
+    } catch {
+      setState({ kind: "error", requestId: null });
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  return <section className="admin-audit-panel" id="admin-jobs-and-integrations" aria-labelledby="admin-jobs-title">
+    <div className="admin-audit-heading">
+      <div>
+        <p className="admin-eyebrow">JOBS & INTEGRATIONS</p>
+        <h2 id="admin-jobs-title">ジョブ運用</h2>
+        <p>状態・進捗・試行回数・失敗コードを確認します。Payload本文やCredentialは表示せず、再実行は安全なRecovery Adapterが登録されたJobだけを対象にします。</p>
+      </div>
+      <div className="admin-audit-scope"><span>Scope</span><strong>{WORKHUB_SCOPE_ID}</strong></div>
+    </div>
+    <form className="admin-audit-filters" onSubmit={(event) => { event.preventDefault(); void load(); }}>
+      <label>Status
+        <select value={jobState} onChange={(event) => setJobState(event.target.value)}>
+          <option value="">すべて</option>
+          <option value="pending">pending</option>
+          <option value="running">running</option>
+          <option value="retrying">retrying</option>
+          <option value="completed">completed</option>
+          <option value="failed">failed</option>
+          <option value="dead_letter">dead_letter</option>
+        </select>
+      </label>
+      <button type="submit" disabled={state.kind === "loading"}>絞り込む</button>
+    </form>
+    {state.kind === "loading" && <div className="admin-audit-state" role="status">ジョブ状態を取得しています…</div>}
+    {state.kind === "error" && <div className="admin-audit-state is-error" role="alert"><strong>ジョブ状態を取得できませんでした</strong><span>{state.requestId ? `Request ID: ${state.requestId}` : "再試行してください"}</span></div>}
+    {state.kind === "ready" && state.data.items.length === 0 && <div className="admin-audit-state">対象のジョブはありません</div>}
+    {state.kind === "ready" && state.data.items.length > 0 && <div className="admin-audit-table-wrap">
+      <table className="admin-audit-table">
+        <thead><tr><th>更新時刻</th><th>Status</th><th>Job</th><th>Attempt</th><th>Progress</th><th>Failure</th><th>Recovery</th></tr></thead>
+        <tbody>{state.data.items.map((item) => <tr key={item.jobId}>
+          <td>{new Date(item.updatedAt).toLocaleString("ja-JP")}</td>
+          <td><strong>{item.state}</strong></td>
+          <td><strong>{item.type}</strong><small>{item.jobId}</small></td>
+          <td>{item.attempt}</td>
+          <td>{item.progress ? `${item.progress.percent}%${item.progress.code ? ` / ${item.progress.code}` : ""}` : "—"}</td>
+          <td>{item.failureCode ?? "—"}</td>
+          <td>{item.retry.available ? <button type="button">Retry</button> : <small>不可: {item.retry.reason}</small>}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+  </section>;
+};
 
 const AuditViewer = () => {
   const [category, setCategory] = useState("");
@@ -152,8 +240,9 @@ export default function AdminPortal() {
           <div className="admin-context-card"><span>Environment</span><strong>{environment}</strong><small>環境を常に明示し、誤操作を減らします</small></div>
         </section>
         <section className="admin-grid" aria-label="管理領域">
-          {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Audit & Security" ? <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
+          {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Audit & Security" ? <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a> : key === "Jobs & Integrations" ? <a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
         </section>
+        <JobOperationsViewer />
         <AuditViewer />
         <section className="admin-foundation" aria-labelledby="admin-foundation-title">
           <div><p className="admin-eyebrow">SAFE OPERATION FOUNDATION</p><h2 id="admin-foundation-title">危険な操作ほど、理由と確認を残す</h2><p>UIで隠すだけでは認可しません。MutationはServer-side Authorization / CSRF / Audit / Operations Guardを通す前提です。</p></div>
