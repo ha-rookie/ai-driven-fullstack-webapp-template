@@ -111,6 +111,10 @@ const loadJob = async (
   LIMIT 1
 `).bind(environment, jobId).first<JobRow>();
 
+type JobAuthorizationResult =
+  | { readonly ok: true; readonly actorId: string }
+  | { readonly ok: false; readonly response: Response };
+
 const authorize = async (
   request: Request,
   env: JobOperationsEnvironment,
@@ -118,15 +122,15 @@ const authorize = async (
   policy: RolePolicy,
   action: string,
   scopeId: string,
-) => {
+): Promise<JobAuthorizationResult> => {
   let authentication;
   try {
     authentication = await requireAuthenticatedUser(request, env.DB);
   } catch {
-    return { response: error(requestId, 503, "authentication_unavailable", "Authentication is unavailable") } as const;
+    return { ok: false, response: error(requestId, 503, "authentication_unavailable", "Authentication is unavailable") };
   }
   if (!authentication.allowed) {
-    return { response: error(requestId, authentication.status, authentication.code, authentication.message) } as const;
+    return { ok: false, response: error(requestId, authentication.status, authentication.code, authentication.message) };
   }
   try {
     const decision = await requireScopedAuthorization({
@@ -138,11 +142,11 @@ const authorize = async (
       resourceScopeId: scopeId,
     });
     if (!decision.allowed) {
-      return { response: error(requestId, decision.status, decision.code, decision.message) } as const;
+      return { ok: false, response: error(requestId, decision.status, decision.code, decision.message) };
     }
-    return { actorId: authentication.user.id } as const;
+    return { ok: true, actorId: authentication.user.id };
   } catch {
-    return { response: error(requestId, 503, "authorization_unavailable", "Authorization is unavailable") } as const;
+    return { ok: false, response: error(requestId, 503, "authorization_unavailable", "Authorization is unavailable") };
   }
 };
 
@@ -212,7 +216,7 @@ export const handleJobOperationsApi = async (
     }
 
     const auth = await authorize(request, env, requestId, policy, JOB_VIEW_ACTION, scopeId);
-    if ("response" in auth) return auth.response;
+    if (!auth.ok) return auth.response;
 
     try {
       const where = ["environment = ?"];
@@ -284,7 +288,7 @@ export const handleJobOperationsApi = async (
   }
 
   const auth = await authorize(request, env, requestId, policy, JOB_RETRY_ACTION, scopeId);
-  if ("response" in auth) return auth.response;
+  if (!auth.ok) return auth.response;
 
   const row = await loadJob(env.DB, environment, retry.jobId);
   if (!row) return error(requestId, 404, "job_not_found", "Job was not found");
