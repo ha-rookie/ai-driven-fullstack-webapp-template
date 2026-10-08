@@ -1,7 +1,10 @@
 import { D1OperationModeStore } from "../../infrastructure/d1-operation-mode-store";
 import { isRuntimeEnvironment } from "../../shared/runtime";
 import { requireAuthenticatedUser, requireScopedAuthorization, type RolePolicy } from "../authorization";
-import { consoleAuditLogger, type AuditLogger } from "../audit";
+import {
+  consoleAuditLogger, prepareDurableAuditRecord, sha256Text,
+  type AuditLogger, type PreparedDurableAuditRecord,
+} from "../audit";
 import {
   apiErrorResponse, csrfGuardFailureResponse, readJsonBody, requireCsrfProtection,
   OperationModeGuard, operationModeRejectionResponse,
@@ -15,7 +18,7 @@ import {
   StaticMasterDefinitionRegistry, type MasterDefinition, type ResolvedMasterValue,
 } from "../master-data";
 import {
-  OperationRegistry, OperationsApplicationService, OPERATIONS_POLICY_VERSION,
+  createOperationAuditEvent, OperationRegistry, OperationsApplicationService, OPERATIONS_POLICY_VERSION,
   type OperationDefinition, type OperationHandler, type OperationRequest,
 } from "../operations";
 
@@ -72,6 +75,7 @@ export const createScheduleMasterHandler = (input: {
   readonly label: string;
   readonly now: () => Date;
   readonly onScheduled?: (value: ResolvedMasterValue) => void;
+  readonly getAudit?: () => PreparedDurableAuditRecord | undefined;
 }): OperationHandler => {
   const store = new D1MasterDataStore(input.db);
   const service = new MasterDataService({
@@ -95,6 +99,7 @@ export const createScheduleMasterHandler = (input: {
           effectiveFrom: input.effectiveFrom,
           label: input.label,
           enabled: true,
+          durableAudit: input.getAudit?.(),
         });
         input.onScheduled?.(scheduled);
         return { result: "SUCCESS" };
@@ -213,11 +218,13 @@ export const handleMasterScheduleApi = async (
     && current.revision.effectiveFrom < effectiveFrom
     && (isPreview || priorRevisionId === expectedPrior);
   let scheduled: ResolvedMasterValue | undefined;
+  let auditReceipt: PreparedDurableAuditRecord | undefined;
   const handler = createScheduleMasterHandler({
     db: env.DB, environment, definition: options.definition, actorId: auth.user.id,
     expectedVersion, priorRevisionId: isPreview ? (expectedPrior ?? "") : priorRevisionId,
     effectiveFrom, label: newLabel, now,
     onScheduled: (value) => { scheduled = value; },
+    getAudit: () => auditReceipt,
   });
   const operations = new OperationsApplicationService(
     new OperationRegistry([handler]), options.auditLogger ?? consoleAuditLogger,
@@ -258,6 +265,16 @@ export const handleMasterScheduleApi = async (
   if (!available) {
     await idempotency.fail(decision.execution);
     return error(requestId, 409, "master_state_conflict", "Master has changed or is not eligible for schedule");
+  }
+  try {
+    auditReceipt = await prepareDurableAuditRecord(createOperationAuditEvent({
+      requestId, method: request.method, path: url.pathname, actorId: auth.user.id,
+      target: operationRequest.target, operationId: SCHEDULE_MASTER_REVISION,
+      correlationId: requestId, affectedCount: 1,
+    }, "success", "reason_sha256:" + await sha256Text(reason)), environment);
+  } catch {
+    await idempotency.fail(decision.execution);
+    return error(requestId, 503, "audit_unavailable", "Durable audit preparation failed");
   }
   const result = await operations.execute(operationRequest, preview, {
     actorId: auth.user.id, requestContext: { requestId, method: request.method, path: url.pathname },
