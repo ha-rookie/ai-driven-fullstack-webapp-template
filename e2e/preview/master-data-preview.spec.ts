@@ -119,3 +119,67 @@ test("admin can retire only the isolated Preview master with verified post-state
   );
   expect(wrongTarget).toBe(404);
 });
+
+test("ordinary employee cannot preview a future master cutover", async ({ page }) => {
+  await loginAs(page, "Aoi Employee");
+  const response = await page.evaluate(async () =>
+    (await fetch("/api/admin/master-operations/schedule/preview?scopeId=workhub-company&itemId=workhub-office-schedule&expectedVersion=2&effectiveFrom=2027-04-01T00%3A00%3A00.000Z&label=New")).status,
+  );
+  expect(response).toBe(403);
+});
+
+test("admin schedules future revision atomically without breaking prior history", async ({ page }) => {
+  await loginAs(page, "Kai Admin");
+  await page.goto("/admin", { waitUntil: "networkidle" });
+  const panel = page.locator("#admin-master-schedule-demo");
+  await expect(panel.getByRole("heading", { name: "マスタの将来改訂（専用デモ）" })).toBeVisible();
+  await expect(panel.getByText("SCHEDULE_MASTER_REVISION", { exact: true })).toBeVisible();
+  const history = panel.getByTestId("master-schedule-history");
+  const priorCount = await history.textContent();
+  if (priorCount?.includes("1 Revision")) {
+    await panel.getByRole("button", { name: "切替内容を下見" }).click();
+    await expect(panel.getByText("CONTROLLED_CHANGE")).toBeVisible();
+    await panel.getByLabel("変更理由").fill("Preview cutover acceptance: next fiscal year label");
+    await panel.getByLabel("現行期間の終了・将来改訂の開始日時・過去履歴の保持を確認しました").check();
+    const pendingResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/admin/master-operations/schedule/execute?") &&
+      response.request().method() === "POST",
+    );
+    await panel.getByRole("button", { name: "将来改訂を予約" }).click();
+    const executed = await pendingResponse;
+    expect(executed.status()).toBe(200);
+    const outcome = await executed.json() as {
+      readonly execution: { readonly result: string };
+      readonly verification: { readonly status: string };
+    };
+    expect(outcome.execution.result).toBe("SUCCESS");
+    expect(outcome.verification.status).toBe("PASSED");
+    await expect(panel.getByText("将来Revisionの予約と切替前後の検証が完了しました")).toBeVisible();
+  }
+  await expect(history).toHaveText("2 Revision");
+  const detail = await page.evaluate(async (url) => {
+    const response = await fetch(url);
+    return { status: response.status, data: await response.json() };
+  }, masterListUrl + "&itemId=workhub-office-schedule");
+  expect(detail.status).toBe(200);
+  const record = detail.data as {
+    readonly revisions: readonly {
+      readonly label: string;
+      readonly effectiveTo: string | null;
+      readonly effectiveFrom: string;
+      readonly lifecycle: string;
+    }[];
+  };
+  const original = record.revisions.find((revision) => revision.label === "Scheduled Office Original");
+  const future = record.revisions.find((revision) => revision.label === "Scheduled Office Next");
+  expect(original?.effectiveTo).toBe("2027-04-01T00:00:00.000Z");
+  expect(future?.effectiveFrom).toBe("2027-04-01T00:00:00.000Z");
+  expect(future?.effectiveTo).toBeNull();
+  expect(future?.lifecycle).toBe("future");
+
+  // TOKYO is never an allowed mutation target.
+  const wrongTarget = await page.evaluate(async () =>
+    (await fetch("/api/admin/master-operations/schedule/preview?scopeId=workhub-company&itemId=workhub-office-tokyo&expectedVersion=2&effectiveFrom=2027-04-01T00%3A00%3A00.000Z&label=Wrong")).status,
+  );
+  expect(wrongTarget).toBe(404);
+});
