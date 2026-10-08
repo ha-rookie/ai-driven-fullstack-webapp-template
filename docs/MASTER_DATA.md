@@ -226,3 +226,16 @@ Master's **availability** (`MasterRevision.enabled`) is separate from **retireme
 - **Current limitation:** a new future cutover cannot be scheduled on top of an already-scheduled future cutover before its effective date, as `scheduleRevision` only replaces the *currently effective* open-ended Revision. Multi-step chained future plans and cancellation/rescheduling require an independent design/gate.
 
 No Production mutation is enabled. This vertical slice does not imply the entire #418 generic Master Administration UX is complete.
+
+## #418 Stage 3b: future-effective display order without weakening availability policy
+
+Following #517, `SCHEDULE_MASTER_REVISION` already supports strictly allowed future enabled/disabled transitions. Display ordering is now a **third, independent project permission dimension**:
+
+- `orderChangeItemIds` is a dedicated project-supplied allowlist; the only WORKHUB permitted target is the non-referenced `ORDER_DEMO` item.
+- For that target, the new Revision must keep the exact current `label` and `enabled` state; it must change the integer `displayOrder` (safe range -1,000,000…+1,000,000). Arbitrary combinations of status/order/label remain forbidden.
+- For the existing availability-only target IDs, any provided `displayOrder` is forbidden. For label-only targets, `displayOrder` is also forbidden. Missing value retains existing order, preserving backward compatibility.
+- Preview shows `currentDisplayOrder → proposed displayOrder`, requires reason and confirmation; execute maintains scoped system_admin, CSRF, idempotency, operation-mode, atomic durable audit, optimistic Version and read-after-write checks.
+- The old effective period keeps its original display order, and the new value takes effect exactly at the future half-open interval boundary. Business Fact snapshots and historical Revision IDs are never mutated.
+- Non-destructive Preview fixture uses only the dedicated `ORDER_DEMO` Master. TOKYO/NAGOYA are not allowed.
+- This does **not** add an unrestricted UI for arbitrary Master Definitions or a hierarchy editor. Their policy/validation model remains subsequent #418 work.
+

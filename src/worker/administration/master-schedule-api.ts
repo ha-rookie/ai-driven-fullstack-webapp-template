@@ -39,6 +39,8 @@ export interface MasterScheduleOptions {
   readonly allowedItemIds: readonly string[];
   /** Per-reference-item permitted status transition: false=disable, true=enable. */
   readonly availabilityTransitions?: Readonly<Record<string, boolean>>;
+  /** Explicit project Demo items permitted to alter displayOrder only. */
+  readonly orderChangeItemIds?: readonly string[];
   readonly authorizationPolicy?: RolePolicy;
   readonly auditLogger?: AuditLogger;
   readonly now?: () => Date;
@@ -58,6 +60,15 @@ const isoFuture = (value: unknown, now: string): value is string =>
   typeof value === "string" && value.length === 24
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value
     && value > now;
+const validOrder = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value)
+  && value >= -1_000_000 && value <= 1_000_000;
+const queryOrder = (value: string | null): number | undefined | null => {
+  if (value === null) return undefined;
+  if (!/^-?(0|[1-9][0-9]{0,6})$/u.test(value)) return null;
+  const result = Number(value);
+  return validOrder(result) ? result : null;
+};
 const validLabel = (value: unknown): value is string => {
   if (typeof value !== "string" || !value.trim() || value.trim().length > 256) return false;
   return [...value].every((character) => {
@@ -76,6 +87,7 @@ export const createScheduleMasterHandler = (input: {
   readonly effectiveFrom: string;
   readonly label: string;
   readonly enabled: boolean;
+  readonly displayOrder?: number;
   readonly now: () => Date;
   readonly onScheduled?: (value: ResolvedMasterValue) => void;
   readonly getAudit?: () => PreparedDurableAuditRecord | undefined;
@@ -102,6 +114,7 @@ export const createScheduleMasterHandler = (input: {
           effectiveFrom: input.effectiveFrom,
           label: input.label,
           enabled: input.enabled,
+          displayOrder: input.displayOrder,
           durableAudit: input.getAudit?.(),
         });
         input.onScheduled?.(scheduled);
@@ -132,6 +145,7 @@ export const createScheduleMasterHandler = (input: {
         && newValue?.revision.effectiveFrom === input.effectiveFrom
         && newValue.revision.label === input.label
         && newValue.revision.enabled === input.enabled
+        && (input.displayOrder === undefined || newValue.revision.displayOrder === input.displayOrder)
         && newValue.revision.id !== input.priorRevisionId
         ? { status: "PASSED", summary: "Previous interval closed and future revision resolves at cutoff" }
         : { status: "FAILED", summary: "Master future cutover post-state mismatch" };
@@ -184,6 +198,7 @@ export const handleMasterScheduleApi = async (
   let effectiveFrom: unknown = isPreview ? url.searchParams.get("effectiveFrom") : undefined;
   let label: unknown = isPreview ? url.searchParams.get("label") : undefined;
   let enabled: unknown = isPreview ? (url.searchParams.get("enabled") ?? "true") : undefined;
+  let displayOrder: unknown = isPreview ? queryOrder(url.searchParams.get("displayOrder")) : undefined;
   let priorRevisionId = "";
   let reason = "", policyVersion = "", confirmed = false;
   if (!isPreview) {
@@ -196,6 +211,7 @@ export const handleMasterScheduleApi = async (
     effectiveFrom = body?.effectiveFrom;
     label = body?.label;
     enabled = body?.enabled ?? true;
+    displayOrder = body?.displayOrder;
     priorRevisionId = typeof body?.priorRevisionId === "string" ? body.priorRevisionId : "";
     reason = typeof body?.reason === "string" ? body.reason.trim() : "";
     policyVersion = typeof body?.previewPolicyVersion === "string" ? body.previewPolicyVersion : "";
@@ -207,6 +223,7 @@ export const handleMasterScheduleApi = async (
   }
   if (!expectedVersion || !isoFuture(effectiveFrom, at) || !validLabel(label)
     || typeof enabled !== "boolean"
+    || (displayOrder !== undefined && !validOrder(displayOrder))
     || (!isPreview && (!/^[A-Za-z0-9_.:-]{1,128}$/u.test(priorRevisionId)
       || reason.length < 1 || reason.length > 200 || !confirmed || !policyVersion))) {
     return error(requestId, 400, "invalid_schedule_request", "Valid future timestamp, label, version, and safeguards are required");
@@ -225,11 +242,18 @@ export const handleMasterScheduleApi = async (
   }
   const expectedPrior = current?.revision.id ?? null;
   const availabilityTransition = options.availabilityTransitions?.[itemId];
-  // Do not let a general revision-label command silently become an enable/disable API.
-  const allowedTransition = availabilityTransition === undefined
-    ? enabled === true
-    : enabled === availabilityTransition && current !== null
-      && enabled !== current.revision.enabled && newLabel === current.revision.label;
+  const isOrderDemo = options.orderChangeItemIds?.includes(itemId) === true;
+  // Three disjoint project-specific capabilities: label-only, availability-only, order-only.
+  // Never allow an unapproved item to gain an unintended mutation dimension.
+  const allowedTransition = isOrderDemo
+    ? current !== null && newLabel === current.revision.label
+      && enabled === current.revision.enabled && displayOrder !== undefined
+      && displayOrder !== current.revision.displayOrder
+    : availabilityTransition === undefined
+      ? enabled === true && displayOrder === undefined
+      : enabled === availabilityTransition && current !== null
+        && enabled !== current.revision.enabled && newLabel === current.revision.label
+        && displayOrder === undefined;
   const available = allowedTransition && item.retiredAt === null && item.version === expectedVersion
     && current?.revision.effectiveTo === null
     && current.revision.effectiveFrom < effectiveFrom
@@ -239,7 +263,7 @@ export const handleMasterScheduleApi = async (
   const handler = createScheduleMasterHandler({
     db: env.DB, environment, definition: options.definition, actorId: auth.user.id,
     expectedVersion, priorRevisionId: isPreview ? (expectedPrior ?? "") : priorRevisionId,
-    effectiveFrom, label: newLabel, enabled, now,
+    effectiveFrom, label: newLabel, enabled, displayOrder, now,
     onScheduled: (value) => { scheduled = value; },
     getAudit: () => auditReceipt,
   });
@@ -259,7 +283,10 @@ export const handleMasterScheduleApi = async (
         id: item.id, code: item.code, version: item.version, retiredAt: item.retiredAt,
       },
       priorRevisionId: expectedPrior, currentLabel: current?.revision.label ?? null,
-      currentEnabled: current?.revision.enabled ?? null, enabled, available,
+      currentEnabled: current?.revision.enabled ?? null, enabled,
+      currentDisplayOrder: current?.revision.displayOrder ?? null,
+      displayOrder: displayOrder ?? current?.revision.displayOrder ?? null,
+      available,
       reasonCode: item.retiredAt !== null ? "retired" : item.version !== expectedVersion
         ? "stale_version" : !current ? "no_current_revision"
           : current.revision.effectiveTo !== null ? "not_open_ended"
@@ -306,6 +333,7 @@ export const handleMasterScheduleApi = async (
     ...result, scheduled: scheduled ? {
       itemVersion: scheduled.item.version, revisionId: scheduled.revision.id,
       label: scheduled.revision.label, enabled: scheduled.revision.enabled,
+      displayOrder: scheduled.revision.displayOrder,
       effectiveFrom: scheduled.revision.effectiveFrom,
     } : null,
   }, status);

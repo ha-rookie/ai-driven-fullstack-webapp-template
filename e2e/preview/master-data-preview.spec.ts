@@ -395,3 +395,92 @@ test("Preview master enable/disable cutovers retain historical and durable audit
   });
   expect(outside).toBe(404);
 });
+
+test("order-only Preview master creates future Revision with audited display-order change", async ({ page }) => {
+  await loginAs(page, "Kai Admin");
+  await page.goto("/admin", { waitUntil: "networkidle" });
+  const panel = page.locator("#admin-master-order-demo");
+  await expect(panel.getByRole("heading", { name: "マスタ表示順の将来改訂（専用デモ）" })).toBeVisible();
+  const history = panel.getByTestId("master-schedule-history");
+  if ((await history.textContent())?.includes("1 Revision")) {
+    await expect(panel.getByLabel("改訂後の表示順")).toHaveValue("73");
+    await panel.getByRole("button", { name: "切替内容を下見" }).click();
+    await expect(panel.getByTestId("master-order-preview")).toContainText("95 → 73");
+    await panel.getByLabel("変更理由").fill("Preview Stage 3b: reorder without modifying identity or state");
+    await panel.getByLabel("現行期間の終了・将来改訂の開始日時・過去履歴の保持を確認しました").check();
+    const pending = page.waitForResponse((response) =>
+      response.url().includes("/api/admin/master-operations/schedule/execute?")
+        && response.request().method() === "POST",
+    );
+    await panel.getByRole("button", { name: "将来改訂を予約" }).click();
+    const response = await pending;
+    expect(response.status()).toBe(200);
+    const outcome = await response.json() as {
+      execution: { result: string }; verification: { status: string };
+      scheduled: { displayOrder: number; enabled: boolean };
+    };
+    expect(outcome.execution.result).toBe("SUCCESS");
+    expect(outcome.verification.status).toBe("PASSED");
+    expect(outcome.scheduled.displayOrder).toBe(73);
+    expect(outcome.scheduled.enabled).toBe(true);
+  }
+  await expect(history).toHaveText("2 Revision");
+  const evidence = await page.evaluate(async () => {
+    const id = "workhub-office-order";
+    const scope = "scopeId=workhub-company";
+    const detail = await fetch("/api/admin/master-data?" + scope + "&masterKey=workhub.office&itemId=" + id);
+    const audit = await fetch("/api/admin/audit?" + scope +
+      "&resourceType=master_item&resourceId=" + id + "&action=operation.SCHEDULE_MASTER_REVISION");
+    return { detailStatus: detail.status, detail: await detail.json(),
+      auditStatus: audit.status, audit: await audit.json() };
+  });
+  expect(evidence.detailStatus).toBe(200);
+  const details = evidence.detail as {
+    revisions: readonly { label: string; enabled: boolean;
+      effectiveFrom: string; effectiveTo: string | null; displayOrder: number }[];
+  };
+  const old = details.revisions.find((value) => value.effectiveFrom === "2026-01-01T00:00:00.000Z");
+  const next = details.revisions.find((value) => value.effectiveFrom === "2027-10-01T00:00:00.000Z");
+  expect(old?.displayOrder).toBe(95);
+  expect(old?.effectiveTo).toBe("2027-10-01T00:00:00.000Z");
+  expect(next?.displayOrder).toBe(73);
+  expect(next?.effectiveTo).toBeNull();
+  expect(next?.enabled).toBe(true);
+  expect(next?.label).toBe(old?.label);
+  expect(evidence.auditStatus).toBe(200);
+  const audit = evidence.audit as {
+    items: readonly { actorId: string; outcome: string; resourceId: string; reason: string }[];
+  };
+  expect(audit.items.length).toBeGreaterThanOrEqual(1);
+  expect(audit.items[0].actorId).toBe("workhub-demo-kai");
+  expect(audit.items[0].outcome).toBe("success");
+  expect(audit.items[0].resourceId).toBe("workhub-office-order");
+  expect(audit.items[0].reason).toMatch(/^reason_sha256:[a-f0-9]{64}$/u);
+
+  // Project approved dimension policy: ordinary label change or availability
+  // targets cannot mutate their displayOrder.
+  for (const id of ["workhub-office-schedule", "workhub-office-availability-disable"]) {
+    const q = new URLSearchParams({
+      scopeId: "workhub-company", itemId: id,
+      expectedVersion: "2", label: "Changed", enabled: "true",
+      displayOrder: "73", effectiveFrom: "2027-10-01T00:00:00.000Z",
+    });
+    const preview = await page.evaluate(async (url) => {
+      const r = await fetch(url); return { status: r.status, body: await r.json() };
+    }, "/api/admin/master-operations/schedule/preview?" + q);
+    expect(preview.status).toBe(200);
+    expect((preview.body as { available: boolean }).available).toBe(false);
+  }
+  const outOfScope = await page.evaluate(async () =>
+    (await fetch("/api/admin/master-operations/schedule/preview?scopeId=workhub-company&itemId=workhub-office-tokyo&expectedVersion=2&effectiveFrom=2027-10-01T00%3A00%3A00.000Z&label=No&displayOrder=73")).status,
+  );
+  expect(outOfScope).toBe(404);
+});
+
+test("non-admin cannot request a Master order-only change", async ({ page }) => {
+  await loginAs(page, "Aoi Employee");
+  const status = await page.evaluate(async () =>
+    (await fetch("/api/admin/master-operations/schedule/preview?scopeId=workhub-company&itemId=workhub-office-order&expectedVersion=2&effectiveFrom=2027-10-01T00%3A00%3A00.000Z&label=Order%20demo%20unchanged&displayOrder=73")).status,
+  );
+  expect(status).toBe(403);
+});

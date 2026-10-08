@@ -179,3 +179,37 @@ test("failed stale disable cannot create a second overlapping status change", as
     (error: unknown) => error instanceof MasterDataError && error.code === "conflict");
   assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.effectiveTo, cutoff);
 });
+
+test("future displayOrder-only revision keeps current order and historical Revision intact", async () => {
+  const { service } = createFixture();
+  const { item, first } = await seeded(service);
+  const result = await service.scheduleRevision({
+    itemId: item.id, priorRevisionId: first.revision.id,
+    actorId: "admin", expectedItemVersion: first.item.version,
+    effectiveFrom: "2027-10-01T00:00:00.000Z",
+    label: first.revision.label, enabled: true, displayOrder: 73,
+  });
+  assert.equal(result.revision.displayOrder, 73);
+  assert.equal(result.revision.label, first.revision.label);
+  assert.equal(result.revision.enabled, first.revision.enabled);
+  assert.deepEqual(result.revision.attributes, first.revision.attributes);
+  const before = await service.resolveAsOf(item.id, "2027-09-30T23:59:59.999Z");
+  assert.equal(before?.revision.displayOrder, 20);
+  const atCutover = await service.resolveAsOf(item.id, "2027-10-01T00:00:00.000Z");
+  assert.equal(atCutover?.revision.displayOrder, 73);
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.displayOrder, 20);
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.effectiveTo,
+    "2027-10-01T00:00:00.000Z");
+});
+
+test("invalid future displayOrder cannot produce a new Revision", async () => {
+  const { service } = createFixture();
+  const { item, first } = await seeded(service);
+  await assert.rejects(() => service.scheduleRevision({
+    itemId: item.id, priorRevisionId: first.revision.id,
+    actorId: "admin", expectedItemVersion: first.item.version,
+    effectiveFrom: "2027-10-01T00:00:00.000Z",
+    label: first.revision.label, enabled: true, displayOrder: 1000001,
+  }), (error: unknown) => error instanceof MasterDataError && error.code === "invalid_input");
+  assert.equal((await service.resolveHistoricalRevision(first.revision.id))?.revision.effectiveTo, null);
+});

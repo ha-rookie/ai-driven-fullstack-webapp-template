@@ -16,7 +16,7 @@ import {
 import { handleExampleResourceApi } from "./worker/example-resource-api";
 import { createWorkhubJobRecoveryRegistry } from "./reference/workhub/job-recovery";
 import { handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi, handleMasterDataViewerApi, handleMasterRetireApi, handleMasterScheduleApi } from "./worker/administration";
-import { WORKHUB_OFFICE_MASTER_DEFINITION, WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_AUDIT_RETIRE_ITEM_ID, WORKHUB_AUDIT_SCHEDULE_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID } from "./reference/workhub/travel-request";
+import { WORKHUB_OFFICE_MASTER_DEFINITION, WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_AUDIT_RETIRE_ITEM_ID, WORKHUB_AUDIT_SCHEDULE_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID } from "./reference/workhub/travel-request";
 import { handleLiveness, handleReadiness } from "./worker/health";
 import {
   apiErrorResponse,
@@ -220,8 +220,9 @@ export default {
         definition: WORKHUB_OFFICE_MASTER_DEFINITION,
         allowedItemIds: [
           WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_AUDIT_SCHEDULE_ITEM_ID,
-          WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID,
+          WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID,
         ],
+        orderChangeItemIds: [WORKHUB_ORDER_DEMO_ITEM_ID],
         availabilityTransitions: {
           [WORKHUB_AVAILABILITY_DISABLE_ITEM_ID]: false,
           [WORKHUB_AVAILABILITY_ENABLE_ITEM_ID]: true,
