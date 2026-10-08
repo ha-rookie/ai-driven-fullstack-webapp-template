@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { submitPreviewLogin } from "./preview-login-evidence";
 
 test("fixed Preview WORKHUB login and home shell render without business-data mutation", async ({ page }, testInfo) => {
   const response = await page.goto("/", { waitUntil: "networkidle" });
@@ -14,27 +15,8 @@ test("fixed Preview WORKHUB login and home shell render without business-data mu
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /Aoi Employee/u }).click();
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
-  const loginResponsePromise = page.waitForResponse(
-    (response) => response.url().endsWith("/api/auth/login") && response.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  const loginResponse = await loginResponsePromise;
-  const loginStatus = loginResponse.status();
-  console.log("Preview Aoi login status", {
-    status: loginStatus,
-    requestId: loginResponse.headers()["x-request-id"] ?? null,
-    dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
-    dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
-  });
-  const loginBody = loginStatus === 200 ? "" : await loginResponse.text();
-  console.log("Preview Aoi login evidence", {
-    status: loginStatus,
-    requestId: loginResponse.headers()["x-request-id"] ?? null,
-    dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
-    dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
-    body: loginBody,
-  });
-  expect(loginStatus, loginBody).toBe(200);
+  const loginResponse = await submitPreviewLogin(page, "Aoi Employee");
+  expect(loginResponse.status(), "Fresh Aoi Preview login failed; see sanitized attempt evidence").toBe(200);
 
   const unauthorizedAuditStatus = await page.evaluate(async () =>
     (await fetch("/api/admin/audit?scopeId=workhub-company&limit=20")).status,
@@ -70,27 +52,8 @@ test("fixed Preview administration portal renders for System Admin without mutat
   const dialog = page.getByRole("dialog", { name: "デモユーザを選ぶ" });
   await dialog.getByRole("button", { name: /Kai Admin/u }).click();
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
-  const loginResponsePromise = page.waitForResponse(
-    (response) => response.url().endsWith("/api/auth/login") && response.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  const loginResponse = await loginResponsePromise;
-  const loginStatus = loginResponse.status();
-  console.log("Preview Kai login status", {
-    status: loginStatus,
-    requestId: loginResponse.headers()["x-request-id"] ?? null,
-    dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
-    dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
-  });
-  const loginBody = loginStatus === 200 ? "" : await loginResponse.text();
-  console.log("Preview Kai login evidence", {
-    status: loginStatus,
-    requestId: loginResponse.headers()["x-request-id"] ?? null,
-    dependencyStage: loginResponse.headers()["x-auth-dependency-stage"] ?? null,
-    dependencyDetail: loginResponse.headers()["x-auth-dependency-detail"] ?? null,
-    body: loginBody,
-  });
-  expect(loginStatus, loginBody).toBe(200);
+  const loginResponse = await submitPreviewLogin(page, "Kai Admin");
+  expect(loginResponse.status(), "Fresh Kai Preview login failed; see sanitized attempt evidence").toBe(200);
   await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
 
   const auditResponsePromise = page.waitForResponse(
