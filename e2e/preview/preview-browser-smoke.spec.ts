@@ -46,6 +46,11 @@ test("fixed Preview WORKHUB login and home shell render without business-data mu
   );
   expect(unauthorizedJobsStatus).toBe(403);
 
+  const unauthorizedCorrectionStatus = await page.evaluate(async () =>
+    (await fetch("/api/admin/data-corrections/RESTORE_SOFT_DELETED_RESOURCE/preview?scopeId=workhub-company&resourceId=workhub-demo-deleted-resource&expectedVersion=2")).status,
+  );
+  expect(unauthorizedCorrectionStatus).toBe(403);
+
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
   await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "今日の予定" })).toBeVisible();
@@ -94,17 +99,31 @@ test("fixed Preview administration portal renders for System Admin without mutat
   const jobsResponsePromise = page.waitForResponse(
     (response) => response.url().includes("/api/admin/jobs?") && response.request().method() === "GET",
   );
+  const correctionPreviewPromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/admin/data-corrections/RESTORE_SOFT_DELETED_RESOURCE/preview?")
+      && response.request().method() === "GET",
+  );
   const response = await page.goto("/admin", { waitUntil: "networkidle" });
   expect(response?.status()).toBe(200);
-  const [auditResponse, jobsResponse] = await Promise.all([auditResponsePromise, jobsResponsePromise]);
+  const [auditResponse, jobsResponse, correctionPreviewResponse] = await Promise.all([
+    auditResponsePromise,
+    jobsResponsePromise,
+    correctionPreviewPromise,
+  ]);
   expect(auditResponse.status()).toBe(200);
   expect(jobsResponse.status()).toBe(200);
+  expect(correctionPreviewResponse.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "管理できている状態を、ひとつの入口から" })).toBeVisible();
   await expect(page.getByText("OPERATIONS / ADMINISTRATION", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "管理ポータル" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "ユーザー・権限" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "ジョブ・連携" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "監査・セキュリティ" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "安全なデータ補正" })).toBeVisible();
+  const correctionPanel = page.locator("#admin-business-operations");
+  await expect(correctionPanel.getByText("RESTORE_SOFT_DELETED_RESOURCE", { exact: true })).toBeVisible();
+  await expect(correctionPanel.getByText("Preview deleted resource")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "ジョブ運用" })).toBeVisible();
   await expect(page.getByText("ジョブ状態を取得できませんでした")).toHaveCount(0);
 
@@ -140,6 +159,26 @@ test("fixed Preview administration portal renders for System Admin without mutat
       }
     }
   }
+
+  const restoreButton = correctionPanel.getByRole("button", { name: "このデータを復元" });
+  if (await restoreButton.isEnabled()) {
+    await correctionPanel.getByLabel("補正理由").fill("Preview acceptance: validated mistaken soft delete");
+    await correctionPanel.getByLabel("対象・Version・影響範囲を確認しました").check();
+    const correctionResponsePromise = page.waitForResponse(
+      (correctionResponse) =>
+        correctionResponse.url().includes("/api/admin/data-corrections/RESTORE_SOFT_DELETED_RESOURCE/execute?")
+        && correctionResponse.request().method() === "POST",
+    );
+    await restoreButton.click();
+    const correctionResponse = await correctionResponsePromise;
+    expect([200, 409]).toContain(correctionResponse.status());
+    if (correctionResponse.status() === 200) {
+      await expect(correctionPanel.getByText("補正と検証が完了しました")).toBeVisible();
+    } else {
+      await expect(correctionPanel.getByText("他の操作で対象状態が更新されました。最新状態を再取得しました")).toBeVisible();
+    }
+  }
+  await expect(correctionPanel.getByText("NO", { exact: true })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "監査ログ" })).toBeVisible();
   await expect(page.getByText("監査ログを取得できませんでした")).toHaveCount(0);
