@@ -212,3 +212,15 @@ Hardening in this stage:
 Residual bounds: transactionally durable does not mean tamper-proof against a privileged DB writer. A SHA-256 checksum detects corruption during application reads but an attacker who rewrites both record and checksum can bypass it; stronger signed append-only logs / independent export remain a separate security hardening area. No Production mutation is enabled; Production operations remain Human Gate.
 
 Official D1 API: https://developers.cloudflare.com/d1/worker-api/d1-database/#batch
+
+## #418 Stage 3a — future enabled state and display ordering
+
+- The Stage 2b `SCHEDULE_MASTER_REVISION` operation can now schedule `enabled: true | false` and a bounded integer `displayOrder` (from -1,000,000 to 1,000,000), in addition to the new label and future UTC cutoff.
+- `enabled` and `displayOrder` remain immutable **per revision**. A disable or reactivation closes the old period and appends a new Revision; it does not flip the historical row. `asOf` still resolves the prior enabled state before the cutoff, and the new state on/after it. Disabled values do not appear in `listSelectable`, but remain available using `includeDisabled` or historical revision queries.
+- Existing non-hierarchical WORKHUB office Definition carries the explicit `supportsHierarchy: false` policy. The API deliberately preserves existing `parentItemId` and `attributes` rather than allowing arbitrary project schema edits. Domain validation continues to apply for future revisions.
+- Missing `enabled` defaults to true and missing `displayOrder` inherits prior Revision, maintaining Stage 2b client compatibility; malformed booleans and order values are rejected (not coerced).
+- Two new non-referenced WORKHUB Preview fixtures are **separate** from production/business facts: `STATE_DEMO` (enabled→disabled, order 91→70) and `REACTIVATE_DEMO` (disabled→enabled, order 92→75). Non-destructive seed does not reset or rewrite historical revisions on reruns.
+- Dedicated Preview admin panels expose the target future UTC, new state, and display order, including current → proposed diff, reason, confirmation and guarded execution. Mutation reuses RolePolicy + CSRF + Idempotency + OperationMode + audit-integrity transactional D1 batch from Stages 2b/2c.
+- Unit / Preview Browser test requirements: before/at-cutoff `asOf`, no selectable disabled values, successful reactivation, preserved history, actor/target/reason SHA-256 audit and Aoi 403. Existing TOKYO/NAGOYA remain mutation-protected.
+- Future admin work: generalize the UI to project-approved Definition selections and defined hierarchy editors, and review accessible UX, large Master paging and safe workflow. Do not enable an unrestricted CRUD API.
+
