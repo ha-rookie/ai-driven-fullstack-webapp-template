@@ -160,10 +160,14 @@ test("fixed Preview administration portal renders for System Admin without mutat
     }
   }
 
+  const deletedState = correctionPanel.getByTestId("correction-deleted-state");
   const restoreButton = correctionPanel.getByRole("button", { name: "このデータを復元" });
-  if (await restoreButton.isEnabled()) {
+
+  if ((await deletedState.textContent()) === "YES") {
     await correctionPanel.getByLabel("補正理由").fill("Preview acceptance: validated mistaken soft delete");
     await correctionPanel.getByLabel("対象・Version・影響範囲を確認しました").check();
+    await expect(restoreButton).toBeEnabled();
+
     const correctionResponsePromise = page.waitForResponse(
       (correctionResponse) =>
         correctionResponse.url().includes("/api/admin/data-corrections/RESTORE_SOFT_DELETED_RESOURCE/execute?")
@@ -172,13 +176,15 @@ test("fixed Preview administration portal renders for System Admin without mutat
     await restoreButton.click();
     const correctionResponse = await correctionResponsePromise;
     expect([200, 409]).toContain(correctionResponse.status());
+
     if (correctionResponse.status() === 200) {
       await expect(correctionPanel.getByText("補正と検証が完了しました")).toBeVisible();
     } else {
       await expect(correctionPanel.getByText("他の操作で対象状態が更新されました。最新状態を再取得しました")).toBeVisible();
     }
   }
-  await expect(correctionPanel.getByTestId("correction-deleted-state")).toHaveText("NO");
+
+  await expect(deletedState).toHaveText("NO");
 
   await expect(page.getByRole("heading", { name: "監査ログ" })).toBeVisible();
   await expect(page.getByText("監査ログを取得できませんでした")).toHaveCount(0);
