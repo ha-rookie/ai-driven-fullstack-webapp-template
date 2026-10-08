@@ -108,6 +108,27 @@ export const isWorkhubDemoEnabled = (
   return configured !== "false";
 };
 
+const previewDependencyDetail = (error: unknown): string => {
+  const dependencyCause =
+    error instanceof LocalCredentialAuthenticationDependencyError
+      ? error.cause
+      : error;
+  if (!(dependencyCause instanceof Error)) return "unknown_error";
+
+  const code = "code" in dependencyCause && typeof dependencyCause.code === "string"
+    ? dependencyCause.code
+    : "";
+  const normalizedMessage = dependencyCause.message.toLowerCase();
+
+  if (normalizedMessage.includes("scrypt failed")) return code ? `scrypt_failed:${code}` : "scrypt_failed";
+  if (normalizedMessage.includes("pbkdf2") && normalizedMessage.includes("100000")) {
+    return "pbkdf2_iteration_limit";
+  }
+  if (dependencyCause.name === "NotSupportedError") return "not_supported";
+  if (dependencyCause.name === "RangeError") return code ? `range_error:${code}` : "range_error";
+  return code ? `${dependencyCause.name}:${code}` : dependencyCause.name || "error";
+};
+
 const genericAuthenticationFailure = (requestId: string): Response =>
   apiErrorResponse(
     {
@@ -334,6 +355,7 @@ export const handleWorkhubLogin = async (
     if (environment !== "preview") return response;
     const headers = new Headers(response.headers);
     headers.set("x-auth-dependency-stage", dependencyStage);
+    headers.set("x-auth-dependency-detail", previewDependencyDetail(error));
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
