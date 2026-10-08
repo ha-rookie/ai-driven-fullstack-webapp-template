@@ -58,6 +58,12 @@ const JobOperationsViewer = () => {
     | { readonly kind: "ready"; readonly data: JobResponse }
     | { readonly kind: "error"; readonly requestId: string | null }
   >({ kind: "loading" });
+  const [retryJob, setRetryJob] = useState<JobItem | null>(null);
+  const [retryPolicyVersion, setRetryPolicyVersion] = useState("");
+  const [retryPolicyDecision, setRetryPolicyDecision] = useState("");
+  const [retryReason, setRetryReason] = useState("");
+  const [retryConfirmed, setRetryConfirmed] = useState(false);
+  const [retryStatus, setRetryStatus] = useState("");
 
   const load = async () => {
     setState({ kind: "loading" });
@@ -75,6 +81,65 @@ const JobOperationsViewer = () => {
       setState({ kind: "ready", data: await response.json() as JobResponse });
     } catch {
       setState({ kind: "error", requestId: null });
+    }
+  };
+
+  const prepareRetry = async (job: JobItem) => {
+    setRetryStatus("");
+    const response = await fetch(
+      `/api/admin/jobs/${encodeURIComponent(job.jobId)}/retry/preview?scopeId=${encodeURIComponent(WORKHUB_SCOPE_ID)}`,
+      { headers: { accept: "application/json" } },
+    );
+    if (!response.ok) {
+      setRetryStatus(`Retry Previewを取得できませんでした (HTTP ${response.status})`);
+      return;
+    }
+    const data = await response.json() as {
+      readonly policyVersion: string;
+      readonly preview: { readonly policyDecision: string; readonly risk: string };
+    };
+    setRetryJob(job);
+    setRetryPolicyVersion(data.policyVersion);
+    setRetryPolicyDecision(`${data.preview.policyDecision} / ${data.preview.risk}`);
+    setRetryReason("");
+    setRetryConfirmed(false);
+  };
+
+  const executeRetry = async () => {
+    if (!retryJob) return;
+    setRetryStatus("再実行しています…");
+    try {
+      const csrfResponse = await fetch("/api/auth/csrf", { headers: { accept: "application/json" } });
+      if (!csrfResponse.ok) {
+        setRetryStatus("CSRF tokenを取得できませんでした");
+        return;
+      }
+      const { csrfToken } = await csrfResponse.json() as { readonly csrfToken: string };
+      const response = await fetch(
+        `/api/admin/jobs/${encodeURIComponent(retryJob.jobId)}/retry?scopeId=${encodeURIComponent(WORKHUB_SCOPE_ID)}`,
+        {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
+          body: JSON.stringify({
+            reason: retryReason,
+            confirmed: retryConfirmed,
+            previewPolicyVersion: retryPolicyVersion,
+          }),
+        },
+      );
+      if (!response.ok) {
+        setRetryStatus(`再実行できませんでした (HTTP ${response.status})`);
+        return;
+      }
+      setRetryStatus("再実行と検証が完了しました");
+      setRetryJob(null);
+      await load();
+    } catch {
+      setRetryStatus("再実行処理で通信エラーが発生しました");
     }
   };
 
@@ -116,10 +181,24 @@ const JobOperationsViewer = () => {
           <td>{item.attempt}</td>
           <td>{item.progress ? `${item.progress.percent}%${item.progress.code ? ` / ${item.progress.code}` : ""}` : "—"}</td>
           <td>{item.failureCode ?? "—"}</td>
-          <td>{item.retry.available ? <button type="button">Retry</button> : <small>不可: {item.retry.reason}</small>}</td>
+          <td>{item.retry.available
+            ? <button className="admin-inline-action" type="button" onClick={() => { void prepareRetry(item); }}>再実行を確認</button>
+            : <small>不可: {item.retry.reason}</small>}</td>
         </tr>)}</tbody>
       </table>
     </div>}
+    {retryJob && <form className="admin-retry-panel" onSubmit={(event) => { event.preventDefault(); void executeRetry(); }}>
+      <div><p className="admin-eyebrow">CONTROLLED RECOVERY</p><h3>{retryJob.type}</h3><p>Job ID: <code>{retryJob.jobId}</code></p><p>Policy: <strong>{retryPolicyDecision}</strong></p></div>
+      <label>再実行理由
+        <textarea value={retryReason} onChange={(event) => setRetryReason(event.target.value)} maxLength={200} required placeholder="例：依存先復旧を確認したため検索インデックスを再生成" />
+      </label>
+      <label className="admin-confirm"><input type="checkbox" checked={retryConfirmed} onChange={(event) => setRetryConfirmed(event.target.checked)} />対象・環境・影響範囲を確認しました</label>
+      <div className="admin-retry-actions">
+        <button type="button" onClick={() => setRetryJob(null)}>キャンセル</button>
+        <button type="submit" disabled={!retryReason.trim() || !retryConfirmed}>このJobを再実行</button>
+      </div>
+    </form>}
+    {retryStatus && <div className="admin-audit-state" role="status">{retryStatus}</div>}
   </section>;
 };
 
