@@ -1,3 +1,5 @@
+import type { PreparedDurableAuditRecord } from "../audit/durable-audit-store";
+
 export interface MasterDefinition {
   readonly key: string;
   readonly schemaVersion: number;
@@ -51,6 +53,7 @@ export interface CreateMasterItemBundle {
 }
 
 export interface AppendMasterRevisionBundle {
+  readonly durableAudit?: PreparedDurableAuditRecord;
   readonly item: MasterItemRecord;
   readonly expectedItemVersion: number;
   readonly mutationId: string;
@@ -63,6 +66,7 @@ export interface ScheduleMasterRevisionBundle extends AppendMasterRevisionBundle
 }
 
 export interface ScheduleMasterRevisionCommand {
+  readonly durableAudit?: PreparedDurableAuditRecord;
   readonly itemId: string;
   readonly priorRevisionId: string;
   readonly actorId: string;
@@ -76,6 +80,7 @@ export interface ScheduleMasterRevisionCommand {
 }
 
 export interface RetireMasterItemBundle {
+  readonly durableAudit?: PreparedDurableAuditRecord;
   readonly item: MasterItemRecord;
   readonly expectedItemVersion: number;
   readonly mutationId: string;
@@ -143,6 +148,7 @@ export interface AddMasterRevisionCommand {
 }
 
 export interface RetireMasterItemCommand {
+  readonly durableAudit?: PreparedDurableAuditRecord;
   readonly itemId: string;
   readonly actorId: string;
   readonly expectedItemVersion: number;
