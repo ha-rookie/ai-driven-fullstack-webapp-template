@@ -41,6 +41,11 @@ test("fixed Preview WORKHUB login and home shell render without business-data mu
   );
   expect(unauthorizedAuditStatus).toBe(403);
 
+  const unauthorizedJobsStatus = await page.evaluate(async () =>
+    (await fetch("/api/admin/jobs?scopeId=workhub-company&limit=20")).status,
+  );
+  expect(unauthorizedJobsStatus).toBe(403);
+
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
   await expect(page.getByText("CECIL WORKS DIGITAL WORKPLACE", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "今日の予定" })).toBeVisible();
@@ -86,16 +91,22 @@ test("fixed Preview administration portal renders for System Admin without mutat
   const auditResponsePromise = page.waitForResponse(
     (response) => response.url().includes("/api/admin/audit?") && response.request().method() === "GET",
   );
+  const jobsResponsePromise = page.waitForResponse(
+    (response) => response.url().includes("/api/admin/jobs?") && response.request().method() === "GET",
+  );
   const response = await page.goto("/admin", { waitUntil: "networkidle" });
   expect(response?.status()).toBe(200);
-  const auditResponse = await auditResponsePromise;
+  const [auditResponse, jobsResponse] = await Promise.all([auditResponsePromise, jobsResponsePromise]);
   expect(auditResponse.status()).toBe(200);
+  expect(jobsResponse.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "管理できている状態を、ひとつの入口から" })).toBeVisible();
   await expect(page.getByText("OPERATIONS / ADMINISTRATION", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "管理ポータル" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "ユーザー・権限" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "ジョブ・連携" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "監査・セキュリティ" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ジョブ運用" })).toBeVisible();
+  await expect(page.getByText("ジョブ状態を取得できませんでした")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "監査ログ" })).toBeVisible();
   await expect(page.getByText("監査ログを取得できませんでした")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "危険な操作ほど、理由と確認を残す" })).toBeVisible();
