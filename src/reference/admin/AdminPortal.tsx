@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../../frontend/auth";
 import MasterDataViewer from "./MasterDataViewer";
 import MasterRetireDemo from "./MasterRetireDemo";
+import MasterScheduleDemo from "./MasterScheduleDemo";
 import "./admin-portal.css";
 
 const ADMIN_USER_ID = "workhub-demo-kai";
@@ -519,6 +520,7 @@ export default function AdminPortal() {
         </section>
         <MasterDataViewer />
         <MasterRetireDemo />
+        <MasterScheduleDemo />
         <DataCorrectionViewer />
         <JobOperationsViewer />
         <AuditViewer />

@@ -57,6 +57,24 @@ export interface AppendMasterRevisionBundle {
   readonly revision: MasterRevisionRecord;
 }
 
+/** Cut over one current open-ended revision into a new future revision atomically. */
+export interface ScheduleMasterRevisionBundle extends AppendMasterRevisionBundle {
+  readonly priorRevisionId: string;
+}
+
+export interface ScheduleMasterRevisionCommand {
+  readonly itemId: string;
+  readonly priorRevisionId: string;
+  readonly actorId: string;
+  readonly expectedItemVersion: number;
+  readonly effectiveFrom: string;
+  readonly label: string;
+  readonly enabled: boolean;
+  readonly displayOrder?: number;
+  readonly parentItemId?: string | null;
+  readonly attributes?: unknown;
+}
+
 export interface RetireMasterItemBundle {
   readonly item: MasterItemRecord;
   readonly expectedItemVersion: number;
@@ -68,6 +86,7 @@ export interface MasterDataStore {
   getItem(itemId: string, environment: string): Promise<MasterItemRecord | null>;
   getItemByCode(masterKey: string, code: string, environment: string): Promise<MasterItemRecord | null>;
   appendRevision(bundle: AppendMasterRevisionBundle): Promise<boolean>;
+  scheduleRevision(bundle: ScheduleMasterRevisionBundle): Promise<boolean>;
   retireItem(bundle: RetireMasterItemBundle): Promise<boolean>;
   resolveAt(
     itemId: string,

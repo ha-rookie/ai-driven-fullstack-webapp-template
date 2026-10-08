@@ -6,6 +6,7 @@ import type {
   MasterRevisionRecord,
   ResolvedMasterValue,
   RetireMasterItemBundle,
+  ScheduleMasterRevisionBundle,
 } from "./types";
 
 interface MasterItemRow {
@@ -242,6 +243,84 @@ export class D1MasterDataStore implements MasterDataStore {
       if (!first || changesOf(first) === 0) return false;
       if (results.length !== 2 || results.some((result) => changesOf(result) !== 1)) {
         throw new MasterDataStoreIntegrityError("master revision batch persisted an unexpected number of rows");
+      }
+      return true;
+    } catch (error) {
+      if (isConstraintError(error)) return false;
+      throw error;
+    }
+  }
+
+  async scheduleRevision(bundle: ScheduleMasterRevisionBundle): Promise<boolean> {
+    const { item, revision, mutationId, priorRevisionId, expectedItemVersion } = bundle;
+    if (revision.effectiveTo !== null || revision.revision !== item.nextRevision - 1
+      || revision.environment !== item.environment || revision.masterItemId !== item.id) return false;
+
+    // D1 batch is a single transaction: optimistic guard, close prior period, insert new period.
+    // Other revisions may not extend into [effectiveFrom, +infinity).
+    const itemUpdate = this.db.prepare(`
+      UPDATE master_items
+      SET version = ?, next_revision = ?, last_mutation_id = ?, updated_at = ?, updated_by = ?
+      WHERE id = ? AND environment = ? AND version = ? AND retired_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM master_revisions prior
+          WHERE prior.id = ? AND prior.master_item_id = master_items.id
+            AND prior.environment = master_items.environment
+            AND prior.effective_to IS NULL AND prior.effective_from < ?
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM master_revisions other
+          WHERE other.master_item_id = master_items.id
+            AND other.environment = master_items.environment AND other.id <> ?
+            AND (other.effective_to IS NULL OR ? < other.effective_to)
+        )
+    `).bind(
+      item.version, item.nextRevision, mutationId, item.updatedAt, item.updatedBy,
+      item.id, item.environment, expectedItemVersion,
+      priorRevisionId, revision.effectiveFrom, priorRevisionId, revision.effectiveFrom,
+    );
+
+    const closePrior = this.db.prepare(`
+      UPDATE master_revisions SET effective_to = ?
+      WHERE id = ? AND environment = ? AND master_item_id = ?
+        AND effective_to IS NULL AND effective_from < ?
+        AND EXISTS (
+          SELECT 1 FROM master_items i
+          WHERE i.id = master_revisions.master_item_id
+            AND i.environment = master_revisions.environment AND i.last_mutation_id = ?
+        )
+    `).bind(
+      revision.effectiveFrom, priorRevisionId, item.environment, item.id,
+      revision.effectiveFrom, mutationId,
+    );
+
+    const nextInsert = this.db.prepare(`
+      INSERT INTO master_revisions (
+        id, environment, master_item_id, revision, label, enabled,
+        effective_from, effective_to, display_order, parent_item_id,
+        attributes_json, created_at, created_by
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM master_items i
+        JOIN master_revisions prior
+          ON prior.master_item_id = i.id AND prior.environment = i.environment
+        WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ?
+          AND prior.id = ? AND prior.effective_to = ?
+      )
+    `).bind(
+      revision.id, revision.environment, revision.masterItemId, revision.revision,
+      revision.label, revision.enabled ? 1 : 0, revision.effectiveFrom, null,
+      revision.displayOrder, revision.parentItemId, JSON.stringify(revision.attributes),
+      revision.createdAt, revision.createdBy,
+      item.id, item.environment, mutationId, priorRevisionId, revision.effectiveFrom,
+    );
+
+    try {
+      const results = await this.db.batch([itemUpdate, closePrior, nextInsert]);
+      if (!results[0] || changesOf(results[0]) === 0) return false;
+      if (results.length !== 3 || results.some((result) => changesOf(result) !== 1)) {
+        throw new MasterDataStoreIntegrityError("master cutover batch persisted an unexpected number of rows");
       }
       return true;
     } catch (error) {

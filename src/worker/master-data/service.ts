@@ -11,6 +11,7 @@ import type {
   MasterRevisionRecord,
   ResolvedMasterValue,
   RetireMasterItemCommand,
+  ScheduleMasterRevisionCommand,
 } from "./types";
 
 const MAX_KEY_LENGTH = 128;
@@ -269,6 +270,90 @@ export class MasterDataService {
         throw new MasterDataError("conflict", "master item changed concurrently");
       }
       throw new MasterDataError("overlapping_revision", "master revision overlaps an existing effective period");
+    }
+    await this.emit({
+      type: "revision_created",
+      environment: this.options.environment,
+      masterKey: item.masterKey,
+      itemId: item.id,
+      revisionId: revision.id,
+      actorId,
+      occurredAt: now,
+    });
+    return { item: nextItem, revision };
+  }
+
+  /**
+   * Schedules one future revision and shortens the current open-ended revision.
+   * Neither the old revision identity nor historical Business Fact references change.
+   */
+  async scheduleRevision(command: ScheduleMasterRevisionCommand): Promise<ResolvedMasterValue> {
+    await this.assertMutationAllowed();
+    const actorId = boundedText(command.actorId, "actorId", MAX_ACTOR_LENGTH);
+    const itemId = boundedText(command.itemId, "itemId", MAX_ACTOR_LENGTH);
+    const priorRevisionId = boundedText(command.priorRevisionId, "priorRevisionId", MAX_ACTOR_LENGTH);
+    const item = await this.options.store.getItem(itemId, this.options.environment);
+    if (!item) throw new MasterDataError("not_found", "master item not found");
+    if (item.retiredAt !== null) throw new MasterDataError("retired", "retired master item cannot be scheduled");
+    if (item.version !== command.expectedItemVersion) {
+      throw new MasterDataError("conflict", "master item version is stale");
+    }
+    const definition = this.definition(item.masterKey);
+    const now = this.now().toISOString();
+    const effectiveFrom = assertIsoTimestamp(command.effectiveFrom, "effectiveFrom");
+    if (effectiveFrom <= now) {
+      throw new MasterDataError("invalid_input", "scheduled revision must start strictly in the future");
+    }
+    const prior = await this.options.store.getRevisionById(priorRevisionId, this.options.environment);
+    if (!prior || prior.item.id !== item.id || prior.revision.effectiveTo !== null
+      || prior.revision.effectiveFrom >= effectiveFrom) {
+      throw new MasterDataError("conflict", "current open-ended revision is not eligible for cutover");
+    }
+    const current = await this.options.store.resolveAt(item.id, this.options.environment, now, {
+      includeDisabled: true,
+    });
+    if (!current || current.revision.id !== priorRevisionId) {
+      throw new MasterDataError("conflict", "prior revision is not the current effective revision");
+    }
+    const label = boundedText(command.label, "label", MAX_LABEL_LENGTH);
+    const attributes = normalizeJsonValue(command.attributes ?? prior.revision.attributes);
+    definition.validateAttributes?.(attributes);
+    const parentItemId = command.parentItemId === undefined
+      ? prior.revision.parentItemId
+      : command.parentItemId === null ? null
+        : boundedText(command.parentItemId, "parentItemId", MAX_ACTOR_LENGTH);
+    await this.validateParent(definition, item, parentItemId, effectiveFrom);
+    const revision: MasterRevisionRecord = {
+      id: this.generateId(),
+      environment: this.options.environment,
+      masterItemId: item.id,
+      revision: item.nextRevision,
+      label,
+      enabled: command.enabled,
+      effectiveFrom,
+      effectiveTo: null,
+      displayOrder: normalizeDisplayOrder(command.displayOrder ?? prior.revision.displayOrder),
+      parentItemId,
+      attributes,
+      createdAt: now,
+      createdBy: actorId,
+    };
+    const nextItem: MasterItemRecord = {
+      ...item,
+      version: item.version + 1,
+      nextRevision: item.nextRevision + 1,
+      updatedAt: now,
+      updatedBy: actorId,
+    };
+    const persisted = await this.options.store.scheduleRevision({
+      item: nextItem,
+      expectedItemVersion: command.expectedItemVersion,
+      mutationId: this.generateId(),
+      revision,
+      priorRevisionId,
+    });
+    if (!persisted) {
+      throw new MasterDataError("conflict", "master revision cutover conflicted or overlaps future periods");
     }
     await this.emit({
       type: "revision_created",

@@ -177,3 +177,20 @@ Admin Portalは、まずProjectが許可したMaster Definitionの参照から�
 - 追加fixtureは既存のPreview seed後に実行。対象アイテムだけをVersion 2の未廃止状態にリセット
 
 **今後:** 有効期間がopen-endedなRevisionに対して、新しいfuture-effective Revisionをそのままappendするとperiod overlapで拒否される。既存期間終了と次Revisionの追加を同一トランザクションで扱うかはStage 2bで独立設計・検証する。
+
+## #418 Stage 2b: Atomic future-effective cutover
+
+A future revision cannot be naively appended when the current interval has `effectiveTo = null`: period overlap must be rejected. Use `MasterDataService.scheduleRevision` to update one current open-ended Revision and schedule one new open-ended Revision in **one D1 batch transaction**.
+
+- Requires `expectedItemVersion`, `priorRevisionId`, future ISO UTC `effectiveFrom`, new label, enabled flag and operator
+- Validates current open-ended Revision, non-retired item, project Definition, hierarchy/attributes, and no retroactive change
+- `D1MasterDataStore.scheduleRevision` uses Item Version + mutation ID guard, checks that the previous Revision is open and there are no other overlapping future intervals, closes old period, inserts new period within one `db.batch`
+- Half-open boundary: just before cutoff old Revision; at cutoff new Revision; neither old ID nor historical Business Fact snapshot is rewritten
+- In-memory tests cover exact boundary, stale concurrent version, invalid prior, rejected retroactive action and retired Master; D1 guard tests assert three guarded SQL statements
+- Dedicated WORKHUB `SCHEDULE_DEMO` is independently seeded Preview-only without resetting or deleting previous demo history; TOKYO/NAGOYA are never mutation targets
+- Preview-only `SCHEDULE_MASTER_REVISION` has `GET /api/admin/master-operations/schedule/preview` and `POST /api/admin/master-operations/schedule/execute`, scoped system_admin capability, CSRF, Idempotency-Key, reason/confirmation, policy version, Operation Mode, #429 structured audit event, and post-state verification; Production endpoint fails closed
+- The project-specific admin UI is deliberately separated from generic Master Core
+
+### Remaining gate
+
+Operations Core emits structured audit events to its configured AuditLogger. Do not claim the Master mutation and durable D1 Audit record are transactionally committed together. Atomic audit/outbox design is a separate requirement before #418 is fully closed.
