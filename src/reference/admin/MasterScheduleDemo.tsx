@@ -1,15 +1,6 @@
 import { useEffect, useState } from "react";
-import { WORKHUB_SCHEDULE_DEMO_ITEM_ID } from "../workhub/travel-request";
+import { WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID } from "../workhub/travel-request";
 
-const itemQuery = new URLSearchParams({
-  scopeId: "workhub-company",
-  masterKey: "workhub.office",
-  itemId: WORKHUB_SCHEDULE_DEMO_ITEM_ID,
-});
-const operationQuery = new URLSearchParams({
-  scopeId: "workhub-company",
-  itemId: WORKHUB_SCHEDULE_DEMO_ITEM_ID,
-});
 const path = "/api/admin/master-operations/schedule";
 interface Item {
   readonly code: string;
@@ -22,6 +13,7 @@ interface Revision {
   readonly effectiveFrom: string;
   readonly effectiveTo: string | null;
   readonly lifecycle: string;
+  readonly displayOrder: number;
 }
 interface Detail {
   readonly item: Item;
@@ -31,6 +23,8 @@ interface SchedulePreview {
   readonly item: Item;
   readonly priorRevisionId: string | null;
   readonly currentLabel: string | null;
+  readonly currentDisplayOrder: number | null;
+  readonly displayOrder: number | null;
   readonly available: boolean;
   readonly reasonCode: string | null;
   readonly policyVersion: string;
@@ -38,13 +32,20 @@ interface SchedulePreview {
 }
 type Status = "idle" | "loading" | "ready" | "error";
 
-export default function MasterScheduleDemo() {
+export default function MasterScheduleDemo({ variant = "revision" }: { readonly variant?: "revision" | "order" }) {
+  const orderVariant = variant === "order";
+  const demoItemId = orderVariant ? WORKHUB_ORDER_DEMO_ITEM_ID : WORKHUB_SCHEDULE_DEMO_ITEM_ID;
+  const itemQuery = new URLSearchParams({
+    scopeId: "workhub-company", masterKey: "workhub.office", itemId: demoItemId,
+  });
+  const operationQuery = new URLSearchParams({ scopeId: "workhub-company", itemId: demoItemId });
   const [detail, setDetail] = useState<Detail | null>(null);
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [message, setMessage] = useState("");
-  const [effectiveFrom, setEffectiveFrom] = useState("2027-04-01T00:00:00.000Z");
-  const [label, setLabel] = useState("Scheduled Office Next");
+  const [effectiveFrom, setEffectiveFrom] = useState(orderVariant ? "2027-10-01T00:00:00.000Z" : "2027-04-01T00:00:00.000Z");
+  const [label, setLabel] = useState(orderVariant ? "Order demo unchanged" : "Scheduled Office Next");
+  const [displayOrder, setDisplayOrder] = useState<number | undefined>(orderVariant ? 73 : undefined);
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -61,7 +62,7 @@ export default function MasterScheduleDemo() {
       setStatus("error");
     }
   };
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [variant]);
 
   const inspect = async () => {
     if (!detail || busy) return;
@@ -74,6 +75,7 @@ export default function MasterScheduleDemo() {
       query.set("expectedVersion", String(detail.item.version));
       query.set("effectiveFrom", effectiveFrom);
       query.set("label", label);
+      if (displayOrder !== undefined) query.set("displayOrder", String(displayOrder));
       const response = await fetch(path + "/preview?" + query);
       if (!response.ok) {
         setMessage("下見を取得できませんでした。日時とラベルを確認してください（HTTP " + response.status + "）");
@@ -108,6 +110,7 @@ export default function MasterScheduleDemo() {
           expectedVersion: preview.item.version,
           effectiveFrom,
           label,
+          ...(displayOrder === undefined ? {} : { displayOrder }),
           reason: reason.trim(),
           confirmed,
           previewPolicyVersion: preview.policyVersion,
@@ -134,12 +137,12 @@ export default function MasterScheduleDemo() {
     }
   };
 
-  return <section className="admin-audit-panel" id="admin-master-schedule-demo" aria-labelledby="admin-master-schedule-title">
+  return <section className="admin-audit-panel" id={orderVariant ? "admin-master-order-demo" : "admin-master-schedule-demo"} aria-labelledby={orderVariant ? "admin-master-order-title" : "admin-master-schedule-title"}>
     <div className="admin-audit-heading">
       <div>
         <p className="admin-eyebrow">FUTURE CUTOVER / PREVIEW DEMO</p>
-        <h2 id="admin-master-schedule-title">マスタの将来改訂（専用デモ）</h2>
-        <p>出張申請で使わないSCHEDULE_DEMO拠点のみ。現行Revisionの終了と将来Revisionの追加を一体で行い、過去の履歴は残します。</p>
+        <h2 id={orderVariant ? "admin-master-order-title" : "admin-master-schedule-title"}>{orderVariant ? "マスタ表示順の将来改訂（専用デモ）" : "マスタの将来改訂（専用デモ）"}</h2>
+        <p>{orderVariant ? "出張申請で使わないORDER_DEMO拠点のみ。名称・有効状態は変更せず、表示順だけを将来のRevisionに予約します。" : "出張申請で使わないSCHEDULE_DEMO拠点のみ。現行Revisionの終了と将来Revisionの追加を一体で行い、過去の履歴は残します。"}</p>
       </div>
     </div>
     {status === "loading" && <div role="status" className="admin-audit-state">マスタを取得しています…</div>}
@@ -149,10 +152,10 @@ export default function MasterScheduleDemo() {
       <p>履歴: <strong data-testid="master-schedule-history">{detail.revisions.length} Revision</strong></p>
       <div className="admin-audit-table-wrap">
         <table className="admin-audit-table">
-          <thead><tr><th>Revision</th><th>表示名</th><th>開始 UTC</th><th>終了 UTC</th><th>状態</th></tr></thead>
+          <thead><tr><th>Revision</th><th>表示名</th><th>開始 UTC</th><th>終了 UTC</th><th>表示順</th><th>状態</th></tr></thead>
           <tbody>{detail.revisions.map((rev) => <tr key={rev.revision}>
             <td>{rev.revision}</td><td>{rev.label}</td>
-            <td>{rev.effectiveFrom}</td><td>{rev.effectiveTo ?? "open-ended"}</td>
+            <td>{rev.effectiveFrom}</td><td>{rev.effectiveTo ?? "open-ended"}</td><td>{rev.displayOrder}</td>
             <td>{rev.lifecycle}</td>
           </tr>)}</tbody>
         </table>
@@ -163,15 +166,23 @@ export default function MasterScheduleDemo() {
             placeholder="2027-04-01T00:00:00.000Z" required />
         </label>
         <label>新しい拠点表示名
-          <input value={label} onChange={(event) => { setLabel(event.target.value); setPreview(null); }}
+          <input value={label} readOnly={orderVariant} onChange={(event) => { setLabel(event.target.value); setPreview(null); }}
             maxLength={256} required />
         </label>
+        {orderVariant && <label>改訂後の表示順
+          <input type="number" min={-1000000} max={1000000} step={1}
+            value={displayOrder ?? ""} onChange={(event) => {
+              setDisplayOrder(event.target.value === "" ? undefined : Number(event.target.value));
+              setPreview(null);
+            }} required />
+        </label>}
         <div className="admin-retry-actions">
           <button type="submit" disabled={busy}>切替内容を下見</button>
         </div>
       </form>
       {preview && <div className="admin-retry-panel">
         <p>現在の名称：{preview.currentLabel ?? "なし"} → 予約後：{label}</p>
+        {orderVariant && <p data-testid="master-order-preview">表示順：{preview.currentDisplayOrder ?? "-"} → {preview.displayOrder ?? "-"}</p>}
         <p>Risk: {preview.preview.risk} / Policy: {preview.preview.policyDecision}</p>
         {preview.available && preview.preview.policyDecision === "REQUIRE_REASON"
           ? <form onSubmit={(event) => { event.preventDefault(); void schedule(); }}>
