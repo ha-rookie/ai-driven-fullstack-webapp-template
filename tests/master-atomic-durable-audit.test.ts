@@ -195,3 +195,15 @@ test("unexpected later batch result cannot silently accept a partial state", asy
   assert.equal((sqlite.prepare("SELECT version FROM master_items").get() as { version: number }).version, 2);
   assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM master_revisions").get() as { n: number }).n, 1);
 });
+
+test("ordinary appendRevision also rolls back when open-ended period rejects an overlapping insert", async (t) => {
+  const { sqlite, store } = createDatabase();
+  t.after(() => sqlite.close());
+  const appended = await store.appendRevision({
+    item: item(3, 3), revision, mutationId: "append-overlap",
+    expectedItemVersion: 2,
+  });
+  assert.equal(appended, false);
+  assert.equal((sqlite.prepare("SELECT version FROM master_items").get() as { version: number }).version, 2);
+  assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM master_revisions").get() as { n: number }).n, 1);
+});
