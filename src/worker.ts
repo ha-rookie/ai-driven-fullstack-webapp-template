@@ -15,8 +15,8 @@ import {
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
 import { createWorkhubJobRecoveryRegistry } from "./reference/workhub/job-recovery";
-import { handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi, handleMasterDataViewerApi, handleMasterRetireApi } from "./worker/administration";
-import { WORKHUB_OFFICE_MASTER_DEFINITION, WORKHUB_RETIRE_DEMO_ITEM_ID } from "./reference/workhub/travel-request";
+import { handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi, handleMasterDataViewerApi, handleMasterRetireApi, handleMasterScheduleApi } from "./worker/administration";
+import { WORKHUB_OFFICE_MASTER_DEFINITION, WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID } from "./reference/workhub/travel-request";
 import { handleLiveness, handleReadiness } from "./worker/health";
 import {
   apiErrorResponse,
@@ -210,6 +210,18 @@ export default {
       requestContext.requestId,
     );
     if (dataCorrectionResponse) return api(dataCorrectionResponse);
+
+    const masterScheduleResponse = await handleMasterScheduleApi(
+      request,
+      env,
+      requestContext.requestId,
+      {
+        scopeId: "workhub-company",
+        definition: WORKHUB_OFFICE_MASTER_DEFINITION,
+        allowedItemIds: [WORKHUB_SCHEDULE_DEMO_ITEM_ID],
+      },
+    );
+    if (masterScheduleResponse) return api(masterScheduleResponse);
 
     const masterRetireResponse = await handleMasterRetireApi(
       request,
