@@ -111,6 +111,28 @@ ${membershipSql}
 ${officeItemSql}
 ${officeRevisionSql}
 
+INSERT INTO example_resources (
+  id, name, status, version, created_at, created_by, updated_at, updated_by,
+  deleted_at, deleted_by
+) VALUES (
+  'workhub-demo-deleted-resource', 'Preview deleted resource', 'active', 2,
+  ${quote(timestamp)}, 'workhub-preview-fixture', ${quote(timestamp)}, 'workhub-demo-kai',
+  ${quote(timestamp)}, 'workhub-demo-kai'
+)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  status = 'active',
+  version = 2,
+  updated_at = excluded.updated_at,
+  updated_by = 'workhub-demo-kai',
+  deleted_at = excluded.deleted_at,
+  deleted_by = 'workhub-demo-kai';
+
+INSERT INTO example_resource_scope_bindings (resource_id, scope_id, created_at)
+VALUES ('workhub-demo-deleted-resource', ${quote(scopeId)}, ${quote(timestamp)})
+ON CONFLICT(resource_id) DO UPDATE SET
+  scope_id = excluded.scope_id;
+
 INSERT INTO reference_travel_requests (
   id, environment, requester_id, destination_office_item_id,
   destination_office_revision_id, start_date, end_date, purpose, status,
@@ -190,4 +212,4 @@ ORDER BY c.identifier_normalized;
 `;
 run(["d1", "execute", "DB", "--remote", "--env", "preview", "--command", credentialProbeSql]);
 
-console.log("WORKHUB Preview demo users, Office master, recovery travel/job fixture, and normal operation mode seeded and credential join probed.");
+console.log("WORKHUB Preview demo users, Office master, recoverable job/data-correction fixtures, and normal operation mode seeded and credential join probed.");

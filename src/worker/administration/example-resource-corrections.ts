@@ -37,6 +37,17 @@ export const createRestoreSoftDeletedExampleResourceAdapter = (
     supportsPreview: true,
     requiresVerification: true,
   },
+  async inspect(input) {
+    const current = await loadExampleResource(db, input.targetId, { includeDeleted: true });
+    if (!current) return { available: false, reasonCode: "not_found" };
+    if (current.version !== input.expectedVersion) {
+      return { available: false, before: project(current), reasonCode: "stale_version" };
+    }
+    if (current.deletedAt === null) {
+      return { available: false, before: project(current), reasonCode: "already_active" };
+    }
+    return { available: true, before: project(current) };
+  },
   async execute(input): Promise<DataCorrectionExecutionResult> {
     const before = await loadExampleResource(db, input.targetId, { includeDeleted: true });
     if (!before) return { result: "FAILED", reasonCode: "not_found" };

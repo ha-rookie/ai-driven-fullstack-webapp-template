@@ -27,8 +27,18 @@ export interface DataCorrectionExecutionResult {
   readonly reasonCode?: string;
 }
 
+export interface DataCorrectionPreviewResult {
+  readonly available: boolean;
+  readonly before?: DataCorrectionProjection;
+  readonly reasonCode?: string;
+}
+
 export interface DataCorrectionAdapter {
   readonly definition: DataCorrectionCommandDefinition;
+  inspect?(input: {
+    readonly targetId: string;
+    readonly expectedVersion: number;
+  }): Promise<DataCorrectionPreviewResult>;
   execute(input: {
     readonly actorId: string;
     readonly targetId: string;
@@ -82,6 +92,7 @@ export const createDataCorrectionOperationHandler = (input: {
   readonly adapter: DataCorrectionAdapter;
   readonly actorId: string;
   readonly expectedVersion: number;
+  readonly onResult?: (result: DataCorrectionExecutionResult) => void;
 }): OperationHandler => {
   const operationDefinition = toCorrectionOperationDefinition(input.adapter.definition);
 
@@ -105,6 +116,7 @@ export const createDataCorrectionOperationHandler = (input: {
         expectedVersion: input.expectedVersion,
         reason: request.reason.trim(),
       });
+      input.onResult?.(result);
       return { result: result.result };
     },
     async verify(request, execution) {
