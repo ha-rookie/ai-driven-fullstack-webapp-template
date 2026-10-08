@@ -202,21 +202,26 @@ export const handleJobOperationsApi = async (
     }
 
     let scopeId: string;
-    let state: AsyncJobState | undefined;
-    let jobType: string | undefined;
-    let pageSize: number;
     try {
       scopeId = bounded(url.searchParams.get("scopeId")) ?? "";
       if (!scopeId) throw new TypeError("scopeId required");
-      state = stateFilter(url.searchParams.get("state"));
-      jobType = bounded(url.searchParams.get("type"));
-      pageSize = limit(url.searchParams.get("limit"));
     } catch {
       return error(requestId, 400, "invalid_job_query", "Job query is invalid");
     }
 
     const auth = await authorize(request, env, requestId, policy, JOB_VIEW_ACTION, scopeId);
     if (!auth.ok) return auth.response;
+
+    let state: AsyncJobState | undefined;
+    let jobType: string | undefined;
+    let pageSize: number;
+    try {
+      state = stateFilter(url.searchParams.get("state"));
+      jobType = bounded(url.searchParams.get("type"));
+      pageSize = limit(url.searchParams.get("limit"));
+    } catch {
+      return error(requestId, 400, "invalid_job_query", "Job query is invalid");
+    }
 
     try {
       const where = ["environment = ?"];
