@@ -19,3 +19,5 @@ export * from "./data-correction-api";
 export * from "./master-data-viewer-api";
 
 export * from "./master-retire-api";
+
+export * from "./master-schedule-api";
