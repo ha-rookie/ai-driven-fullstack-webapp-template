@@ -14,6 +14,7 @@ import {
   type AuditEvent,
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
+import { createWorkhubJobRecoveryRegistry } from "./reference/workhub/job-recovery";
 import { handleAuditLogViewerApi, handleJobOperationsApi } from "./worker/administration";
 import { handleLiveness, handleReadiness } from "./worker/health";
 import {
@@ -198,6 +199,7 @@ export default {
       request,
       env,
       requestContext.requestId,
+      { recoveryRegistry: createWorkhubJobRecoveryRegistry(env.DB) },
     );
     if (jobOperationsResponse) return api(jobOperationsResponse);
 
