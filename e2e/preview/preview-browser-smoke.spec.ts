@@ -112,15 +112,17 @@ test("fixed Preview administration portal renders for System Admin without mutat
   if (await recoveryJobRow.count()) {
     const retryButton = recoveryJobRow.getByRole("button", { name: "再実行を確認" });
     if (await retryButton.count()) {
-      await retryButton.click();
-      await page.getByLabel("再実行理由").fill("Preview acceptance: search dependency recovered");
-      await page.getByLabel("対象・環境・影響範囲を確認しました").check();
+      await recoveryJobRow.scrollIntoViewIfNeeded();
+      await retryButton.click({ force: true });
+      const retryPanel = page.locator(".admin-retry-panel");
+      await retryPanel.getByLabel("再実行理由").fill("Preview acceptance: search dependency recovered");
+      await retryPanel.getByLabel("対象・環境・影響範囲を確認しました").check();
       const retryResponsePromise = page.waitForResponse(
         (retryResponse) =>
           retryResponse.url().includes("/api/admin/jobs/workhub-demo-search-recovery-job/retry?")
           && retryResponse.request().method() === "POST",
       );
-      await page.getByRole("button", { name: "このJobを再実行" }).click();
+      await page.locator(".admin-retry-panel").getByRole("button", { name: "このJobを再実行" }).click();
       const retryResponse = await retryResponsePromise;
       expect(retryResponse.status()).toBe(200);
       await expect(page.getByText("再実行と検証が完了しました")).toBeVisible();
