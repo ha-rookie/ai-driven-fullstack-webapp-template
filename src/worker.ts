@@ -15,7 +15,7 @@ import {
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
 import { createWorkhubJobRecoveryRegistry } from "./reference/workhub/job-recovery";
-import { handleAuditLogViewerApi, handleJobOperationsApi } from "./worker/administration";
+import { handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi } from "./worker/administration";
 import { handleLiveness, handleReadiness } from "./worker/health";
 import {
   apiErrorResponse,
@@ -202,6 +202,13 @@ export default {
       { recoveryRegistry: createWorkhubJobRecoveryRegistry(env.DB) },
     );
     if (jobOperationsResponse) return api(jobOperationsResponse);
+
+    const dataCorrectionResponse = await handleDataCorrectionApi(
+      request,
+      env,
+      requestContext.requestId,
+    );
+    if (dataCorrectionResponse) return api(dataCorrectionResponse);
 
     const workhubBusinessResponse = await handleWorkhubBusinessApi(request, env);
     if (workhubBusinessResponse) return api(workhubBusinessResponse);

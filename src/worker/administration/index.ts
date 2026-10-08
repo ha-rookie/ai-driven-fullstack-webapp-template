@@ -14,3 +14,4 @@ export * from "./job-recovery";
 
 export * from "./data-correction";
 export * from "./example-resource-corrections";
+export * from "./data-correction-api";
