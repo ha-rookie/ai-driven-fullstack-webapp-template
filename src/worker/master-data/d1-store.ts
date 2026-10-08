@@ -129,7 +129,7 @@ export class MasterDataStoreIntegrityError extends Error {
 
 /**
  * Pre-hashed audit proof is written inside the *same* D1 transaction.
- * A missing mutation marker creates a NOT NULL error, forcing the whole batch
+ * A missing mutation marker nullifies the explicitly NOT NULL environment, forcing the batch
  * to roll back (zero-row conditional inserts alone do NOT roll back a batch).
  */
 const prepareMasterAuditInsert = (
@@ -152,13 +152,13 @@ const prepareMasterAuditInsert = (
       id, environment, occurred_at, request_id, category, action, outcome,
       actor_id, scope_id, resource_type, resource_id, record_json, record_sha256, created_at
     )
-    SELECT CASE WHEN EXISTS (
+    SELECT ?, CASE WHEN EXISTS (
       SELECT 1 FROM master_items i
       WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ? AND i.version = ?
     ) THEN ? ELSE NULL END,
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
   `).bind(
-    item.id, item.environment, mutationId, item.version, receipt.id,
+    receipt.id, item.id, item.environment, mutationId, item.version,
     receipt.environment, receipt.occurredAt, receipt.record.requestId,
     receipt.record.category, receipt.record.action, receipt.record.outcome,
     receipt.record.actorId ?? null, receipt.record.scopeId ?? null,
@@ -254,15 +254,15 @@ export class D1MasterDataStore implements MasterDataStore {
         effective_from, effective_to, display_order, parent_item_id,
         attributes_json, created_at, created_by
       )
-      SELECT CASE WHEN EXISTS (
+      SELECT ?, CASE WHEN EXISTS (
         SELECT 1 FROM master_items i
         WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ?
           AND i.version = ?
       ) THEN ? ELSE NULL END,
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     `).bind(
-      item.id, item.environment, mutationId, item.version,
-      revision.id, revision.environment, revision.masterItemId, revision.revision,
+      revision.id, item.id, item.environment, mutationId, item.version,
+      revision.environment, revision.masterItemId, revision.revision,
       revision.label, revision.enabled ? 1 : 0, revision.effectiveFrom,
       revision.effectiveTo, revision.displayOrder, revision.parentItemId,
       JSON.stringify(revision.attributes), revision.createdAt, revision.createdBy,
@@ -329,18 +329,18 @@ export class D1MasterDataStore implements MasterDataStore {
         effective_from, effective_to, display_order, parent_item_id,
         attributes_json, created_at, created_by
       )
-      SELECT CASE WHEN EXISTS (
+      SELECT ?, CASE WHEN EXISTS (
         SELECT 1 FROM master_items i
         JOIN master_revisions prior
           ON prior.master_item_id = i.id AND prior.environment = i.environment
         WHERE i.id = ? AND i.environment = ? AND i.last_mutation_id = ?
           AND i.version = ? AND prior.id = ? AND prior.effective_to = ?
       ) THEN ? ELSE NULL END,
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     `).bind(
-      item.id, item.environment, mutationId, item.version,
-      priorRevisionId, revision.effectiveFrom, revision.id,
-      revision.environment, revision.masterItemId, revision.revision,
+      revision.id, item.id, item.environment, mutationId, item.version,
+      priorRevisionId, revision.effectiveFrom, revision.environment,
+      revision.masterItemId, revision.revision,
       revision.label, revision.enabled ? 1 : 0, revision.effectiveFrom, null,
       revision.displayOrder, revision.parentItemId, JSON.stringify(revision.attributes),
       revision.createdAt, revision.createdBy,
