@@ -84,7 +84,7 @@ export const classifyExpensiveChecks = (paths) => {
     // business endpoints do not exercise the operation-mode control plane.
     if (/^src\/worker\//u.test(path)) {
       selected.performance = true;
-      if (/^src\/worker\/(?:auth|http|administration)\//u.test(path)) {
+      if (/^src\/worker\/(?:auth|http|administration)(?:\/|\.ts$)/u.test(path)) {
         selected.operationMode = true;
       }
       continue;
@@ -128,6 +128,7 @@ const selfTest = () => {
     [["src/reference/workhub/travel/fixture.ts"], false, false],
     [["src/worker/jobs/job-api.ts"], true, false],
     [["src/worker/auth/login.ts"], true, true],
+    [["src/worker/auth.ts"], true, true],
     [["src/worker/administration/operation-mode-api.ts"], true, true],
     [["src/infrastructure/d1-operation-mode-store.ts"], true, true],
     [["migrations/0012_add_index.sql"], true, true],
