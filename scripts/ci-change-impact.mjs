@@ -70,7 +70,7 @@ const selfTest = () => {
   try {
     execFileSync("git", ["init", "--quiet", worktree]);
     mkdirSync(join(worktree, "src/worker"), { recursive: true });
-    writeFileSync(join(worktree, "src/worker/auth.ts"), "export const guard = true;\\n");
+    writeFileSync(join(worktree, "src/worker/auth.ts"), "export const guard = true;\n");
     const git = (...args) => execFileSync("git", ["-C", worktree, ...args], { encoding: "utf8" }).trim();
     git("add", "-A");
     git("-c", "user.name=CI", "-c", "user.email=ci@example.test", "commit", "--quiet", "-m", "base");
@@ -80,7 +80,7 @@ const selfTest = () => {
     git("add", "-A");
     git("-c", "user.name=CI", "-c", "user.email=ci@example.test", "commit", "--quiet", "-m", "rename");
     const headSha = git("rev-parse", "HEAD");
-    const changed = execFileSync("git", ["-C", worktree, "diff", "--name-only", "--no-renames", "-z", baseSha, headSha, "--"], { encoding: "utf8" }).split("\\0").filter(Boolean);
+    const changed = execFileSync("git", ["-C", worktree, "diff", "--name-only", "--no-renames", "-z", baseSha, headSha, "--"], { encoding: "utf8" }).split("\0").filter(Boolean);
     assert.deepEqual(changed.sort(), ["docs/guide.md", "src/worker/auth.ts"].sort());
     assert.equal(classifyChangedPaths(changed), "full");
   } finally {
