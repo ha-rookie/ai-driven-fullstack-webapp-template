@@ -12,7 +12,45 @@ import { join } from "node:path";
 
 const shaPattern = /^[a-f0-9]{40}$/u;
 
-export const classifyPreviewPaths = (paths) => {
+/**
+ * Ignore only a proven test-only change to package.json. Every other package
+ * field (dependencies, toolchain, exports, configs) and every non-test script
+ * must be structurally identical. Unparseable/missing content fails closed.
+ */
+const stable = value => {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+  }
+  return value;
+};
+const equivalent = (a, b) => JSON.stringify(stable(a)) === JSON.stringify(stable(b));
+const testScript = /^(?:test(?::[a-zA-Z0-9:_-]+)?|validate:local(?::[a-zA-Z0-9:_-]+)?)$/u;
+
+export const isTestOnlyPackageChange = (before, after) => {
+  if (!before || !after || typeof before !== "object" || typeof after !== "object"
+      || Array.isArray(before) || Array.isArray(after)) return false;
+  const { scripts: oldScripts, ...oldRuntime } = before;
+  const { scripts: newScripts, ...newRuntime } = after;
+  if (!equivalent(oldRuntime, newRuntime)) return false;
+  if (!oldScripts || !newScripts || typeof oldScripts !== "object" || typeof newScripts !== "object"
+      || Array.isArray(oldScripts) || Array.isArray(newScripts)) return false;
+  const names = new Set([...Object.keys(oldScripts), ...Object.keys(newScripts)]);
+  const changed = [...names].filter(name => !equivalent(oldScripts[name], newScripts[name]));
+  return changed.every(name => testScript.test(name));
+};
+
+export const packageDiffIsTestOnly = (base, target, cwd = process.cwd()) => {
+  try {
+    const show = sha => JSON.parse(execFileSync("git",
+      ["-C", cwd, "show", sha + ":package.json"], { encoding: "utf8", maxBuffer: 1024 * 1024 }));
+    return isTestOnlyPackageChange(show(base), show(target));
+  } catch {
+    return false; // missing/invalid JSON, absent manifest, git failure
+  }
+};
+
+export const classifyPreviewPaths = (paths, options = {}) => {
   if (!Array.isArray(paths) || paths.length === 0) {
     return { redeploy: false, reseed: false, seedReview: false, verifyBrowser: false };
   }
@@ -21,6 +59,7 @@ export const classifyPreviewPaths = (paths) => {
     if (typeof path !== "string" || !path || path.startsWith("/") || path.includes("\\") || path.includes("\0")) {
       return { redeploy: true, reseed: true, seedReview: true, verifyBrowser: true };
     }
+    if (path === "package.json" && options.packageTestOnly === true) continue;
     // Fixtures, schema, and the scripts that write WORKHUB demo data.
     const seedData = /^migrations\//u.test(path)
       || /^scripts\/workhub-.*(?:\.sql|seed.*\.mjs)$/u.test(path)
@@ -71,8 +110,8 @@ const changedPaths = (from, to) => {
   }).split("\0").filter(Boolean);
 };
 
-export const planPreview = (runtimePaths, seedPaths = null) => {
-  const runtime = classifyPreviewPaths(runtimePaths);
+export const planPreview = (runtimePaths, seedPaths = null, options = {}) => {
+  const runtime = classifyPreviewPaths(runtimePaths, options);
   const seed = seedPaths === null ? null : classifyPreviewPaths(seedPaths);
   return {
     deploy: runtime.redeploy ? "required" : "skip",
@@ -110,6 +149,18 @@ const selfTest = () => {
   assert.equal(planPreview(["README.md"]).seed, "unverified");
   assert.equal(planPreview(["e2e/preview/login.spec.ts"], ["README.md"]).browser, "recommended");
   assert.equal(planPreview(["README.md"], ["scripts/unknown-data-migrator.mjs"]).seed, "review");
+  const manifest = { name: "demo", scripts: { build: "vite build", test: "node old.js" },
+    dependencies: { react: "1.0.0" } };
+  const testOnly = { ...manifest, scripts: { ...manifest.scripts, test: "node new.js", "validate:local:core": "node test.js" } };
+  assert.equal(isTestOnlyPackageChange(manifest, testOnly), true);
+  assert.equal(isTestOnlyPackageChange(manifest, { ...testOnly, dependencies: { react: "2.0.0" } }), false);
+  assert.equal(isTestOnlyPackageChange(manifest, { ...testOnly, scripts: { ...testOnly.scripts, build: "vite build --mode prod" } }), false);
+  assert.equal(isTestOnlyPackageChange(manifest, { ...testOnly, scripts: { ...testOnly.scripts, postinstall: "node install.js" } }), false);
+  assert.equal(isTestOnlyPackageChange(manifest, null), false);
+  assert.equal(planPreview(["package.json"], null, { packageTestOnly: true }).deploy, "skip");
+  assert.equal(planPreview(["package.json"]).deploy, "required");
+  assert.equal(planPreview(["package.json", "src/App.tsx"], null, { packageTestOnly: true }).deploy, "required");
+
   // Rename must keep the DELETED source path, never just docs destination.
   const scratch = mkdtempSync(join(tmpdir(), "preview-plan-rename-"));
   try {
@@ -131,7 +182,7 @@ const selfTest = () => {
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
-  console.log("Preview plan self-test: " + cases.length + " impact cases, missing seed evidence, protected rename passed");
+  console.log("Preview plan self-test: " + cases.length + " impact cases, package test-only semantics, missing seed evidence, protected rename passed");
 };
 
 if (process.argv.includes("--self-test")) {
@@ -147,8 +198,11 @@ if (process.argv.includes("--self-test")) {
   if (!deployed || !target) throw new Error("Usage: node scripts/preview-change-plan.mjs --deployed-sha=<sha> --target-sha=<sha> [--seeded-sha=<sha>]");
   const runtimePaths = changedPaths(deployed, target);
   const seedPaths = seeded ? changedPaths(seeded, target) : null;
-  const result = planPreview(runtimePaths, seedPaths);
-  const report = { deployedSha: deployed, targetSha: target, seededSha: seeded, ...result,
+  const packageTestOnly = runtimePaths.includes("package.json") && packageDiffIsTestOnly(deployed, target);
+  const result = planPreview(runtimePaths, seedPaths, { packageTestOnly });
+  const report = { deployedSha: deployed, targetSha: target, seededSha: seeded,
+    packageDiff: runtimePaths.includes("package.json") ? (packageTestOnly ? "test_scripts_only" : "runtime_or_unverified") : "unchanged",
+    ...result,
     runtimeChangedPaths: runtimePaths, seedChangedPaths: seedPaths };
   console.log(JSON.stringify(report, null, 2));
   if (process.env.GITHUB_STEP_SUMMARY) {
