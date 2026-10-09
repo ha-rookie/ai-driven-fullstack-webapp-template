@@ -69,7 +69,7 @@
     "@cloudflare/vite-plugin": "1.57.3",
     "@fontsource/noto-sans-jp": "5.2.5",
     "@cloudflare/workers-types": "latest",
-    "@eslint/js": "9.39.5",
+    "@eslint/js": "10.0.1",
     "@types/node": "24.13.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
