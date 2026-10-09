@@ -2,6 +2,15 @@ name: SCS control mapping
 
 on:
   pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/worker/auth/**'
+      - 'src/worker/authorization/**'
+      - 'config/scs-control-mapping.json'
+      - 'scripts/validate-scs-mapping.mjs'
+      - 'docs/security/SCS_MAPPING.md'
+      - '.github/workflows/scs-mapping.yml'
   workflow_dispatch:
 
 permissions:

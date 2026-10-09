@@ -2,6 +2,14 @@ name: Production migration preflight
 
 on:
   pull_request:
+    branches:
+      - main
+    paths:
+      - 'migrations/**'
+      - 'config/migration-preflight-policy.json'
+      - 'scripts/production-migration-preflight.mjs'
+      - 'docs/operations/PRODUCTION_MIGRATION_PREFLIGHT.md'
+      - '.github/workflows/production-migration-preflight.yml'
   workflow_dispatch:
 
 permissions:

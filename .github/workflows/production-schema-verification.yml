@@ -2,6 +2,14 @@ name: Production schema verification
 
 on:
   pull_request:
+    branches:
+      - main
+    paths:
+      - 'migrations/**'
+      - 'config/production-schema-baseline.json'
+      - 'scripts/verify-production-schema.mjs'
+      - 'docs/operations/PRODUCTION_SCHEMA_VERIFICATION.md'
+      - '.github/workflows/production-schema-verification.yml'
   workflow_dispatch:
 
 permissions:

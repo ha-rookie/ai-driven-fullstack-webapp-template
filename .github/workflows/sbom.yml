@@ -5,6 +5,12 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/generate-sbom.mjs'
+      - 'scripts/validate-lockfile-integrity.mjs'
+      - '.github/workflows/sbom.yml'
 
 permissions:
   contents: read

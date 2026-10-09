@@ -2,6 +2,16 @@ name: Security configuration
 
 on:
   pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/worker/auth/**'
+      - 'src/worker/authorization/**'
+      - 'wrangler.toml'
+      - 'config/security-validation-policy.json'
+      - 'scripts/validate-security-config.mjs'
+      - 'docs/security/SECURITY_CONFIGURATION_VALIDATION.md'
+      - '.github/workflows/security-configuration.yml'
   workflow_dispatch:
 
 permissions:
