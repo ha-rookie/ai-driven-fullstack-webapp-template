@@ -14,6 +14,7 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 - [Data Lifecycle / Long-term Backup](docs/DATA_LIFECYCLE_BACKUP.md)
 - [Implementation design](docs/README.md)
 - [Dependency update policy](docs/DEPENDENCY_UPDATE_POLICY.md)
+- [Risk-based CI / regression-test policy](docs/operations/RISK_BASED_CI.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy / vulnerability reporting](SECURITY.md)
 - [MIT License](LICENSE)
