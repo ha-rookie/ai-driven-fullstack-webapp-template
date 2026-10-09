@@ -4,7 +4,7 @@
 
 Do **not** pay the full database, session, security, browser and performance regression cost on every README or isolated admin UI edit. A PR's test suite should reflect its actual changed files, while retaining a strong default for anything that can affect runtime correctness, data, permissions or deployment.
 
-This policy is deliberately conservative: **path classification is not dependency analysis**. When a file could be shared across Worker/UI or has unclear impact, the selector uses FULL. A failed change diff also fails the required job, never silently chooses a cheap tier.
+This policy is deliberately conservative: **path classification is not dependency analysis**. When a file could be shared across Worker/UI or has unclear impact, the selector uses FULL. A failed change diff also fails the required job, never silently chooses a cheap tier. Git renames/copies are evaluated as separate deleted and added paths using `git diff --no-renames`, so moving sensitive source code into a docs-only path cannot downgrade the change to DOCS.
 
 ## Required `validate` check — unchanged name and job identity
 
@@ -17,7 +17,7 @@ This policy is deliberately conservative: **path classification is not dependenc
 | **FULL** | Auth, authorization, Worker, shared code, domain, data model, migrations, config, test harness, dependencies, CI workflows, unknown or mixed changes | All existing CI steps: local D1 migrate/schema, `validate:local`, lint/build, protected fixture, runtime/security boundary tests |
 
 - `workflow_dispatch` and the Monday 03:30 JST weekly scheduled `Full-stack template CI` use FULL unconditionally.
-- **Any** unknown or mixed path upgrades the whole PR to FULL. A missing/invalid commit SHA or failed `git diff` makes `validate` fail. A `FULL` result cannot be downgraded because another file is docs-only.
+- **Any** unknown or mixed path upgrades the whole PR to FULL. A missing/invalid commit SHA or failed `git diff` makes `validate` fail. Source and destination paths of renames are both checked. A `FULL` result cannot be downgraded because another file is docs-only.
 - Workflow changes (including this policy) are always FULL.
 - Existing `Secret detection` remains on **all** PRs, including DOCS.
 - Browser E2E is still triggered on relevant source/config PRs, and now also runs weekly (Monday 04:00 JST). Preview Browser acceptance is separate and must be run after actual Preview deployment for relevant release changes.
