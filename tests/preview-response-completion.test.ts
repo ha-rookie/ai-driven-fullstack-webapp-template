@@ -1,51 +1,52 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  ensurePreviewLoginResponseComplete,
-  PreviewLoginResponseIncompleteError,
+  ensurePreviewLoginAuthenticated,
+  PreviewLoginVerificationError,
 } from "../e2e/preview/preview-response-completion";
 
-const verified = { authenticated: true, user: { id: "demo" } };
+const verified = { authenticated: true, user: { id: "workhub-demo-aoi" } };
 
-test("real confirmed login JSON resolves before deadline", async () => {
-  await ensurePreviewLoginResponseComplete({ json: async () => verified }, 50);
+test("browser-authenticated session for expected persona satisfies the gate", async () => {
+  await ensurePreviewLoginAuthenticated({ check: async () => verified }, "workhub-demo-aoi", 50);
 });
 
-test("response-body read errors are sanitized transport failures", async () => {
+test("wrong authenticated persona does not pass Preview verification", async () => {
   await assert.rejects(
-    () => ensurePreviewLoginResponseComplete({
-      json: async () => { throw new Error("secret data in transport failure"); },
-    }, 50),
-    (error: unknown) => error instanceof PreviewLoginResponseIncompleteError
-      && error.kind === "transport" && !error.message.includes("secret data"),
+    () => ensurePreviewLoginAuthenticated({ check: async () => verified }, "workhub-demo-kai", 50),
+    (error: unknown) => error instanceof PreviewLoginVerificationError && error.kind === "invalid_session",
   );
 });
 
-test("header-only HTTP 200 whose JSON never completes fails in bounded time", async () => {
+test("HTTP 200 without browser-authenticated session fails closed", async () => {
+  await assert.rejects(
+    () => ensurePreviewLoginAuthenticated({ check: async () => ({ authenticated: false }) }, "workhub-demo-aoi", 50),
+    (error: unknown) => error instanceof PreviewLoginVerificationError && error.kind === "invalid_session",
+  );
+});
+
+test("browser verification errors are sanitized", async () => {
+  await assert.rejects(
+    () => ensurePreviewLoginAuthenticated({
+      check: async () => { throw new Error("secret data from browser state"); },
+    }, "workhub-demo-aoi", 50),
+    (error: unknown) => error instanceof PreviewLoginVerificationError
+      && error.kind === "probe_failed" && !error.message.includes("secret data"),
+  );
+});
+
+test("never-completing browser authentication verification times out", async () => {
   const start = Date.now();
   await assert.rejects(
-    () => ensurePreviewLoginResponseComplete({
-      json: () => new Promise<unknown>(() => {}),
-    }, 15),
-    (error: unknown) => error instanceof PreviewLoginResponseIncompleteError
-      && error.kind === "timeout",
+    () => ensurePreviewLoginAuthenticated({
+      check: () => new Promise<unknown>(() => {}),
+    }, "workhub-demo-aoi", 15),
+    (error: unknown) => error instanceof PreviewLoginVerificationError && error.kind === "timeout",
   );
   assert.ok(Date.now() - start < 1000);
 });
 
-test("HTTP 200 with invalid authentication payload fails closed", async () => {
-  await assert.rejects(
-    () => ensurePreviewLoginResponseComplete({
-      json: async () => ({ authenticated: false, user: { id: "demo" } }),
-    }, 50),
-    (error: unknown) => error instanceof PreviewLoginResponseIncompleteError
-      && error.kind === "invalid_payload",
-  );
-});
-
-test("invalid timeout cannot silently disable completion gate", async () => {
-  await assert.rejects(
-    () => ensurePreviewLoginResponseComplete({ json: async () => verified }, 0),
-    RangeError,
-  );
+test("invalid timeout and empty expected user are not allowed", async () => {
+  await assert.rejects(() => ensurePreviewLoginAuthenticated({ check: async () => verified }, "workhub-demo-aoi", 0), RangeError);
+  await assert.rejects(() => ensurePreviewLoginAuthenticated({ check: async () => verified }, "", 50), RangeError);
 });

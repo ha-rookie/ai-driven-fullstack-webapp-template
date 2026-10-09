@@ -1,5 +1,5 @@
 import { expect, type Page, type Response } from "@playwright/test";
-import { ensurePreviewLoginResponseComplete } from "./preview-response-completion";
+import { ensurePreviewLoginAuthenticated } from "./preview-response-completion";
 
 /**
  * Preview acceptance tests must distinguish an application's deliberate 503
@@ -37,10 +37,25 @@ export const submitPreviewLogin = async (
     });
 
     if (response.status() === 200) {
-      // An HTTP 200 with a never-ending body is NOT a successful login.
-      // Distinguish it from the retryable unattributed 503, without logging
-      // response bodies, credentials, cookies or tokens.
-      await ensurePreviewLoginResponseComplete(response);
+      // The actual WORKHUB client does NOT read login Response.json().
+      // It checks HTTP status, then synchronizes through /api/auth/me.
+      // Confirm the browser rendered the expected authenticated shell AND
+      // that the server sees exactly that persona. Never accept headers alone.
+      const expectedUserId = persona === "Aoi Employee" ? "workhub-demo-aoi" : "workhub-demo-kai";
+      await ensurePreviewLoginAuthenticated({
+        check: async () => {
+          await page.getByRole("heading", {
+            name: `おはようございます、${persona}さん`,
+          }).waitFor({ state: "visible", timeout: 7_000 });
+          return page.evaluate(async () => {
+            const auth = await fetch("/api/auth/me", {
+              method: "GET", credentials: "same-origin", cache: "no-store",
+            });
+            if (!auth.ok) return { authenticated: false, user: null };
+            return auth.json();
+          });
+        },
+      }, expectedUserId, 8_000);
       return response;
     }
     if (!unattributed503 || attempt > delaysMs.length) return response;

@@ -70,11 +70,10 @@ export const loginPreviewPersona = async (page: Page, persona: Persona): Promise
 
   const loginResponse = await submitPreviewLogin(page, persona);
   expect(loginResponse.status(), "Preview login failed; inspect sanitized evidence").toBe(200);
-  const payload = await loginResponse.json() as {
-    authenticated?: boolean; user?: { id?: string };
-  };
-  expect(payload.authenticated).toBe(true);
-  expect(typeof payload.user?.id).toBe("string");
+  // submitPreviewLogin already verifies browser UI + /api/auth/me identity.
+  // Do not re-consume the Playwright login Response body: the application
+  // itself does not use that body, and Response.json() can hang indefinitely.
+  const verifiedUserId = persona === "Aoi Employee" ? "workhub-demo-aoi" : "workhub-demo-kai";
 
   const cookies = await page.context().cookies();
   const cookie = cookies.find((entry) => entry.name === "app_session");
@@ -82,7 +81,7 @@ export const loginPreviewPersona = async (page: Page, persona: Persona): Promise
   expect(cookie?.httpOnly).toBe(true);
   expect(cookie?.secure).toBe(true);
   // No token value is ever printed, written to disk or exposed in test assertions.
-  if (cookie && payload.user?.id) {
-    sessions.set(persona, { cookie, userId: payload.user.id });
+  if (cookie) {
+    sessions.set(persona, { cookie, userId: verifiedUserId });
   }
 };
