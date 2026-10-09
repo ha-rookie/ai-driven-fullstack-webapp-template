@@ -75,9 +75,20 @@ jobs:
           grep -q 'column:example_resources:status' /tmp/d1-schema.txt
           grep -q 'column:example_resources:version' /tmp/d1-schema.txt
 
-      - name: Full local validation
+      # The always-on FULL core still checks unit/contracts, auth/session,
+      # migration, D1 schema, safety and deployment self-tests. Two expensive
+      # isolated D1 suites run only for affected paths in PRs.
+      - name: Full local validation core
         if: steps.impact.outputs.tier == 'full'
-        run: npm run validate:local
+        run: npm run validate:local:core
+
+      - name: D1 local performance regression (impact selected)
+        if: steps.impact.outputs.tier == 'full' && steps.impact.outputs.performance == 'true'
+        run: npm run performance:local
+
+      - name: Operation mode local D1 regression (impact selected)
+        if: steps.impact.outputs.tier == 'full' && steps.impact.outputs.operation_mode == 'true'
+        run: npm run operation-mode:local
 
       - name: Lint
         if: steps.impact.outputs.tier != 'docs'
