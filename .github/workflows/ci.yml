@@ -47,6 +47,10 @@ jobs:
             node scripts/ci-change-impact.mjs --full
           fi
 
+      - name: Verify read-only Preview change planner
+        if: steps.impact.outputs.tier == 'full'
+        run: node scripts/preview-change-plan.mjs --self-test
+
       - name: Install dependencies
         if: steps.impact.outputs.tier != 'docs'
         run: npm ci
