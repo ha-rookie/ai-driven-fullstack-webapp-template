@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "npm run validate:local",
     "test:unit": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs",
+    "validate:local:core": "npm run source-editing:validate && npm run test:unit && npm run bootstrap:profile:validate && npm run data-lifecycle:validate && npm run data-lifecycle:evidence:validate && npm run db:migration:workflow -- --self-test && npm run deploy:preview:validate -- --self-test && npm run deploy:production:validate -- --self-test && npm run smoke:production -- --self-test && npm run rollback:production:validate -- --self-test && npm run release-evidence:validate && npm run runtime-evidence:validate && npm run idempotency-concurrency:local && npm run session-revocation:local && npm run session-rotation:local && npm run local-credential:local && npm run credential-attack:local && npm run recovery:validate && npm run performance:validate && npm run performance:frontend:validate && npm run performance:http:validate && npm run smoke:preview -- --self-test",
     "bootstrap:profile:validate": "node scripts/validate-project-bootstrap-profile.mjs --self-test",
     "data-lifecycle:validate": "node scripts/validate-data-lifecycle-policy.mjs --self-test && node scripts/validate-data-lifecycle-policy.mjs --file config/data-lifecycle-policy.example.json",
     "data-lifecycle:evidence:validate": "node scripts/data-lifecycle-backup-evidence.mjs --self-test",
