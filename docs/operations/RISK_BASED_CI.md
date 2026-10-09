@@ -71,6 +71,41 @@ before claiming realized time savings. Source: [Issue #529 measurements](https:/
 - Keep failed-test screenshots/traces. Pinning, Chromium installation, concurrency cancellation and existing workflow path triggers are unchanged.
 - [Issue #529](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/529) records measured impact; E2E runtime savings should be verified on a real PR, not asserted from the workflow edit alone.
 
+## Read-only Preview re-deploy / fixture plan (2026-10-09)
+
+Unnecessary Preview deployments and D1 reseeds consume time and may affect
+shared test fixtures. Before issuing any remote operation, inspect **separate
+evidence for the last deployed runtime SHA and last successfully seeded fixture
+SHA**. The planner does not contact or change Cloudflare:
+
+```bash
+node scripts/preview-change-plan.mjs \
+  --deployed-sha=<actual-preview-deployed-full-sha> \
+  --target-sha=<merged-main-full-sha> \
+  --seeded-sha=<last-successful-preview-seed-full-sha>
+```
+
+- `deploy:skip` means the diff is limited to known docs / GitHub workflow /
+  tests / E2E / selector/planner content without an application or config change.
+  Any Worker/UI/public/config/build/dependency/unknown change requires deploy.
+- `seed:skip` is supported **only** if the actual last successful seeded SHA
+  was provided and its diff has no seed/migration/fixture changes or unknown
+  seed-affecting scripts. If unknown, report `seed:unverified` or `review`;
+  never assume seed=deployment.
+- `browser:recommended` means runtime or Browser E2E/harness changes should
+  be validated; test-only updates can use the unchanged deployed Preview.
+- Renames inspect **both** deleted source and added destination paths.
+  Full exact Git SHAs and ancestry are required or the tool fails. A divergence
+  is not silently treated as no change.
+- The planner is **advisory/read-only**. No remote resource changes, seeding,
+  production operations or implicit Human Gate approval. Never substitute a
+  successful planner output for real deployment/test evidence.
+- `node scripts/preview-change-plan.mjs --self-test` is run for FULL CI
+  and checks supported paths, absent fixture evidence and protected renames.
+
+This optimization is for avoiding operations that do not change running code
+or fixtures, not for weakening acceptance of a runtime release.
+
 ## Optional PR checks selected by file domain
 
 The following workflows are triggered by specific file paths rather than all PRs:
