@@ -5,7 +5,9 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export const classifyChangedPaths = (paths) => {
   if (!Array.isArray(paths) || paths.length === 0) return "full";
@@ -62,7 +64,29 @@ const selfTest = () => {
   for (const [paths, expected] of checks) {
     assert.equal(classifyChangedPaths(paths), expected, `impact: ${paths.join(", ")}`);
   }
-  console.log(`CI impact selector self-test: ${checks.length} cases passed`);
+  // Regression: a rename from privileged source to harmless docs must remain FULL.
+  // Git's normal rename detection reports only the new path with --name-only.
+  const worktree = mkdtempSync(join(tmpdir(), "ci-impact-rename-"));
+  try {
+    execFileSync("git", ["init", "--quiet", worktree]);
+    mkdirSync(join(worktree, "src/worker"), { recursive: true });
+    writeFileSync(join(worktree, "src/worker/auth.ts"), "export const guard = true;\\n");
+    const git = (...args) => execFileSync("git", ["-C", worktree, ...args], { encoding: "utf8" }).trim();
+    git("add", "-A");
+    git("-c", "user.name=CI", "-c", "user.email=ci@example.test", "commit", "--quiet", "-m", "base");
+    const baseSha = git("rev-parse", "HEAD");
+    mkdirSync(join(worktree, "docs"), { recursive: true });
+    renameSync(join(worktree, "src/worker/auth.ts"), join(worktree, "docs/guide.md"));
+    git("add", "-A");
+    git("-c", "user.name=CI", "-c", "user.email=ci@example.test", "commit", "--quiet", "-m", "rename");
+    const headSha = git("rev-parse", "HEAD");
+    const changed = execFileSync("git", ["-C", worktree, "diff", "--name-only", "--no-renames", "-z", baseSha, headSha, "--"], { encoding: "utf8" }).split("\\0").filter(Boolean);
+    assert.deepEqual(changed.sort(), ["docs/guide.md", "src/worker/auth.ts"].sort());
+    assert.equal(classifyChangedPaths(changed), "full");
+  } finally {
+    rmSync(worktree, { recursive: true, force: true });
+  }
+  console.log(`CI impact selector self-test: ${checks.length} classification cases + source-to-docs rename passed`);
 };
 
 const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
@@ -80,7 +104,7 @@ if (isMain) {
       const head = process.argv[headIndex + 1];
       const sha = /^[a-f0-9]{40}$/iu;
       if (!sha.test(base) || !sha.test(head)) throw new Error("Expected exact git SHAs");
-      paths = execFileSync("git", ["diff", "--name-only", "-z", base, head, "--"], {
+      paths = execFileSync("git", ["diff", "--name-only", "--no-renames", "-z", base, head, "--"], {
         encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
       }).split("\0").filter(Boolean);
     }
