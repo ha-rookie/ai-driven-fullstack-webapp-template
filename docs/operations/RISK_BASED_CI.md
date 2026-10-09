@@ -68,7 +68,9 @@ before claiming realized time savings. Source: [Issue #529 measurements](https:/
 - **Weekly Monday 04:00 JST / manual `workflow_dispatch`:** run **both desktop and mobile projects**, production build, frontend bundle evidence and production-build browser performance checks as before.
 - **Preview deployed acceptance:** if the application/runtime actually changes and is deployed, verify the affected functionality in Preview with the appropriate desktop/mobile personas; do not confuse faster PR smoke with release acceptance.
 - **Explicit risk:** mobile-only regressions or frontend performance regressions may be detected later by weekly/manual checks. Request a manual full Browser E2E run for a release or meaningful mobile/layout change if earlier detection is important.
-- Keep failed-test screenshots/traces. Pinning, Chromium installation, concurrency cancellation and existing workflow path triggers are unchanged.
+- Keep failed-test screenshots/traces. Pinning, Chromium installation and concurrency cancellation are unchanged.
+- **PR trigger scope narrowed** to `src/App.tsx`, `src/main.tsx`, UI CSS, `src/frontend/**`, `src/reference/**`, `src/shared/**`, `src/domain/**`, `e2e/harness/**`, `e2e/tests/**` and root Vite/Playwright/dependency configuration. Pure `src/worker/**`, `src/infrastructure/**`, `e2e/preview/**` or `e2e/performance/**` changes no longer start the separate Browser E2E workflow. Required `validate`, its auth/security/DB boundary checks, and weekly/manual Browser E2E continue.
+- This is an intentional early-detection compromise: a Worker-only change that indirectly affects UI can be detected by weekly Browser or targeted Preview acceptance, not necessarily by every PR. Browser E2E is NOT an additional branch-protection required check; if protection changes, revisit this path filter. Review any new UI source directories before relying on it.
 - [Issue #529](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/529) records measured impact; E2E runtime savings should be verified on a real PR, not asserted from the workflow edit alone.
 
 ## Read-only Preview re-deploy / fixture plan (2026-10-09)
