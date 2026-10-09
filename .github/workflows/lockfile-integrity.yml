@@ -5,6 +5,11 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/validate-lockfile-integrity.mjs'
+      - '.github/workflows/lockfile-integrity.yml'
 
 permissions:
   contents: read
