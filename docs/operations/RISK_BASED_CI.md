@@ -20,7 +20,7 @@ This policy is deliberately conservative: **path classification is not dependenc
 - **Any** unknown or mixed path upgrades the whole PR to FULL. A missing/invalid commit SHA or failed `git diff` makes `validate` fail. Source and destination paths of renames are both checked. A `FULL` result cannot be downgraded because another file is docs-only.
 - Workflow changes (including this policy) are always FULL.
 - Existing `Secret detection` remains on **all** PRs, including DOCS.
-- Browser E2E is still triggered on relevant source/config PRs, and now also runs weekly (Monday 04:00 JST). Preview Browser acceptance is separate and must be run after actual Preview deployment for relevant release changes.
+- Browser E2E remains triggered on relevant source/config PRs, **but runs the desktop project only on PRs** to prioritize rapid feedback. Monday 04:00 JST weekly and manual runs retain desktop + mobile and production-build frontend performance evidence. Preview Browser acceptance is separate and must be run after actual Preview deployment for relevant release changes.
 - Production validation and deployment Human Gates are unchanged. CI never implies authorization to deploy Production.
 
 ## Fast FULL: targeted expensive D1 regressions (2026-10-09)
@@ -59,6 +59,17 @@ local suite median ~195s; two expensive suites together ~122–132s per typical 
 **Expected potential saving, not a measured after-change result:** up to about
 two minutes in FULL PRs eligible to skip both. Measure actual after-change CI
 before claiming realized time savings. Source: [Issue #529 measurements](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/529#issuecomment-6076809265).
+
+## Speed-first Browser E2E (2026-10-09)
+
+`.github/workflows/browser-e2e.yml` previously ran the same browser scenarios for both desktop and mobile, rebuilt the production bundle, and executed performance evidence for **every** relevant PR. These add time to PR feedback but overlap the required `validate` build and the separately scheduled regression.
+
+- **PR:** run `npx playwright test --project=desktop-chromium` as the representative browser scenario; do not rerun the production build/performance evidence in the separate Browser E2E workflow. The required non-DOCS `validate` build still runs.
+- **Weekly Monday 04:00 JST / manual `workflow_dispatch`:** run **both desktop and mobile projects**, production build, frontend bundle evidence and production-build browser performance checks as before.
+- **Preview deployed acceptance:** if the application/runtime actually changes and is deployed, verify the affected functionality in Preview with the appropriate desktop/mobile personas; do not confuse faster PR smoke with release acceptance.
+- **Explicit risk:** mobile-only regressions or frontend performance regressions may be detected later by weekly/manual checks. Request a manual full Browser E2E run for a release or meaningful mobile/layout change if earlier detection is important.
+- Keep failed-test screenshots/traces. Pinning, Chromium installation, concurrency cancellation and existing workflow path triggers are unchanged.
+- [Issue #529](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/529) records measured impact; E2E runtime savings should be verified on a real PR, not asserted from the workflow edit alone.
 
 ## Optional PR checks selected by file domain
 
