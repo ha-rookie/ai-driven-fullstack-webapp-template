@@ -1,4 +1,5 @@
 import { expect, type Page, type Response } from "@playwright/test";
+import { ensurePreviewLoginResponseComplete } from "./preview-response-completion";
 
 /**
  * Preview acceptance tests must distinguish an application's deliberate 503
@@ -35,6 +36,13 @@ export const submitPreviewLogin = async (
       unattributed503,
     });
 
+    if (response.status() === 200) {
+      // An HTTP 200 with a never-ending body is NOT a successful login.
+      // Distinguish it from the retryable unattributed 503, without logging
+      // response bodies, credentials, cookies or tokens.
+      await ensurePreviewLoginResponseComplete(response);
+      return response;
+    }
     if (!unattributed503 || attempt > delaysMs.length) return response;
 
     // The UI keeps the password in its controlled form after an unsuccessful
