@@ -2,6 +2,9 @@ name: Full-stack template CI
 
 on:
   workflow_dispatch:
+  schedule:
+    # Weekly full regression, Mon 03:30 JST (Sun 18:30 UTC)
+    - cron: '30 18 * * 0'
   pull_request:
     branches:
       - main
@@ -20,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -27,16 +32,34 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Select required validation tier (fail-closed)
+        id: impact
+        shell: bash
+        env:
+          CHANGE_BASE: ${{ github.event.pull_request.base.sha }}
+          CHANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/ci-change-impact.mjs --self-test
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            node scripts/ci-change-impact.mjs --base "$CHANGE_BASE" --head "$CHANGE_HEAD"
+          else
+            node scripts/ci-change-impact.mjs --full
+          fi
+
       - name: Install dependencies
+        if: steps.impact.outputs.tier != 'docs'
         run: npm ci
 
       - name: Validate public repository entrypoints
         run: node scripts/validate-public-readiness.mjs
 
       - name: Migrate local D1
+        if: steps.impact.outputs.tier == 'full'
         run: npm run db:migrate:local
 
       - name: Verify local D1 schema
+        if: steps.impact.outputs.tier == 'full'
         shell: bash
         run: |
           set -euo pipefail
@@ -53,18 +76,23 @@ jobs:
           grep -q 'column:example_resources:version' /tmp/d1-schema.txt
 
       - name: Full local validation
+        if: steps.impact.outputs.tier == 'full'
         run: npm run validate:local
 
       - name: Lint
+        if: steps.impact.outputs.tier != 'docs'
         run: npm run lint
 
       - name: Build
+        if: steps.impact.outputs.tier != 'docs'
         run: npm run build
 
       - name: Seed protected boundary fixture
+        if: steps.impact.outputs.tier == 'full'
         run: npx wrangler d1 execute DB --local --file tests/fixtures/protected-boundary.sql
 
       - name: Runtime and protected boundary test
+        if: steps.impact.outputs.tier == 'full'
         shell: bash
         run: |
           set -euo pipefail
