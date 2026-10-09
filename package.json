@@ -70,7 +70,7 @@
     "@fontsource/noto-sans-jp": "5.2.5",
     "@cloudflare/workers-types": "latest",
     "@eslint/js": "9.39.5",
-    "@types/node": "24.13.6",
+    "@types/node": "26.6.4",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
