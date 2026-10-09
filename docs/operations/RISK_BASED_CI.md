@@ -85,6 +85,15 @@ node scripts/preview-change-plan.mjs \
   --seeded-sha=<last-successful-preview-seed-full-sha>
 ```
 
+- **Semantic package check:** `package.json` no longer forces redeploy if BOTH
+  pinned revisions contain readable JSON, every non-script field (including all
+  dependencies/tooling) is structurally equal, and every changed script is a
+  `test`/`test:*` or `validate:local*` script. Other scripts, install hooks,
+  a build/dev/preview change, lockfile changes, invalid JSON or missing SHAs
+  still force redeploy. The CLI prints `packageDiff=test_scripts_only` only
+  after verifying actual Git objects via `git show <sha>:package.json`.
+- This is an advisory conclusion about code/runtime changes, NOT evidence of
+  which SHA was actually deployed. Production and Preview Human Gates remain.
 - `deploy:skip` means the diff is limited to known docs / GitHub workflow /
   tests / E2E / selector/planner content without an application or config change.
   Any Worker/UI/public/config/build/dependency/unknown change requires deploy.
