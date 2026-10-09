@@ -9,15 +9,23 @@ on:
     branches:
       - main
     paths:
-      - 'src/**'
-      - 'e2e/**'
+      # PR Browser E2E checks the UI and WORKHUB reference harness. Worker-only
+      # and infrastructure-only edits use required FULL CI boundaries instead.
+      # Weekly/manual Browser E2E still exercises all desktop/mobile flows.
+      - 'src/App.tsx'
+      - 'src/main.tsx'
+      - 'src/*.css'
+      - 'src/frontend/**'
+      - 'src/reference/**'
+      - 'src/shared/**'
+      - 'src/domain/**'
+      - 'e2e/harness/**'
+      - 'e2e/tests/**'
       - 'index.html'
       - 'vite.config.ts'
       - 'package.json'
       - 'package-lock.json'
       - 'playwright.config.ts'
-      - 'playwright.performance.config.ts'
-      - 'scripts/frontend-performance-evidence.mjs'
       - '.github/workflows/browser-e2e.yml'
 
 permissions:
