@@ -182,6 +182,29 @@ const selfTest = () => {
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+  // Exercise the actual git show path, not just the pure comparison helper.
+  const packageRepo = mkdtempSync(join(tmpdir(), "preview-plan-package-"));
+  try {
+    execFileSync("git", ["init", "--quiet", packageRepo]);
+    const git = (...args) => execFileSync("git", ["-C", packageRepo, ...args], { encoding: "utf8" }).trim();
+    const commit = label => {
+      git("add", "-A");
+      git("-c", "user.name=CI", "-c", "user.email=ci@example.test", "commit", "-qm", label);
+      return git("rev-parse", "HEAD");
+    };
+    writeFileSync(join(packageRepo, "package.json"), JSON.stringify(manifest) + "\n");
+    const base = commit("base");
+    writeFileSync(join(packageRepo, "package.json"), JSON.stringify(testOnly) + "\n");
+    const testSha = commit("test only");
+    assert.equal(packageDiffIsTestOnly(base, testSha, packageRepo), true);
+    assert.equal(packageDiffIsTestOnly(testSha, base, packageRepo), true);
+    assert.equal(packageDiffIsTestOnly("missing", testSha, packageRepo), false);
+    writeFileSync(join(packageRepo, "package.json"), JSON.stringify({ ...testOnly, dependencies: { react: "2.0.0" } }) + "\n");
+    const runtimeSha = commit("runtime deps");
+    assert.equal(packageDiffIsTestOnly(base, runtimeSha, packageRepo), false);
+  } finally {
+    rmSync(packageRepo, { recursive: true, force: true });
+  }
   console.log("Preview plan self-test: " + cases.length + " impact cases, package test-only semantics, missing seed evidence, protected rename passed");
 };
 
