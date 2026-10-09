@@ -81,7 +81,7 @@ Dependency vulnerability scanning also runs **weekly** to catch advisory changes
 ## Verification and controls
 
 1. `node scripts/ci-change-impact.mjs --self-test` exercises examples for safe docs, UI, mixed changes, fail-closed full paths, expensive-suite routing, and source-to-docs renames.
-2. Open an isolated README-only PR to verify DOCS selection without triggering unrelated supply-chain jobs; open an admin UI-only PR to verify FRONTEND + E2E; modify a test/Worker file to verify FULL.
+2. Open an isolated README-only PR to verify DOCS selection without triggering unrelated supply-chain jobs; open an admin UI-only PR to verify FRONTEND + E2E; modify a test/Worker file to verify FULL. A documentation change under `docs/operations/` must still choose the FULL **core** tier but may skip both isolated expensive D1 suites; this path is used as a real acceptance case for the fast FULL selector.
 3. Verify the `validate` status check remains present on every PR, and main's strict required check still blocks failure.
 4. Run `workflow_dispatch` FULL to establish a baseline after rollout. Scheduled full regression provides ongoing coverage.
 
