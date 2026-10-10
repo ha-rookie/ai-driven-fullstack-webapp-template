@@ -6,6 +6,7 @@ const INTEGRATION_VIEW_ACTION = "integrations:view";
 const ROUTE = "/api/admin/integrations/outbox";
 const MAX_RECENT = 8;
 const MAX_SCOPE_LENGTH = 128;
+const OUTBOX_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/u;
 
 /** D1 Outbox has environment but no scope column. An explicit single-scope project opt-in is mandatory. */
 export interface IntegrationOperationsOptions {
@@ -33,6 +34,46 @@ const error = (requestId: string, status: number, code: string, message: string)
 const response = (payload: unknown): Response =>
   Response.json(payload, { headers: { "cache-control": "no-store" } });
 
+const safeFailureCode = (value: string | null): string =>
+  value !== null && safeFailureCodes.has(value) ? value : "other";
+
+type OutboxStatus = "pending" | "processing" | "retry_wait" | "delivered" | "dead_letter";
+
+interface OutboxDetailRow {
+  readonly id: string;
+  readonly status: OutboxStatus;
+  readonly attempt_count: number;
+  readonly available_at: string;
+  readonly last_attempt_at: string | null;
+  readonly delivered_at: string | null;
+  readonly dead_lettered_at: string | null;
+  readonly failure_code: string | null;
+  readonly version: number;
+  readonly updated_at: string;
+}
+
+const nextAction = (status: OutboxStatus): "reconcile_external_first" | "await_scheduled_retry"
+  | "observe_in_progress" | "queued" | "none" => {
+  switch (status) {
+    case "dead_letter": return "reconcile_external_first";
+    case "retry_wait": return "await_scheduled_retry";
+    case "processing": return "observe_in_progress";
+    case "pending": return "queued";
+    case "delivered": return "none";
+  }
+};
+
+const validDetailRow = (row: OutboxDetailRow): boolean =>
+  OUTBOX_ID_PATTERN.test(row.id)
+  && ["pending", "processing", "retry_wait", "delivered", "dead_letter"].includes(row.status)
+  && Number.isSafeInteger(row.attempt_count) && row.attempt_count >= 0
+  && Number.isSafeInteger(row.version) && row.version > 0
+  && typeof row.available_at === "string"
+  && typeof row.updated_at === "string"
+  && [row.last_attempt_at, row.delivered_at, row.dead_lettered_at].every(
+    (value) => value === null || typeof value === "string",
+  );
+
 export const handleIntegrationOperationsApi = async (
   request: Request,
   env: IntegrationOperationsEnvironment,
@@ -40,8 +81,22 @@ export const handleIntegrationOperationsApi = async (
   options: IntegrationOperationsOptions = {},
 ): Promise<Response | null> => {
   const url = new URL(request.url);
-  if (url.pathname !== ROUTE) return null;
+  if (url.pathname !== ROUTE && !url.pathname.startsWith(ROUTE + "/")) return null;
   if (request.method !== "GET") return error(requestId, 405, "method_not_allowed", "Method not allowed");
+
+  // Individual reads remain within the same authorized single-scope endpoint.
+  let outboxId: string | null = null;
+  if (url.pathname !== ROUTE) {
+    const encodedId = url.pathname.slice(ROUTE.length + 1);
+    try {
+      outboxId = decodeURIComponent(encodedId);
+    } catch {
+      return error(requestId, 400, "invalid_integration_query", "Integration query is invalid");
+    }
+    if (!OUTBOX_ID_PATTERN.test(outboxId)) {
+      return error(requestId, 400, "invalid_integration_query", "Integration query is invalid");
+    }
+  }
 
   const environment = env.RUNTIME_ENVIRONMENT;
   if (!environment || !isRuntimeEnvironment(environment)) {
@@ -84,6 +139,44 @@ export const handleIntegrationOperationsApi = async (
   }
 
   try {
+    if (outboxId !== null) {
+      const detail = await env.DB.prepare(`
+        SELECT id, status, attempt_count, available_at, last_attempt_at,
+          delivered_at, dead_lettered_at, failure_code, version, updated_at
+        FROM integration_outbox
+        WHERE environment = ? AND id = ?
+        LIMIT 1
+      `).bind(environment, outboxId).first<OutboxDetailRow>();
+      if (!detail) {
+        return error(requestId, 404, "integration_outbox_not_found", "Outbox record not found");
+      }
+      if (!validDetailRow(detail)) throw new Error("Invalid Outbox detail");
+      return response({
+        coverage: "environment",
+        environment,
+        observedAt: new Date().toISOString(),
+        outbox: {
+          outboxId: detail.id,
+          status: detail.status,
+          attemptCount: detail.attempt_count,
+          availableAt: detail.available_at,
+          lastAttemptAt: detail.last_attempt_at,
+          deliveredAt: detail.delivered_at,
+          deadLetteredAt: detail.dead_lettered_at,
+          updatedAt: detail.updated_at,
+          version: detail.version,
+          failureCode: safeFailureCode(detail.failure_code),
+        },
+        // This is guidance from local Outbox state, NOT an external provider check.
+        decision: {
+          nextAction: nextAction(detail.status),
+          providerOutcome: "unverified",
+          manualRetryAllowed: false,
+          rationale: "Provider delivery outcome is not verified. Never re-send solely from Outbox status.",
+        },
+      });
+    }
+
     // Already-indexed environment/status columns; no payload or provider credentials read.
     const counts = await env.DB.prepare(`
       SELECT status, COUNT(*) AS total
@@ -120,7 +213,7 @@ export const handleIntegrationOperationsApi = async (
         status: row.status,
         attemptCount: row.attempt_count,
         updatedAt: row.updated_at,
-        failureCode: safeFailureCodes.has(row.failure_code ?? "") ? row.failure_code : "other",
+        failureCode: safeFailureCode(row.failure_code),
       };
     });
     return response({
