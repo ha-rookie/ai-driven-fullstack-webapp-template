@@ -266,7 +266,7 @@ try {
   await db.batch(outboxFixtures.map(([environment, status, id]) => db.prepare(
     "INSERT INTO integration_outbox(id,environment,integration_event_id,destination_key,status,available_at,attempt_count,failure_code,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
   ).bind(id, environment, id, "test-provider", status, createdAt, 1,
-    id === "dl-2" ? "sensitive-provider-credential" : "provider_unavailable", 1, createdAt, createdAt)));
+    id === "r-9" ? "sensitive-provider-credential" : "provider_unavailable", 1, createdAt, createdAt)));
 
   await db.prepare("UPDATE master_items SET retired_at=? WHERE id=?")
     .bind(createdAt, projectRetired).run();
