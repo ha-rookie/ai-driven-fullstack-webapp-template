@@ -8,3 +8,5 @@
 .admin-header .workhub-account-switch-button:hover{background:#285465}
 .admin-header .workhub-account-switch-error{color:#ffd1d1}
 @media(max-width:560px){.workhub-account-switch-button{padding:0 9px;font-size:11px}.workhub-account-switch-error{max-width:195px}}
+@media(max-width:640px){.admin-header .admin-header-context>span:nth-child(2){display:none}}
+@media(max-width:480px){.admin-header .admin-environment{display:none}.admin-header .admin-header-context{gap:7px}}
