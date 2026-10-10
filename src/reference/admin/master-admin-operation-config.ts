@@ -23,6 +23,17 @@ export interface MasterOperationLink {
   readonly label: string;
 }
 
+/**
+ * Read-only Master definitions explicitly exposed by a Project. The Worker
+ * independently authorizes scope, masterKey and the current principal.
+ * Operation links are presentation hints, never mutation permissions.
+ */
+export interface MasterViewDefinition {
+  readonly masterKey: string;
+  readonly label: string;
+  readonly operations: Readonly<Record<string, MasterOperationLink>>;
+}
+
 /** Each configured schedule/order target needs its own addressable panel. */
 export function masterSchedulePanelId(target: Pick<MasterScheduleTarget, "variant" | "itemId">): string {
   return `admin-master-${target.variant === "order" ? "order" : "schedule"}-demo-${target.itemId}`;
