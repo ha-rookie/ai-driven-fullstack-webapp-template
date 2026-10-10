@@ -34,6 +34,15 @@ test("overview summarizes bounded authorized signals without claiming complete h
       counts: { failed: 29, deadLetter: 4 },
     }),
   }));
+  await page.route("**/api/admin/integrations/outbox?**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+      counts: { retryWait: 10, deadLetter: 3 }, sampleLimit: 8,
+      items: [{ outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
+        updatedAt: "2026-10-10T00:00:00.000Z", failureCode: "other" }],
+    }),
+  }));
   await page.route("**/api/admin/audit?**", (route) => {
     const query = new URL(route.request().url()).searchParams;
     const items = query.get("outcome") === "failure"
@@ -73,7 +82,11 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(card(page, "失敗・Dead Letterジョブ")).toHaveAttribute("data-coverage", "environment_current");
   await expect(card(page, "直近の特権操作").locator("strong")).toContainText("1 件");
   await expect(card(page, "Security Finding").locator("strong")).toHaveText("未接続");
-  await expect(card(page, "連携・Metrics / Alert").locator("strong")).toHaveText("未接続");
+  await expect(card(page, "外部連携Outbox").locator("strong")).toHaveText("要確認 3 / 再試行待ち 10 件（環境内の現在状態）");
+  await expect(card(page, "外部連携Outbox")).toHaveAttribute("data-coverage", "environment_current");
+  await expect(page.locator("#admin-integration-outbox")).toContainText("safe-1");
+  await expect(page.locator("#admin-integration-outbox")).not.toContainText("sensitive-provider-credential");
+  await expect(card(page, "Metrics / Alert").locator("strong")).toHaveText("未接続");
   await expect(summary.getByTestId("operations-overview-environment")).toContainText("Server Environment: local");
   await expect(summary.getByText(/複数Scopeへ転用不可/u)).toBeVisible();
   await card(page, "失敗・Dead Letterジョブ").getByRole("link", { name: "詳細を確認 →" }).click();
@@ -91,6 +104,10 @@ test("overview shows degraded and denied sources as non-healthy, then refreshes 
   await page.route("**/api/admin/jobs?**", (route) => route.fulfill({
     status: 503, contentType: "application/json",
     body: JSON.stringify({ error: { code: "job_operations_unavailable" } }),
+  }));
+  await page.route("**/api/admin/integrations/outbox?**", (route) => route.fulfill({
+    status: 503, contentType: "application/json",
+    body: JSON.stringify({ error: { code: "integration_operations_unavailable" } }),
   }));
   await page.route("**/api/admin/jobs/summary?**", (route) => route.fulfill({
     status: 503, contentType: "application/json",
@@ -110,6 +127,7 @@ test("overview shows degraded and denied sources as non-healthy, then refreshes 
   await page.goto("/admin");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("接続異常");
   await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("取得できません");
+  await expect(card(page, "外部連携Outbox").locator("strong")).toHaveText("取得できません");
   await expect(card(page, "監査失敗").locator("strong")).toHaveText("閲覧不可");
   await expect(page.getByTestId("operations-overview-environment")).toContainText("Server Environment: 取得できません");
 
@@ -124,6 +142,11 @@ test("overview shows degraded and denied sources as non-healthy, then refreshes 
 test("non-admin user never mounts operational overview or loads privileged overview data", async ({ page }) => {
   await login(page, "aoi");
   let privilegedReads = 0;
+  let outboxReads = 0;
+  await page.route("**/api/admin/integrations/outbox?**", (route) => {
+    outboxReads += 1;
+    return route.fulfill({ status: 403 });
+  });
   await page.route("**/api/admin/audit?**", (route) => {
     privilegedReads += 1;
     return route.fulfill({ status: 403 });
@@ -132,6 +155,7 @@ test("non-admin user never mounts operational overview or loads privileged overv
   await expect(page.getByRole("heading", { name: "この領域を表示する権限がありません" })).toBeVisible();
   await expect(page.locator("#admin-operations-overview")).toHaveCount(0);
   expect(privilegedReads).toBe(0);
+  expect(outboxReads).toBe(0);
 });
 
 
@@ -147,6 +171,14 @@ test("overview refuses to combine a job count from a different environment", asy
       coverage: "environment", environment: "production",
       observedAt: "2026-10-10T00:00:00.000Z",
       counts: { failed: 9, deadLetter: 1 },
+    }),
+  }));
+  await page.route("**/api/admin/integrations/outbox?**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", environment: "production",
+      observedAt: "2026-10-10T00:00:00.000Z",
+      counts: { retryWait: 7, deadLetter: 4 }, sampleLimit: 8, items: [],
     }),
   }));
   await page.route("**/api/admin/audit?**", (route) => route.fulfill({
@@ -167,5 +199,7 @@ test("overview refuses to combine a job count from a different environment", asy
   await page.goto("/admin");
   await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("環境情報が不一致");
   await expect(card(page, "失敗・Dead Letterジョブ")).toHaveAttribute("data-source-state", "unknown");
+  await expect(card(page, "外部連携Outbox").locator("strong")).toHaveText("環境情報が不一致");
+  await expect(card(page, "外部連携Outbox")).toHaveAttribute("data-source-state", "unknown");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
 });
