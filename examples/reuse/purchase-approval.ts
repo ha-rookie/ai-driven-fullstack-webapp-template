@@ -3,15 +3,17 @@
  * Demonstrates existing Workflow/Authorization foundation with a new domain.
  * Local/InMemory only. NOT an integrated production purchase workflow or external adoption.
  */
-import { authorizeScopedAction, type ScopeMembership, type RolePolicy } from "../../src/worker/authorization";
-import {
-  InMemoryWorkflowStore,
-  StaticWorkflowDefinitionRegistry,
-  WorkflowService,
-  type WorkflowAssigneeResolver,
-  type WorkflowDefinition,
-  type WorkflowMutationResult,
-} from "../../src/worker/workflow";
+// Leaf imports avoid pulling the D1-backed Workflow and HTTP authorization
+// adapters through their aggregate barrels during selective reuse.
+import { authorizeScopedAction } from "../../src/worker/authorization/policy";
+import type { ScopeMembership, RolePolicy } from "../../src/worker/authorization/types";
+import { InMemoryWorkflowStore } from "../../src/worker/workflow/in-memory-store";
+import { StaticWorkflowDefinitionRegistry, WorkflowService } from "../../src/worker/workflow/service";
+import type {
+  WorkflowAssigneeResolver,
+  WorkflowDefinition,
+  WorkflowMutationResult,
+} from "../../src/worker/workflow/types";
 
 export interface PurchaseRequest {
   readonly id: string;

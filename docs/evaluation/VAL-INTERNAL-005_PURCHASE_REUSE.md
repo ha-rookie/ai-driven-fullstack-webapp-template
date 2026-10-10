@@ -44,3 +44,31 @@
 次段階で実利用の証拠にするには、別Repository/別ProjectでAPI/DB/画面を含む小機能を実装し、Template利用あり/なしの作業数・修正回数・判断時間などを同条件で比較する必要があります。その前に、本実験の結果で不足した境界を #475 に還流してください。
 
 本検証はProductの機能リリースではなく、Reusable Foundationの最小移植性検証です。PR合格後でも #475（External Adoption / Usability Validation）はOpenを維持します。
+
+## 追加評価（#475）— Cloudflare非依存の選択的再利用境界
+
+**課題:** 初期スパイクでは `src/worker/workflow` と `src/worker/authorization` の集約indexから読み込んでいた。これらはD1 StoreやHTTP Guardもexportしており、「WorkflowとScoped AuthZだけを移す」最小依存範囲の証明にはならなかった。
+
+**変更:** 購買Consumerを既存のleaf moduleへ直接importする構成にし、別のWorkflow Engine・Authorization抽象化・新しいOSS・外部依存を増やさない。必要な参照は次の**5ファイル**。
+
+- `src/worker/workflow/types.ts`
+- `src/worker/workflow/service.ts`
+- `src/worker/workflow/in-memory-store.ts`
+- `src/worker/authorization/types.ts`
+- `src/worker/authorization/policy.ts`
+
+**検証コマンド（既存npm dependenciesを利用）:**
+
+```bash
+npm ci
+npx tsc -p examples/reuse/tsconfig.portable.json
+npm run test:unit
+```
+
+Portable typecheckは `types: []` と `ES2023/DOM` のみで、Cloudflare Workers型・Node型・D1環境を読み込まず、購買Consumerのimport依存をコンパイルする。CIはWorkflow/AuthZ/Exampleなど**関連ファイルが変更された場合だけ**この追加typecheckを実行する。正常系や各拒否条件の実行確認は既存6件の購買Unit testを再利用し、重複テストを増やさない。
+
+**観測できること:** 既存コードのうち上記小さな範囲について、Cloudflare固有の型を必要とせず利用できるか。**観測できないこと:** 外部プロジェクトでのパッケージ配布、D1以外のdurable storage、外部開発者が迷わず導入できるか、AWS/AzureでのProduction稼働、実工数短縮。「プラットフォーム非依存の完成品」ではない。
+
+**まだ必要:** 利用先のbuild/distribution、認証SessionとMembership検証、Durable Store・業務データの原子的整合、復旧・監査・通知等。Cloudflareに依存しないことが必要なプロジェクトでは、購入Consumer自体がReferenceとして有用でも、Workflow StoreやRuntime Adapterの実装が別途必要になる。
+
+この追加テストのEvidence区分は **INTERNAL / static portability boundary**。別Repositoryへの採用実績や `DOGFOOD` / `HUMAN` / `AI-REVIEW` 証拠には分類しない。
