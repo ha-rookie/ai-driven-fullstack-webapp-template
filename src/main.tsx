@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import WorkhubShowcase from "./reference/showcase/WorkhubShowcase";
 import { AuthProvider } from "./frontend/auth";
 import "./workhub-business.css";
 
