@@ -183,6 +183,50 @@ try {
     ],
   };
   // Actual production Master handler: only the options are local fixtures.
+  const readMaster = (id, session, overrides = {}) => {
+    const query = new URLSearchParams({
+      scopeId: overrides.scopeId ?? "workhub-company",
+      masterKey: overrides.masterKey ?? "workhub.office",
+      itemId: id,
+    });
+    return handleMasterDataViewerApi(
+      new Request("https://local.test/api/admin/master-data?" + query, {
+        headers: session ? { cookie: "app_session=" + session.token } : {},
+      }),
+      { DB: db, RUNTIME_ENVIRONMENT: overrides.environment ?? "test" },
+      "master-local-d1-auth", viewerOptions,
+    );
+  };
+  const assertOperations = async (id, session, expected) => {
+    const response = await readMaster(id, session);
+    assert.equal(response?.status, 200, "detail must be readable");
+    const data = await response.json();
+    assert.equal(data.item.id, id);
+    assert.deepEqual(data.allowedOperations, expected);
+    assert.equal(data.revisions.length, 1);
+  };
+  await assertOperations(scheduleId, admin, ["schedule"]);
+  await assertOperations(retireId, admin, ["retire"]);
+  await assertOperations(ordinaryId, admin, []);
+  await assertOperations(scheduleId, observer, []);
+  await assertOperations(retireId, observer, []);
+  await assertOperations(retiredId, admin, []);
+  const production = await readMaster(productionId, admin, { environment: "production" });
+  assert.equal(production?.status, 200);
+  assert.deepEqual((await production.json()).allowedOperations, []);
+  assert.equal((await readMaster(scheduleId, null))?.status, 401);
+  assert.equal((await readMaster(scheduleId, outsider))?.status, 403);
+  assert.equal((await readMaster(scheduleId, admin, { scopeId: "other-company" }))?.status, 403);
+  assert.equal((await readMaster(scheduleId, admin, { masterKey: "other.master" }))?.status, 404);
+  assert.equal((await readMaster(scheduleId, admin, { environment: "production" }))?.status, 404);
+  assert.equal((await readMaster(scheduleId, admin, { environment: "untrusted" }))?.status, 503);
+
+  // Permission is live; a valid session never caches previously allowed links.
+  await db.prepare("UPDATE scope_memberships SET role=? WHERE user_id=? AND scope_id=?")
+    .bind("observer", "admin", "workhub-company").run();
+  await assertOperations(scheduleId, admin, []);
+  console.log("Wrangler Local D1 Master API role and target disclosure passed");
+
   console.log("Wrangler Local D1 Master atomic batch passed: competing cutover=1 winner, audit rollback=clean");
 } finally {
   if (proxy) await proxy.dispose();
