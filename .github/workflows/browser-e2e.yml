@@ -90,6 +90,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      # Only public, unauthenticated /showcase screenshots; no sessions or business data.
+      - name: Upload Showcase desktop/mobile visual evidence
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-visual-${{ github.run_id }}
+          path: test-results/browser-e2e/**/showcase-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
