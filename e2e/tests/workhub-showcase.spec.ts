@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 test("public showcase explains the reference, offers real demo and source evidence", async ({ page }) => {
-  const mutations: string[] = [];
+  const apiRequests: string[] = [];
   page.on("request", (request) => {
-    if (/^\/api\//u.test(new URL(request.url()).pathname)
-      && !["GET", "HEAD", "OPTIONS"].includes(request.method())) mutations.push(request.url());
+    if (new URL(request.url()).pathname.startsWith("/api/")) {
+      apiRequests.push(request.method() + " " + new URL(request.url()).pathname);
+    }
   });
   await page.goto("/showcase");
   await expect(page.getByRole("heading", { level: 1, name: /業務システムを/u })).toBeVisible();
@@ -27,7 +28,11 @@ test("public showcase explains the reference, offers real demo and source eviden
   await expect(page.locator(".showcase-status-grid")).toContainText("外部SaaSの受領結果を実照合するAdapter");
   await expect(page.getByRole("link", { name: "GitHub Source ↗" }))
     .toHaveAttribute("href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template");
-  expect(mutations).toEqual([]);
+  await expect(page.getByRole("heading", { name: /実際の画面では、/u })).toBeVisible();
+  await expect(page.locator(".showcase-start-steps")).toContainText("Aoi Employeeでログイン");
+  await expect(page.locator(".showcase-start-steps")).toContainText("Ren Managerでログイン");
+  await expect(page.getByRole("link", { name: "WORKHUBログインを開く →" })).toHaveAttribute("href", "/");
+  expect(apiRequests, "public Showcase must not query Auth/D1 or business APIs").toEqual([]);
 });
 
 test("showcase works without login and stays separate from WORKHUB auth", async ({ page }) => {
@@ -51,4 +56,33 @@ test("mobile tour retains step controls, demo entry and evidence links", async (
   await expect(page.locator("#showcase-tour").getByRole("link", { name: "E2Eテスト ↗" })).toBeVisible();
   const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(scrollWidth).toBeLessThanOrEqual(390);
+});
+
+test("showcase visual evidence: public desktop/mobile, no credential capture", async ({ page }, testInfo) => {
+  const apiRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) {
+      apiRequests.push(request.method() + " " + new URL(request.url()).pathname);
+    }
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/showcase");
+  await expect(page.getByRole("heading", { level: 1, name: /業務システムを/u })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("showcase-desktop.png"), fullPage: true,
+    animations: "disabled",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: /業務システムを/u })).toBeVisible();
+  await expect(page.getByRole("link", { name: "WORKHUBを試す ↗" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "WORKHUBログインを開く →" })).toBeVisible();
+  const width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(width, "no horizontal scroll at 390px").toBeLessThanOrEqual(390);
+  await page.screenshot({
+    path: testInfo.outputPath("showcase-mobile.png"), fullPage: true,
+    animations: "disabled",
+  });
+  expect(apiRequests, "only public Showcase; no authenticated/private requests").toEqual([]);
 });
