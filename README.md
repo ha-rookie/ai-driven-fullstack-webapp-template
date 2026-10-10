@@ -4,6 +4,7 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 
 業務Webアプリの共通基盤を検証・採用する開発者向けです。完成済み業務製品、具体的なログインProvider、実環境の構築・運用保証は含みません。
 
+- [WORKHUB Showcase / 3分ガイド](#workhub-showcase--evaluation-journey)
 - [Quick Start / Local development](#local-development)
 - [Project Bootstrap Profile](docs/PROJECT_BOOTSTRAP_PROFILE.md)
 - [Full-stack Recipes](docs/recipes/README.md)
@@ -18,6 +19,18 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy / vulnerability reporting](SECURITY.md)
 - [MIT License](LICENSE)
+
+## WORKHUB Showcase / Evaluation Journey
+
+**まずは動く業務の流れから確認したい方へ：** Local起動後、`/showcase`（例: `http://localhost:5173/showcase`）へアクセスしてください。ログインせずに利用できます。
+
+- **30秒:** このTemplateは何のためのものか / 本番パッケージとの違いを把握
+- **3分:** Aoiの出張申請 → Renの差戻し → 再申請・承認 → 通知・履歴 → 権限付き検索を手順で見る
+- **30分:** Tour各Stepから実装・Browser E2E・設計資料をGitHub上で確認
+
+`/showcase`は静的な説明と操作可能なツアーです。**業務を実際に操作する際は `/` のWORKHUBデモログインへ進んでください。** デモデータは架空であり、Remote/Productionの動作・外部SaaSの受領照合・完成したAI Agent機能は保証しません。Preview公開デプロイは別途Human Gate対象です。
+
+評価体験の設計は [#402 Showcase](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/402) と [#474 Evaluation Journey](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/474)、実装上の追跡は [#267 WORKHUB](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/267) に紐づけます。
 
 ## Positioning
 
