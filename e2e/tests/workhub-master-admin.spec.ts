@@ -221,3 +221,57 @@ test("actual Master API fails closed when local Worker runtime environment is no
   const body = await response.json() as { error: { code: string } };
   expect(body.error.code).toBe("runtime_environment_required");
 });
+
+test("Master revision lifecycle filters separate current, future and history without losing boundaries", async ({ page }) => {
+  await logInAndMockReadOnlyMasterData(page);
+  const viewer = page.locator("#admin-master-data");
+  const asOf = "2026-10-10T00:00:00.000Z";
+  const revisions = [
+    { ...revision(tokyoId), id: tokyoId + "-r4", revision: 4, label: "Planned",
+      lifecycle: "future", effectiveFrom: "2027-04-01T00:00:00.000Z", effectiveTo: null },
+    { ...revision(tokyoId), id: tokyoId + "-r3", revision: 3, label: "Current Office",
+      lifecycle: "current", effectiveFrom: "2026-04-01T00:00:00.000Z",
+      effectiveTo: "2027-04-01T00:00:00.000Z" },
+    { ...revision(tokyoId), id: tokyoId + "-r2", revision: 2, label: "Past Office",
+      lifecycle: "expired", effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: "2026-04-01T00:00:00.000Z" },
+  ];
+  await page.route("**/api/admin/master-data?**", async (route) => {
+    const id = new URL(route.request().url()).searchParams.get("itemId");
+    if (id !== tokyoId) return route.fallback();
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        item: { ...item(tokyoId), retiredAt: "2027-05-01T00:00:00.000Z" },
+        revisions, hasMore: true, asOf, allowedOperations: [],
+      }),
+    });
+  });
+  await viewer.getByLabel("マスタ項目").selectOption(disableId);
+  await viewer.getByLabel("マスタ項目").selectOption(tokyoId);
+  await expect(viewer.getByTestId("master-retirement-status")).toHaveText("廃止予定");
+  await expect(viewer.getByText("廃止予定のため操作は案内しません。")).toBeVisible();
+  await expect(viewer.getByTestId("master-revision-summary")).toContainText("将来予定：1 件");
+  await expect(viewer.getByTestId("master-revision-summary")).toContainText("過去・廃止：1 件");
+  await expect(viewer.getByText("全履歴の件数ではありません。", { exact: false })).toBeVisible();
+  const rows = viewer.locator("table.admin-audit-table tbody tr");
+  await expect(rows).toHaveCount(3);
+  await viewer.getByLabel("Revisionの表示").selectOption("future");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("Planned");
+  await expect(rows.first()).toContainText("将来予定");
+  await viewer.getByLabel("Revisionの表示").selectOption("active");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("Current Office");
+  await expect(rows.first()).toContainText("現在有効");
+  await viewer.getByLabel("Revisionの表示").selectOption("history");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("Past Office");
+  await expect(rows.first()).toContainText("期間終了");
+
+  // Changing item resets its previous lifecycle filter rather than hiding
+  // the next item's revisions when no future record exists.
+  await viewer.getByLabel("マスタ項目").selectOption(enableId);
+  await expect(viewer.getByLabel("Revisionの表示")).toHaveValue("all");
+  await expect(viewer.getByText("現在無効")).toBeVisible();
+});
