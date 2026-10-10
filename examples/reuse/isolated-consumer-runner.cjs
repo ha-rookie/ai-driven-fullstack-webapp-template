@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("node:assert/strict");
-const { createPurchaseApprovalSpike } = require("./dist/examples/reuse/purchase-approval.js");
+const { createPurchaseApprovalSpike } = require("../../dist/examples/reuse/purchase-approval.js");
 
 // This consumer runs inside an isolated temporary project: it has NO node_modules,
 // no WORKHUB, no Wrangler and no Cloudflare configuration.
