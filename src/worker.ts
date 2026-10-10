@@ -16,7 +16,7 @@ import {
 import { handleExampleResourceApi } from "./worker/example-resource-api";
 import { createWorkhubJobRecoveryRegistry } from "./reference/workhub/job-recovery";
 import {
-  handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi,
+  handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi, handleIntegrationOperationsApi,
   handleMasterDataViewerApi, handleMasterRetireApi, handleMasterScheduleApi,
   MASTER_SCHEDULE_ACTION, MASTER_SCHEDULE_DEFAULT_POLICY,
   MASTER_RETIRE_ACTION, MASTER_RETIRE_DEFAULT_POLICY,
@@ -252,6 +252,14 @@ export default {
         singleScopeSummaryId: "workhub-company" },
     );
     if (jobOperationsResponse) return api(jobOperationsResponse);
+    const integrationOperationsResponse = await handleIntegrationOperationsApi(
+      request, env, requestContext.requestId,
+      // integration_outbox is environment-scoped (no scope_id).
+      // Never enable this endpoint for multi-scope Projects without redesign.
+      { singleScopeSummaryId: "workhub-company" },
+    );
+    if (integrationOperationsResponse) return api(integrationOperationsResponse);
+
 
     const dataCorrectionResponse = await handleDataCorrectionApi(
       request,
