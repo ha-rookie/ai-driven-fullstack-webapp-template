@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import {
   WORKHUB_AVAILABILITY_DISABLE_ITEM_ID,
@@ -41,27 +42,42 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const previewGeneration = useRef(0);
+  const loadGeneration = useRef(0);
+  const invalidatePreview = () => {
+    ++previewGeneration.current;
+    setPreview(null);
+    setConfirmed(false);
+  };
   const target = TARGETS.find((candidate) => candidate.id === itemId) ?? TARGETS[0];
 
   const query = () => new URLSearchParams({ scopeId: SCOPE, itemId });
   const reload = async () => {
+    const generation = ++loadGeneration.current;
+    invalidatePreview();
+    setDetail(null);
     setStatus("loading");
-    setPreview(null);
     try {
       const q = new URLSearchParams({ ...Object.fromEntries(query()), masterKey: "workhub.office" });
       const response = await fetch("/api/admin/master-data?" + q);
       if (!response.ok) throw new Error("viewer_unavailable");
-      setDetail(await response.json() as MasterDetail);
-      setStatus("ready");
+      const result = await response.json() as MasterDetail;
+      if (generation === loadGeneration.current) {
+        setDetail(result);
+        setStatus("ready");
+      }
     } catch {
-      setDetail(null);
-      setStatus("error");
+      if (generation === loadGeneration.current) {
+        setDetail(null);
+        setStatus("error");
+      }
     }
   };
   useEffect(() => {
     if (requestedItemId && TARGETS.some((candidate) => candidate.id === requestedItemId)) {
+      ++loadGeneration.current;
+      invalidatePreview();
       setItemId(requestedItemId);
-      setPreview(null);
       setReason("");
       setConfirmed(false);
     }
@@ -71,11 +87,11 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
     revision.lifecycle === "current" || revision.lifecycle === "disabled",
   );
   const inspect = async () => {
-    if (!detail || !current || busy) return;
+    if (!detail || detail.item.id !== itemId || !current || busy) return;
     setBusy(true);
-    setPreview(null);
+    invalidatePreview();
+    const generation = previewGeneration.current;
     setMessage("");
-    setConfirmed(false);
     try {
       const q = query();
       q.set("expectedVersion", String(detail.item.version));
@@ -84,22 +100,30 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
       q.set("effectiveFrom", cutover);
       const response = await fetch(BASE + "/preview?" + q);
       if (!response.ok) throw new Error("preview_failed");
-      setPreview(await response.json() as MasterPreview);
+      const result = await response.json() as MasterPreview;
+      if (generation === previewGeneration.current) setPreview(result);
     } catch {
-      setMessage("下見に失敗しました。日時と権限を確認してください");
+      if (generation === previewGeneration.current) {
+        setMessage("下見に失敗しました。日時と権限を確認してください");
+      }
     } finally {
       setBusy(false);
     }
   };
   const execute = async () => {
-    if (!detail || !current || !preview?.available || !preview.priorRevisionId
+    if (!detail || detail.item.id !== itemId || !current || !preview?.available || !preview.priorRevisionId
       || preview.enabled !== target.enabled || !confirmed || !reason.trim() || busy) return;
     setBusy(true);
     setMessage("");
+    const generation = previewGeneration.current;
     try {
       const csrfResponse = await fetch("/api/auth/csrf");
       if (!csrfResponse.ok) throw new Error("csrf_failed");
       const { csrfToken } = await csrfResponse.json() as { csrfToken: string };
+      if (generation !== previewGeneration.current) {
+        setMessage("下見後に入力が変更されました。新しい下見を取得してください");
+        return;
+      }
       const response = await fetch(BASE + "/execute?" + query(), {
         method: "POST",
         headers: {
@@ -116,18 +140,19 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
           previewPolicyVersion: preview.policyVersion,
         }),
       });
-      const outcome = await response.json() as {
-        execution?: { result: string };
-        verification?: { status: string };
-      };
-      setMessage(response.ok && outcome.execution?.result === "SUCCESS"
-        && outcome.verification?.status === "PASSED"
+      const receipt = response.ok
+        ? await response.json().catch(() => null) as MasterOperationReceipt | null
+        : null;
+      const outcome = classifyMasterOperationOutcome(response.status, receipt);
+      setMessage(outcome === "verified"
         ? "状態変更を予約し、履歴と永続監査を検証しました"
-        : "予約できませんでした。最新の履歴を確認してください（HTTP " + response.status + "）");
-      if (response.ok) { setReason(""); setConfirmed(false); }
+        : masterOperationRecoveryMessage(outcome) + "（HTTP " + response.status + "）");
+      if (outcome === "verified") setReason("");
+      setConfirmed(false);
       await reload();
     } catch {
-      setMessage("予約結果を確認できません。履歴と監査を確認してください");
+      setConfirmed(false);
+      setMessage(masterOperationRecoveryMessage("unknown"));
       await reload();
     } finally {
       setBusy(false);
@@ -143,14 +168,15 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
     <div className="admin-retry-panel">
       <label>対象デモ
         <select value={itemId} onChange={(event) => {
-          setItemId(event.target.value); setPreview(null); setReason(""); setConfirmed(false);
+          ++loadGeneration.current;
+          invalidatePreview(); setItemId(event.target.value); setReason("");
         }}>
           {TARGETS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
       </label>
       {status === "loading" && <p role="status">デモの状態を取得しています…</p>}
       {status === "error" && <p role="alert">マスタを取得できませんでした</p>}
-      {status === "ready" && detail && <div>
+      {status === "ready" && detail?.item.id === itemId && <div>
         <p>対象：<strong>{detail.item.code}</strong> / Item Version：{detail.item.version}</p>
         <p data-testid="master-availability-history">Revision：{detail.revisions.length} 件</p>
         <div className="admin-audit-table-wrap">
@@ -164,7 +190,7 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
           </table>
         </div>
         <MasterFutureDateField label="切替開始日時（ISO UTC）" value={cutover}
-          placeholder={CUTOFF} onChange={(value) => { setCutover(value); setPreview(null); }} />
+          placeholder={CUTOFF} onChange={(value) => { setCutover(value); invalidatePreview(); }} />
         <button type="button" onClick={() => { void inspect(); }} disabled={busy || !current}>状態変更を下見</button>
         {preview && <div className="admin-retry-panel">
           <p data-testid="master-availability-preview">

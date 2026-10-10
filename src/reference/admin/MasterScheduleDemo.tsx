@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import { WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID } from "../workhub/travel-request";
 
@@ -50,14 +51,20 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const previewGeneration = useRef(0);
+  const invalidatePreview = () => {
+    ++previewGeneration.current;
+    setPreview(null);
+    setConfirmed(false);
+  };
 
   const load = async () => {
+    invalidatePreview();
     setStatus("loading");
     try {
       const response = await fetch("/api/admin/master-data?" + itemQuery);
       if (!response.ok) throw new Error("master_detail_unavailable");
       setDetail(await response.json() as Detail);
-      setPreview(null);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -69,8 +76,8 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
     if (!detail || busy) return;
     setBusy(true);
     setMessage("");
-    setPreview(null);
-    setConfirmed(false);
+    invalidatePreview();
+    const generation = previewGeneration.current;
     try {
       const query = new URLSearchParams(operationQuery);
       query.set("expectedVersion", String(detail.item.version));
@@ -79,12 +86,15 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
       if (displayOrder !== undefined) query.set("displayOrder", String(displayOrder));
       const response = await fetch(path + "/preview?" + query);
       if (!response.ok) {
-        setMessage("下見を取得できませんでした。日時とラベルを確認してください（HTTP " + response.status + "）");
+        if (generation === previewGeneration.current) {
+          setMessage("下見を取得できませんでした。日時とラベルを確認してください（HTTP " + response.status + "）");
+        }
         return;
       }
-      setPreview(await response.json() as SchedulePreview);
+      const result = await response.json() as SchedulePreview;
+      if (generation === previewGeneration.current) setPreview(result);
     } catch {
-      setMessage("下見を取得できませんでした");
+      if (generation === previewGeneration.current) setMessage("下見を取得できませんでした");
     } finally {
       setBusy(false);
     }
@@ -95,10 +105,15 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
       || !confirmed || !reason.trim() || busy) return;
     setBusy(true);
     setMessage("");
+    const generation = previewGeneration.current;
     try {
       const csrf = await fetch("/api/auth/csrf");
       if (!csrf.ok) throw new Error("csrf_unavailable");
       const { csrfToken } = await csrf.json() as { readonly csrfToken: string };
+      if (generation !== previewGeneration.current) {
+        setMessage("下見後に入力が変更されました。新しい下見を取得してください");
+        return;
+      }
       const response = await fetch(path + "/execute?" + operationQuery, {
         method: "POST",
         headers: {
@@ -117,21 +132,19 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
           previewPolicyVersion: preview.policyVersion,
         }),
       });
-      const result = await response.json() as {
-        readonly execution?: { readonly result: string };
-        readonly verification?: { readonly status: string };
-      };
-      if (response.ok && result.execution?.result === "SUCCESS"
-        && result.verification?.status === "PASSED") {
-        setMessage("将来Revisionの予約と切替前後の検証が完了しました");
-        setReason("");
-        setConfirmed(false);
-      } else {
-        setMessage("予約は完了していません。最新の状態を再確認してください（HTTP " + response.status + "）");
-      }
+      const receipt = response.ok
+        ? await response.json().catch(() => null) as MasterOperationReceipt | null
+        : null;
+      const outcome = classifyMasterOperationOutcome(response.status, receipt);
+      setMessage(outcome === "verified"
+        ? "将来Revisionの予約と切替前後の検証が完了しました"
+        : masterOperationRecoveryMessage(outcome) + "（HTTP " + response.status + "）");
+      if (outcome === "verified") setReason("");
+      setConfirmed(false);
       await load();
     } catch {
-      setMessage("予約結果を確認できません。最新の履歴を確認してください");
+      setConfirmed(false);
+      setMessage(masterOperationRecoveryMessage("unknown"));
       await load();
     } finally {
       setBusy(false);
@@ -164,16 +177,16 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
       <form onSubmit={(event) => { event.preventDefault(); void inspect(); }}>
         <MasterFutureDateField label="改訂開始日時（ISO 8601 / UTC）"
           value={effectiveFrom} placeholder="2027-04-01T00:00:00.000Z"
-          onChange={(value) => { setEffectiveFrom(value); setPreview(null); }} />
+          onChange={(value) => { setEffectiveFrom(value); invalidatePreview(); }} />
         <label>新しい拠点表示名
-          <input value={label} readOnly={orderVariant} onChange={(event) => { setLabel(event.target.value); setPreview(null); }}
+          <input value={label} readOnly={orderVariant} onChange={(event) => { setLabel(event.target.value); invalidatePreview(); }}
             maxLength={256} required />
         </label>
         {orderVariant && <label>改訂後の表示順
           <input type="number" min={-1000000} max={1000000} step={1}
             value={displayOrder ?? ""} onChange={(event) => {
               setDisplayOrder(event.target.value === "" ? undefined : Number(event.target.value));
-              setPreview(null);
+              invalidatePreview();
             }} required />
         </label>}
         <div className="admin-retry-actions">
