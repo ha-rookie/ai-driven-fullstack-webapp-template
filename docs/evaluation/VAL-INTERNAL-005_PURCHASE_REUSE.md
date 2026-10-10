@@ -72,3 +72,5 @@ Portable typecheckは `types: []` と `ES2023/DOM` のみで、Cloudflare Worker
 **まだ必要:** 利用先のbuild/distribution、認証SessionとMembership検証、Durable Store・業務データの原子的整合、復旧・監査・通知等。Cloudflareに依存しないことが必要なプロジェクトでは、購入Consumer自体がReferenceとして有用でも、Workflow StoreやRuntime Adapterの実装が別途必要になる。
 
 この追加テストのEvidence区分は **INTERNAL / static portability boundary**。別Repositoryへの採用実績や `DOGFOOD` / `HUMAN` / `AI-REVIEW` 証拠には分類しない。
+
+次の検証段階: [VAL-INTERNAL-010: 別の一時プロジェクトへ必要なファイルだけをコピーし、実行する](VAL-INTERNAL-010_ISOLATED_CONSUMER.md)。こちらも内部の制御された検証であり、外部採用の実績には数えません。
