@@ -43,7 +43,7 @@ try {
   });
   const db = proxy.env.DB;
   assert.ok(db && typeof db.batch === "function", "Wrangler local D1 batch() must be available");
-  for (const migration of ["0002_auth_foundation", "0003_authorization_foundation", "0007_session_idle_timeout", "0008_user_lifecycle", "0016_durable_audit_storage", "0022_master_data"]) {
+  for (const migration of ["0002_auth_foundation", "0003_authorization_foundation", "0007_session_idle_timeout", "0008_user_lifecycle", "0016_durable_audit_storage", "0017_async_job_runs", "0022_master_data"]) {
     // D1 exec() splits source text on newlines; real migration CREATE TABLE
     // statements are multiline. Execute each semicolon-delimited DDL statement.
     const source = readFileSync(resolve("migrations", migration + ".sql"), "utf8");
@@ -238,6 +238,21 @@ try {
   for (const id of [projectSchedule, projectRetire, projectRetired, projectReadOnly]) await seed(id);
   await seed(expenseSample.id, "test", expenseKey);
   await seed(projectProduction, "production");
+
+  // Reuse the existing real Worker HTTP/Local D1 harness for the authorized
+  // environment-wide summary. 31 terminal jobs exceed the 20-row viewer limit;
+  // production fixtures must never contaminate the test environment count.
+  const jobFixtures = [
+    ...Array.from({ length: 27 }, (_, n) => ["test", "failed", "f-" + n]),
+    ...Array.from({ length: 4 }, (_, n) => ["test", "dead_letter", "d-" + n]),
+    ...Array.from({ length: 2 }, (_, n) => ["test", "completed", "c-" + n]),
+    ...Array.from({ length: 5 }, (_, n) => ["production", "failed", "p-" + n]),
+  ];
+  await db.batch(jobFixtures.map(([environment, state, id]) => db.prepare(
+    "INSERT INTO async_job_runs(environment,job_id,job_type,idempotency_key,payload_fingerprint,state,attempt,requested_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+  ).bind(environment, id, "test.job", environment + "-" + id,
+    "a".repeat(64), state, 1, createdAt, createdAt)));
+
   await db.prepare("UPDATE master_items SET retired_at=? WHERE id=?")
     .bind(createdAt, projectRetired).run();
 
@@ -293,6 +308,27 @@ try {
       assert.equal(response.headers.get("x-content-type-options"), "nosniff");
       assert.equal(response.headers.get("x-request-id"), "local-master-http-001");
     };
+    const summaryUrl = baseUrl + "/api/admin/jobs/summary?scopeId=workhub-company";
+    const summaryGet = async (session, url = summaryUrl, method = "GET") =>
+      fetch(url, {
+        method,
+        headers: session ? { cookie: "app_session=" + session.token } : {},
+      });
+    const summaryResponse = await summaryGet(admin);
+    assert.equal(summaryResponse.status, 200, "authorized single-scope summary should be available");
+    assert.equal(summaryResponse.headers.get("cache-control"), "no-store");
+    const summary = await summaryResponse.json();
+    assert.equal(summary.coverage, "environment", "scope-specific total cannot be claimed");
+    assert.equal(summary.environment, "test");
+    assert.deepEqual(summary.counts, { failed: 27, deadLetter: 4 });
+    assert.deepEqual(Object.keys(summary).sort(), ["counts", "coverage", "environment", "observedAt"]);
+    assert.equal((await summaryGet(null)).status, 401);
+    assert.equal((await summaryGet(observer)).status, 403);
+    assert.equal((await summaryGet(admin, baseUrl + "/api/admin/jobs/summary?scopeId=other-company")).status, 403);
+    assert.equal((await summaryGet(admin, summaryUrl + "&state=failed")).status, 400);
+    assert.equal((await summaryGet(admin, summaryUrl, "POST")).status, 405);
+    console.log("Wrangler Local D1 Job summary passed: exact >20 count, environment isolation, safe refusal");
+
     await assertWorkerRead(projectSchedule, admin, ["schedule"]);
     await assertWorkerRead(projectRetire, admin, ["retire"]);
     await assertWorkerRead(projectReadOnly, admin, []);
@@ -328,6 +364,8 @@ try {
       .bind("observer", "admin", "workhub-company").run();
     assert.equal((await workerRead(projectSchedule, admin)).response.status, 403,
       "role revocation must apply to the same session over HTTP");
+    assert.equal((await summaryGet(admin)).status, 403,
+      "job summary must also revoke privileges on the same live session");
   } finally {
     await new Promise((resolve, reject) =>
       httpServer.close((err) => err ? reject(err) : resolve()));
