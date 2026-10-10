@@ -310,3 +310,54 @@ test("Master revision lifecycle filters separate current, future and history wit
   await expect(viewer.getByLabel("Revisionの表示")).toHaveValue("all");
   await expect(viewer.getByText("現在無効")).toBeVisible();
 });
+
+test("verified future cutover refreshes Master list and revision history without a second POST", async ({ page }) => {
+  const panel = await logInAndMockReadOnlyMasterData(page);
+  const viewer = page.locator("#admin-master-data");
+  let version = 2;
+  let listReads = 0;
+  let posts = 0;
+  await page.route("**/api/admin/master-data?**", async (route) => {
+    const id = new URL(route.request().url()).searchParams.get("itemId");
+    if (id !== null && id !== enableId) return route.fallback();
+    if (id === null) {
+      listReads += 1;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        items: [item(tokyoId), item(disableId), { ...item(enableId), version }, item(scheduleId), item(orderId)],
+        hasMore: false, environment: "local", asOf: "2026-10-10T00:00:00.000Z",
+      }) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        item: { ...item(enableId), version }, allowedOperations: ["schedule"], hasMore: false,
+        revisions: version === 2 ? [revision(enableId)] : [
+          { ...revision(enableId), id: enableId + "-r2", revision: 2,
+            label: "Verified cutover", lifecycle: "future",
+            effectiveFrom: "2027-04-01T00:00:00.000Z" },
+          { ...revision(enableId), effectiveTo: "2027-04-01T00:00:00.000Z" },
+        ],
+        asOf: "2026-10-10T00:00:00.000Z",
+      }) });
+    }
+  });
+  await page.route("**/api/admin/master-operations/schedule/preview?**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(previewResponse) }));
+  await page.route("**/api/admin/master-operations/schedule/execute?**", async (route) => {
+    posts += 1;
+    version = 3;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      execution: { result: "SUCCESS" }, verification: { status: "PASSED" },
+    }) });
+  });
+  await panel.getByRole("button", { name: "状態変更を下見" }).click();
+  await expect(panel.getByTestId("master-availability-preview")).toBeVisible();
+  await panel.getByLabel("状態変更の理由").fill("Verified local browser acceptance");
+  await panel.getByLabel("新規選択への影響、切替日時、過去履歴の保持を確認しました").check();
+  await panel.getByRole("button", { name: "状態変更を予約" }).click();
+  await expect(panel.getByText("状態変更を予約し、履歴と永続監査を検証しました")).toBeVisible();
+  await expect(viewer.getByLabel("マスタ項目")).toHaveValue(enableId);
+  await expect(viewer.getByRole("option", { name: "AVAIL_ENABLE (v3)" })).toBeAttached();
+  await expect(viewer.getByTestId("master-revision-summary")).toContainText("取得したRevision：2 件");
+  await expect(viewer.getByText("Verified cutover")).toBeVisible();
+  expect(listReads).toBeGreaterThan(0);
+  expect(posts).toBe(1);
+});
