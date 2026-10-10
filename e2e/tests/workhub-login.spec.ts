@@ -82,14 +82,14 @@ test("switch user revokes server session and logs in as another Persona", async 
   await page.getByRole("button", { name: "ログアウトして別のユーザーでログイン" }).click();
   await expect(page.getByRole("heading", { name: "WORKHUBにログイン" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "ユーザーID", exact: true })).toHaveValue("");
-  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(401);
+  await expect.poll(async () => await page.evaluate(async () => (await fetch("/api/auth/me", { credentials: "same-origin" })).status)).toBe(401);
 
   await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
   await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
     .getByRole("button", { name: /Ren Manager/u }).click();
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page.getByRole("heading", { name: /おはようございます、Ren Managerさん/u })).toBeVisible();
-  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(200);
+  await expect.poll(async () => await page.evaluate(async () => (await fetch("/api/auth/me", { credentials: "same-origin" })).status)).toBe(200);
 });
 
 test("system admin can switch users from the admin portal header", async ({ page }) => {
@@ -104,7 +104,7 @@ test("system admin can switch users from the admin portal header", async ({ page
   await page.getByRole("button", { name: "ログアウトして別のユーザーでログイン" }).click();
   await expect(page).toHaveURL("http://127.0.0.1:4173/");
   await expect(page.getByRole("heading", { name: "WORKHUBにログイン" })).toBeVisible();
-  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(401);
+  await expect.poll(async () => await page.evaluate(async () => (await fetch("/api/auth/me", { credentials: "same-origin" })).status)).toBe(401);
 });
 
 test("failed logout keeps current identity and offers safe retry", async ({ page }) => {
@@ -122,5 +122,5 @@ test("failed logout keeps current identity and offers safe retry", async ({ page
   await expect(page.getByRole("alert")).toContainText("ログアウトできませんでした");
   await expect(switchButton).toBeEnabled();
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
-  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(200);
+  await expect.poll(async () => await page.evaluate(async () => (await fetch("/api/auth/me", { credentials: "same-origin" })).status)).toBe(200);
 });
