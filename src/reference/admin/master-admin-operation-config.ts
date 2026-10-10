@@ -21,6 +21,8 @@ export interface MasterAvailabilityTarget extends MasterTarget {
 export interface MasterOperationLink {
   readonly href: `#${string}`;
   readonly label: string;
+  /** Link is displayed only when the server has independently disclosed this operation kind. */
+  readonly requiredCapability: "schedule" | "retire";
 }
 
 /**
@@ -64,15 +66,16 @@ export function buildMasterOperationLinks(
     }
     if (!duplicates.has(target.itemId)) links[target.itemId] = link;
   };
-  add(config.retireTarget, { href: "#admin-master-retire-demo", label: "廃止操作の下見へ" });
+  add(config.retireTarget, { href: "#admin-master-retire-demo", label: "廃止操作の下見へ", requiredCapability: "retire" });
   for (const target of config.scheduleTargets) {
     add(target, {
       href: `#${masterSchedulePanelId(target)}`,
       label: target.variant === "order" ? "将来表示順変更の下見へ" : "将来Revision予約の下見へ",
+      requiredCapability: "schedule",
     });
   }
   for (const target of config.availabilityTargets) {
-    add(target, { href: "#admin-master-availability", label: "有効・無効切替の下見へ" });
+    add(target, { href: "#admin-master-availability", label: "有効・無効切替の下見へ", requiredCapability: "schedule" });
   }
   return links;
 }
