@@ -102,7 +102,7 @@ test("system admin can switch users from the admin portal header", async ({ page
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "管理できている状態を、ひとつの入口から" })).toBeVisible();
   await page.getByRole("button", { name: "ログアウトして別のユーザーでログイン" }).click();
-  await expect(page).toHaveURL(/\\/$/u);
+  await expect(page).toHaveURL("http://127.0.0.1:4173/");
   await expect(page.getByRole("heading", { name: "WORKHUBにログイン" })).toBeVisible();
   await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(401);
 });
