@@ -57,6 +57,6 @@ test("special object keys cannot inherit capabilities from Object.prototype", ()
     availabilityTargets: [{ ...target("constructor"), enabled: false, label: "Disable" }],
   }));
   assert.equal(Object.getPrototypeOf(result), null);
-  assert.equal(result.__proto__?.href, "#admin-master-retire-demo");
-  assert.equal(result.constructor?.href, "#admin-master-availability");
+  assert.equal(result["__proto__"]?.href, "#admin-master-retire-demo");
+  assert.equal(result["constructor"]?.href, "#admin-master-availability");
 });
