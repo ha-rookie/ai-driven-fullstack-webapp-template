@@ -19,6 +19,8 @@ try {
     resolve("node_modules/typescript/bin/tsc"),
     "src/worker/master-data/d1-store.ts",
     "src/worker/audit/durable-audit-store.ts",
+    "src/worker/administration/master-data-viewer-api.ts",
+    "src/worker/auth/application-session.ts",
     "--outDir", compiled, "--rootDir", "src", "--target", "ES2023",
     "--module", "CommonJS", "--moduleResolution", "Node",
     "--types", "node,@cloudflare/workers-types", "--strict", "--skipLibCheck",
@@ -26,6 +28,8 @@ try {
   writeFileSync(join(compiled, "package.json"), '{"type":"commonjs"}');
   const require = createRequire(import.meta.url);
   const { D1MasterDataStore } = require(join(compiled, "worker/master-data/d1-store.js"));
+  const { handleMasterDataViewerApi } = require(join(compiled, "worker/administration/master-data-viewer-api.js"));
+  const { issueApplicationSession } = require(join(compiled, "worker/auth/application-session.js"));
   const { prepareDurableAuditRecord, verifyDurableAuditRecord } = require(
     join(compiled, "worker/audit/durable-audit-store.js"),
   );
@@ -36,7 +40,7 @@ try {
   });
   const db = proxy.env.DB;
   assert.ok(db && typeof db.batch === "function", "Wrangler local D1 batch() must be available");
-  for (const migration of ["0016_durable_audit_storage", "0022_master_data"]) {
+  for (const migration of ["0002_auth_foundation", "0003_authorization_foundation", "0007_session_idle_timeout", "0008_user_lifecycle", "0016_durable_audit_storage", "0022_master_data"]) {
     // D1 exec() splits source text on newlines; real migration CREATE TABLE
     // statements are multiline. Execute each semicolon-delimited DDL statement.
     const source = readFileSync(resolve("migrations", migration + ".sql"), "utf8");
@@ -49,13 +53,13 @@ try {
   const cutoff = "2027-04-01T00:00:00.000Z";
   const firstEffectiveFrom = "2026-01-01T00:00:00.000Z";
 
-  const seed = async (id) => {
+  const seed = async (id, environment = "test") => {
     await db.batch([
       db.prepare("INSERT INTO master_items (id, environment, master_key, code, version, next_revision, last_mutation_id, retired_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(id, "test", "workhub.office", id, 2, 2, "seed-r1", null,
+        .bind(id, environment, "workhub.office", id, 2, 2, "seed-r1", null,
           createdAt, "fixture", createdAt, "fixture"),
       db.prepare("INSERT INTO master_revisions (id, environment, master_item_id, revision, label, enabled, effective_from, effective_to, display_order, parent_item_id, attributes_json, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(id + "-r1", "test", id, 1, "Before", 1, firstEffectiveFrom, null, 10,
+        .bind(id + "-r1", environment, id, 1, "Before", 1, firstEffectiveFrom, null, 10,
           null, "{}", createdAt, "fixture"),
     ]);
   };
