@@ -18,6 +18,7 @@ const reuseRoutes = [
       { label: "1. Recipeを読む", desc: "設計と失敗時の扱い", href: file("docs/recipes/REFERENCE_TRAVEL_REQUEST.md") },
       { label: "2. 実装を読む", desc: "出張申請Service", href: file("src/reference/workhub/travel-request/service.ts") },
       { label: "3. 検証を見る", desc: "出張申請Browser E2E", href: file("e2e/tests/workhub-travel-request.spec.ts") },
+      { label: "4. 別業務での再利用例", desc: "備品購入承認の内部検証と未実装の境界", href: file("docs/evaluation/VAL-INTERNAL-005_PURCHASE_REUSE.md") },
     ],
   },
   {
