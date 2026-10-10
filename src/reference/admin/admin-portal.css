@@ -5,3 +5,20 @@
 .admin-master-actions>a{margin:0}
 .admin-master-actions>p{margin:0;font-size:12px;color:#536878}
 .admin-master-actions>small{flex-basis:100%;font-size:11px;color:#66727d;line-height:1.6}
+
+/* #414: read-only bounded source status; unknown is never styled as healthy. */
+.admin-operations-overview{margin:0 0 20px}
+.admin-overview-refresh{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+.admin-overview-refresh button{border:0;border-radius:8px;background:#17202a;color:#fff;padding:9px 14px;font-weight:800;cursor:pointer}
+.admin-overview-refresh button:disabled{opacity:.55;cursor:default}
+.admin-overview-refresh small,.admin-overview-footnote{font-size:11px;color:#66727d}
+.admin-overview-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:20px}
+.admin-overview-card{border:1px solid #dde2e7;border-radius:10px;padding:16px;min-width:0;background:#fafbfc}
+.admin-overview-card h3{margin:0 0 9px;font-size:12px;color:#536878}
+.admin-overview-card>strong{display:block;font-size:20px;line-height:1.5;overflow-wrap:anywhere}
+.admin-overview-card p{font-size:11px;color:#66727d;line-height:1.65;min-height:34px}
+.admin-overview-card a{font-size:12px;font-weight:800;color:#244f6b;text-decoration:none}
+.admin-overview-card a:hover,.admin-overview-card a:focus-visible{text-decoration:underline}
+.admin-overview-footnote{margin:12px 0 0;line-height:1.6;overflow-wrap:anywhere}
+@media(max-width:960px){.admin-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.admin-overview-grid{grid-template-columns:1fr}.admin-overview-refresh{align-items:flex-start}}
