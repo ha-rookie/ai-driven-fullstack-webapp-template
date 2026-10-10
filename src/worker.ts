@@ -246,7 +246,10 @@ export default {
       request,
       env,
       requestContext.requestId,
-      { recoveryRegistry: createWorkhubJobRecoveryRegistry(env.DB) },
+      { recoveryRegistry: createWorkhubJobRecoveryRegistry(env.DB),
+        // async_job_runs is environment-scoped, not tenant-scoped.
+        // WORKHUB is the single approved scope for these aggregate counts.
+        singleScopeSummaryId: "workhub-company" },
     );
     if (jobOperationsResponse) return api(jobOperationsResponse);
 

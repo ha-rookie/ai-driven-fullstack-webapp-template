@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 /**
  * #414: bounded read-only projection from existing server-authorized APIs.
- * This is NOT a monitoring source of truth or an all-time aggregate.
+ * This is NOT a monitoring source of truth or an all-time audit aggregate.
  * Every unavailable or unconnected signal is explicit; zero observed rows
  * never means the entire environment is healthy.
  */
@@ -10,8 +10,11 @@ const SCOPE_ID = "workhub-company";
 const LIMIT = 20;
 const params = (values: Record<string, string>): string => new URLSearchParams(values).toString();
 
-interface JobSnapshot {
-  readonly items: readonly { readonly state: string }[];
+interface JobSummary {
+  readonly coverage: "environment";
+  readonly environment: string;
+  readonly observedAt: string;
+  readonly counts: { readonly failed: number; readonly deadLetter: number };
 }
 interface AuditSnapshot {
   readonly items: readonly { readonly category: string; readonly action: string }[];
@@ -31,8 +34,7 @@ type Probe<T> =
   | { readonly kind: "unknown" };
 
 interface OverviewSnapshot {
-  readonly failed: Probe<JobSnapshot>;
-  readonly deadLetter: Probe<JobSnapshot>;
+  readonly jobs: Probe<JobSummary>;
   readonly auditFailures: Probe<AuditSnapshot>;
   readonly privileged: Probe<AuditSnapshot>;
   readonly master: Probe<MasterSnapshot>;
@@ -58,8 +60,13 @@ const read = async <T,>(url: string, valid: (value: unknown) => value is T): Pro
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const hasItems = (value: unknown): value is JobSnapshot =>
-  isRecord(value) && Array.isArray(value.items);
+const hasJobSummary = (value: unknown): value is JobSummary =>
+  isRecord(value) && value.coverage === "environment"
+  && typeof value.environment === "string"
+  && typeof value.observedAt === "string"
+  && isRecord(value.counts)
+  && Number.isSafeInteger(value.counts.failed) && Number(value.counts.failed) >= 0
+  && Number.isSafeInteger(value.counts.deadLetter) && Number(value.counts.deadLetter) >= 0;
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
   && (value.nextCursor === null || typeof value.nextCursor === "string");
@@ -70,34 +77,31 @@ const hasReadiness = (value: unknown): value is ReadinessSnapshot =>
   && (value.status === "ok" || value.status === "unavailable");
 
 const sourceUrl = {
-  failed: "/api/admin/jobs?" + params({ scopeId: SCOPE_ID, state: "failed", limit: String(LIMIT) }),
-  deadLetter: "/api/admin/jobs?" + params({ scopeId: SCOPE_ID, state: "dead_letter", limit: String(LIMIT) }),
+  jobs: "/api/admin/jobs/summary?" + params({ scopeId: SCOPE_ID }),
   auditFailures: "/api/admin/audit?" + params({ scopeId: SCOPE_ID, outcome: "failure", limit: String(LIMIT) }),
   privileged: "/api/admin/audit?" + params({ scopeId: SCOPE_ID, category: "system", limit: String(LIMIT) }),
   master: "/api/admin/master-data?" + params({ scopeId: SCOPE_ID, masterKey: "workhub.office" }),
 };
 
 const snapshot = async (): Promise<OverviewSnapshot> => {
-  const [failed, deadLetter, auditFailures, privileged, master, database] = await Promise.all([
-    read(sourceUrl.failed, hasItems),
-    read(sourceUrl.deadLetter, hasItems),
+  const [jobs, auditFailures, privileged, master, database] = await Promise.all([
+    read(sourceUrl.jobs, hasJobSummary),
     read(sourceUrl.auditFailures, hasAudit),
     read(sourceUrl.privileged, hasAudit),
     read(sourceUrl.master, hasMaster),
     read("/api/health/ready", hasReadiness),
   ]);
-  return { failed, deadLetter, auditFailures, privileged, master, database,
+  return { jobs, auditFailures, privileged, master, database,
     updatedAt: new Date().toISOString() };
 };
 
 const unavailableLabel = (probe: Probe<unknown>): string =>
   probe.kind === "denied" ? "閲覧不可" : "取得できません";
 
-const sampledJobLabel = (failed: Probe<JobSnapshot>, deadLetter: Probe<JobSnapshot>): string =>
-  failed.kind === "ready" && deadLetter.kind === "ready"
-    ? String(failed.data.items.length + deadLetter.data.items.length) + " 件（取得範囲）"
-    : failed.kind === "denied" || deadLetter.kind === "denied"
-      ? "閲覧不可" : "取得できません";
+const jobCountLabel = (probe: Probe<JobSummary>): string =>
+  probe.kind === "ready"
+    ? String(probe.data.counts.failed + probe.data.counts.deadLetter) + " 件（環境内の現在状態）"
+    : unavailableLabel(probe);
 
 const StatusCard = ({ title, value, note, href }: {
   readonly title: string; readonly value: string;
@@ -126,7 +130,7 @@ export default function OperationsOverview() {
   }, [generation]);
 
   const ready = state.kind === "ready" ? state.data : null;
-  const jobLabel = ready ? sampledJobLabel(ready.failed, ready.deadLetter) : "取得中";
+  const jobLabel = ready ? jobCountLabel(ready.jobs) : "取得中";
   const auditFailureLabel = ready
     ? ready.auditFailures.kind === "ready"
       ? ready.auditFailures.data.items.length + " 件（取得範囲）"
@@ -153,7 +157,7 @@ export default function OperationsOverview() {
       <div>
         <p className="admin-eyebrow">OPERATIONS / READ-ONLY SNAPSHOT</p>
         <h2 id="admin-operations-overview-title">運用状況サマリー</h2>
-        <p>既存の管理APIから取得した要確認の兆候です。件数は直近の取得範囲に限られ、監視・集計の正本ではありません。</p>
+        <p>既存の管理APIから要確認の兆候を表示します。失敗ジョブは環境内の現在件数、監査は直近20件の観測値です。継続監視の正本ではありません。</p>
       </div>
       <div className="admin-overview-refresh">
         <button type="button" disabled={state.kind === "loading"}
@@ -166,7 +170,7 @@ export default function OperationsOverview() {
         note="アプリのDB Readiness応答。ジョブや外部連携の健全性は含みません。"
         href="/api/health/ready" />
       <StatusCard title="失敗・Dead Letterジョブ" value={jobLabel}
-        note="failed / dead_letterをそれぞれ最大20件取得。全件数・処理全体の正常性ではありません。"
+        note="環境内のfailed＋dead_letter現在件数をD1で集計。単一Scope構成専用、履歴全件数や処理全体の健全性ではありません。"
         href="#admin-jobs-and-integrations" />
       <StatusCard title="監査失敗" value={auditFailureLabel}
         note="Scope内の失敗監査を新しい順に最大20件参照。全期間の集計ではありません。"
@@ -184,7 +188,7 @@ export default function OperationsOverview() {
       Server Environment: <strong>{environment}</strong> / Scope: {SCOPE_ID} / Application Version: 未提供
       {ready?.master.kind === "ready" ? " / Server As-Of: " + ready.master.data.asOf : ""}
     </p>
-    <p className="admin-overview-footnote">権限エラー・API障害・未監視は正常状態として集計しません。
-      件数0でも、取得範囲外の問題がないことは保証しません。</p>
+    <p className="admin-overview-footnote">ジョブ集計はWORKHUB単一Scope環境内の状態別件数です（複数Scopeへ転用不可）。
+      権限エラー・API障害・未監視は正常状態に変換しません。監査の取得範囲外や未接続領域に問題がないことは保証しません。</p>
   </section>;
 }

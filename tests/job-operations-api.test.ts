@@ -52,3 +52,30 @@ test("rejects invalid state filter", async () => {
   );
   assert.equal(response?.status, 401);
 });
+
+test("summary is read-only and refuses unauthenticated callers", async () => {
+  const target = "https://example.test/api/admin/jobs/summary?scopeId=workhub-company";
+  const env = { DB: dbWithoutSession, RUNTIME_ENVIRONMENT: "test" };
+  const method = await handleJobOperationsApi(new Request(target, { method: "POST" }), env, "req-summary-method", {
+    singleScopeSummaryId: "workhub-company",
+  });
+  assert.equal(method?.status, 405);
+  const anonymous = await handleJobOperationsApi(new Request(target), env, "req-summary-anonymous", {
+    singleScopeSummaryId: "workhub-company",
+  });
+  assert.equal(anonymous?.status, 401);
+  const unrelated = await handleJobOperationsApi(new Request("https://example.test/api/admin/jobs/metrics"), env, "req-summary-unknown");
+  assert.equal(unrelated, null);
+});
+
+test("summary rejects arbitrary caller-defined filters and missing scope", async () => {
+  const env = { DB: dbWithoutSession, RUNTIME_ENVIRONMENT: "test" };
+  const options = { singleScopeSummaryId: "workhub-company" };
+  for (const query of ["", "?scopeId=workhub-company&state=failed", "?scopeId=workhub-company&scopeId=workhub-company"]) {
+    const response = await handleJobOperationsApi(
+      new Request("https://example.test/api/admin/jobs/summary" + query),
+      env, "req-summary-bad-query", options,
+    );
+    assert.equal(response?.status, 400);
+  }
+});

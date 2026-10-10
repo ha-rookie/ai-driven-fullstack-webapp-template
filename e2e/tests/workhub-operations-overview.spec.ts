@@ -26,6 +26,14 @@ test("overview summarizes bounded authorized signals without claiming complete h
       body: JSON.stringify({ items: Array.from({ length: count }, () => ({ state })), limit: 20 }),
     });
   });
+  await page.route("**/api/admin/jobs/summary?**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", environment: "local",
+      observedAt: "2026-10-10T00:00:00.000Z",
+      counts: { failed: 29, deadLetter: 4 },
+    }),
+  }));
   await page.route("**/api/admin/audit?**", (route) => {
     const query = new URL(route.request().url()).searchParams;
     const items = query.get("outcome") === "failure"
@@ -57,13 +65,13 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await page.goto("/admin");
   const summary = page.locator("#admin-operations-overview");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
-  await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("3 件（取得範囲）");
+  await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("33 件（環境内の現在状態）");
   await expect(card(page, "監査失敗").locator("strong")).toHaveText("1 件（取得範囲）");
   await expect(card(page, "直近の特権操作").locator("strong")).toContainText("1 件");
   await expect(card(page, "Security Finding").locator("strong")).toHaveText("未接続");
   await expect(card(page, "連携・Metrics / Alert").locator("strong")).toHaveText("未接続");
   await expect(summary.getByTestId("operations-overview-environment")).toContainText("Server Environment: local");
-  await expect(summary.getByText(/件数0でも、取得範囲外/u)).toBeVisible();
+  await expect(summary.getByText(/複数Scopeへ転用不可/u)).toBeVisible();
   await card(page, "失敗・Dead Letterジョブ").getByRole("link", { name: "詳細を確認 →" }).click();
   await expect(page).toHaveURL(/#admin-jobs-and-integrations$/u);
 });
@@ -77,6 +85,10 @@ test("overview shows degraded and denied sources as non-healthy, then refreshes 
     body: JSON.stringify({ component: "database", status: databaseOk ? "ok" : "unavailable" }),
   }));
   await page.route("**/api/admin/jobs?**", (route) => route.fulfill({
+    status: 503, contentType: "application/json",
+    body: JSON.stringify({ error: { code: "job_operations_unavailable" } }),
+  }));
+  await page.route("**/api/admin/jobs/summary?**", (route) => route.fulfill({
     status: 503, contentType: "application/json",
     body: JSON.stringify({ error: { code: "job_operations_unavailable" } }),
   }));
