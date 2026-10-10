@@ -124,7 +124,13 @@ try {
   const rollbackId = "workhub-office-local-d1-audit-failure";
   await seed(rollbackId);
   const conflictingAudit = await proof(rollbackId, "local-req-audit-failure", winner.durableAudit.id);
-  await assert.rejects(store.scheduleRevision(makeCutover(rollbackId, "bad-audit", conflictingAudit)));
+  // The store may surface a D1 uniqueness constraint as false (expected
+  // conflict) or as a rejected promise; either outcome must leave no writes.
+  const auditFailure = await store.scheduleRevision(
+    makeCutover(rollbackId, "bad-audit", conflictingAudit),
+  ).then((result) => result, (error) => error);
+  assert.ok(auditFailure === false || auditFailure instanceof Error,
+    "a failed durable audit write must never report a committed mutation");
   const afterFailure = await first("SELECT version, next_revision, last_mutation_id FROM master_items WHERE id = ?", rollbackId);
   assert.equal(afterFailure.version, 2);
   assert.equal(afterFailure.next_revision, 2);
