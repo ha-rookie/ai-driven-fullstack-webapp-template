@@ -117,6 +117,10 @@ test("visitor can choose one reusable capability and follow real Recipe, Source 
     .toHaveAttribute("href", /\/src\/reference\/workhub\/travel-request\/service\.ts$/u);
   await expect(detail.getByRole("link", { name: /検証を見る/u }))
     .toHaveAttribute("href", /\/e2e\/tests\/workhub-travel-request\.spec\.ts$/u);
+  const reuseProof = detail.getByRole("link", { name: /別業務での再利用例/u });
+  await expect(reuseProof)
+    .toHaveAttribute("href", /\/docs\/evaluation\/VAL-INTERNAL-005_PURCHASE_REUSE\.md$/u);
+  await expect(reuseProof).toContainText("内部検証と未実装の境界");
 
   await routes.getByRole("button", { name: /権限制御を組み込む/u }).click();
   await expect(routes.getByRole("button", { name: /権限制御を組み込む/u })).toHaveAttribute("aria-pressed", "true");
