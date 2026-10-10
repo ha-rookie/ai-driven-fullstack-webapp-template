@@ -86,7 +86,9 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
       if (displayOrder !== undefined) query.set("displayOrder", String(displayOrder));
       const response = await fetch(path + "/preview?" + query);
       if (!response.ok) {
-        setMessage("下見を取得できませんでした。日時とラベルを確認してください（HTTP " + response.status + "）");
+        if (generation === previewGeneration.current) {
+          setMessage("下見を取得できませんでした。日時とラベルを確認してください（HTTP " + response.status + "）");
+        }
         return;
       }
       const result = await response.json() as SchedulePreview;
