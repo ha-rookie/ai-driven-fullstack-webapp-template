@@ -17,6 +17,7 @@ jobs:
       (startsWith(github.event.comment.body, '/deploy-preview ') ||
        startsWith(github.event.comment.body, '/verify-preview ') ||
        github.event.comment.body == '/verify-preview-browser' ||
+       github.event.comment.body == '/verify-preview-showcase' ||
        startsWith(github.event.comment.body, '/seed-preview-demo '))
     runs-on: ubuntu-latest
     steps:
@@ -34,6 +35,8 @@ jobs:
             echo "target_sha=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
           elif [[ "$COMMAND" == "/verify-preview-browser" ]]; then
             echo "operation=browser" >> "$GITHUB_OUTPUT"
+          elif [[ "$COMMAND" == "/verify-preview-showcase" ]]; then
+            echo "operation=showcase" >> "$GITHUB_OUTPUT"
           elif [[ "$COMMAND" =~ ^/seed-preview-demo[[:space:]]+([a-f0-9]{40})[[:space:]]+SEED[[:space:]]+WORKHUB[[:space:]]+PREVIEW$ ]]; then
             echo "operation=seed_demo" >> "$GITHUB_OUTPUT"
             echo "target_sha=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
@@ -43,14 +46,14 @@ jobs:
           fi
 
       - name: Checkout main for ancestry validation
-        if: steps.request.outputs.operation != 'browser'
+        if: steps.request.outputs.operation != 'browser' && steps.request.outputs.operation != 'showcase'
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
       - name: Require target SHA to be merged into main
-        if: steps.request.outputs.operation != 'browser'
+        if: steps.request.outputs.operation != 'browser' && steps.request.outputs.operation != 'showcase'
         env:
           TARGET_SHA: ${{ steps.request.outputs.target_sha }}
         run: |
@@ -97,6 +100,14 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run preview-browser-smoke.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+      - name: Dispatch read-only public Preview Showcase browser workflow
+        if: steps.request.outputs.operation == 'showcase'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run preview-showcase-readonly.yml --repo "$GITHUB_REPOSITORY" --ref main
 
       - name: Record gateway evidence
         run: |
