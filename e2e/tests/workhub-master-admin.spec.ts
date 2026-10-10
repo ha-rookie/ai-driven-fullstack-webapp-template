@@ -10,6 +10,8 @@ const demoPassword = "Workhub-Demo-2026!";
 const enableId = "workhub-office-availability-enable";
 const disableId = "workhub-office-availability-disable";
 const tokyoId = "workhub-office-tokyo";
+const scheduleId = "workhub-office-schedule";
+const orderId = "workhub-office-order";
 
 const item = (id: string) => ({
   id, code: id === enableId ? "AVAIL_ENABLE" : id === disableId ? "AVAIL_DISABLE" : "TOKYO",
@@ -39,7 +41,7 @@ const logInAndMockReadOnlyMasterData = async (page: Page) => {
     const id = query.get("itemId");
     const body = id
       ? { item: item(id), revisions: [revision(id)], hasMore: false, asOf: "2026-10-10T00:00:00.000Z" }
-      : { items: [item(tokyoId), item(disableId), item(enableId)],
+      : { items: [item(tokyoId), item(disableId), item(enableId), item(scheduleId), item(orderId)],
         hasMore: false, environment: "local", asOf: "2026-10-10T00:00:00.000Z" };
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
@@ -124,4 +126,22 @@ test("changing the cutover during a delayed preview discards its obsolete respon
   await expect(panel.getByTestId("master-availability-preview")).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "状態変更を予約" })).toHaveCount(0);
   expect(posts).toBe(0);
+});
+
+
+test("Project schedule and order links navigate to their exact target panels", async ({ page }) => {
+  await logInAndMockReadOnlyMasterData(page);
+  const viewer = page.locator("#admin-master-data");
+  for (const [id, label, prefix] of [
+    [scheduleId, "将来Revision予約の下見へ", "admin-master-schedule-demo"],
+    [orderId, "将来表示順変更の下見へ", "admin-master-order-demo"],
+  ] as const) {
+    await viewer.getByLabel("マスタ項目").selectOption(id);
+    const link = viewer.getByRole("link", { name: new RegExp(label, "u") });
+    const panelId = `${prefix}-${id}`;
+    await expect(link).toHaveAttribute("href", `#${panelId}`);
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`#${panelId}$`, "u"));
+    await expect(page.locator(`[id="${panelId}"]`)).toBeVisible();
+  }
 });
