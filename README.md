@@ -4,6 +4,22 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 
 業務Webアプリの共通基盤を検証・採用する開発者向けです。完成済み業務製品、具体的なログインProvider、実環境の構築・運用保証は含みません。
 
+
+### まず触る（環境構築不要 / WORKHUB Reference）
+
+**[公開WORKHUB Showcaseを見る（約3分・ログイン不要）](https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev/showcase)**
+
+このRepositoryが**どんな業務判断を再利用できる形にしているか**を、出張申請・承認・差戻しのガイドから確認できます。Showcaseは説明用の画面です。業務を実際に操作する場合のみ、[WORKHUBデモのログイン画面](https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev/)へ進んでください。
+
+初めて評価する方は、順序を決めずに最初に開いて感じたことを確かめるため、[初見評価ガイド（短時間・ソースまで）](docs/evaluation/WORKHUB_FIRST_LOOK.md)を使えます。評価結果はまだ第三者による採用実証ではありません。
+
+- **触る**：Showcase（公開説明）→ WORKHUB（Aoi社員 → 右上「ユーザー切替」 → Ren上長）。デモの操作はPreview上の架空データを更新する場合があります
+- **読む**：[出張申請Recipe](docs/recipes/REFERENCE_TRAVEL_REQUEST.md) → [実装Source](src/reference/workhub/travel-request/service.ts) → [Browser E2E](e2e/tests/workhub-travel-request.spec.ts)
+- **安全境界を確かめる**：[認可Recipe](docs/recipes/AUTHORIZATION_BOUNDARY.md) → [保護されたHTTPのテスト方針](docs/BOUNDARY_TESTING.md)
+
+> **評価環境の範囲**：Previewは架空データによる技術評価用です。Productionの動作保証や完成した業務製品を意味しません。Showcaseは読むだけで業務データを変更しません。WORKHUBへの実ログイン・申請操作ではPreviewのセッション・デモ業務データが変わることがあります。実データや秘密情報は入力しないでください。
+
+
 - [WORKHUB Showcase / 3分ガイド](#workhub-showcase--evaluation-journey)
 - [Quick Start / Local development](#local-development)
 - [Project Bootstrap Profile](docs/PROJECT_BOOTSTRAP_PROFILE.md)
@@ -22,7 +38,7 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 
 ## WORKHUB Showcase / Evaluation Journey
 
-**まずは動く業務の流れから確認したい方へ：** Local起動後、`/showcase`（例: `http://localhost:5173/showcase`）へアクセスしてください。ログインせずに利用できます。
+**まずは動く業務の流れから確認したい方へ：** [公開PreviewのShowcase](https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev/showcase)なら環境構築不要で確認できます。ローカルの場合は起動後に `/showcase`（例: `http://localhost:5173/showcase`）を開いてください。Showcaseはログイン不要です。
 
 - **30秒:** このTemplateは何のためのものか / 本番パッケージとの違いを把握
 - **3分:** Aoiの出張申請 → Renの差戻し → 再申請・承認 → 通知・履歴 → 権限付き検索を手順で見る
