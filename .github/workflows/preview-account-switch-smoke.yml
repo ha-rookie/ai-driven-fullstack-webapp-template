@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 12
     steps:
       - name: Checkout test at main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

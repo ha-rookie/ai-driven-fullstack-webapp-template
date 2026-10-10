@@ -33,7 +33,7 @@ jobs:
       - name: Validate guarded request
         run: |
           node -e 'const sha=process.argv[1],c=process.argv[2];if(!/^[a-f0-9]{40}$/.test(sha)||c!=="SEED WORKHUB PREVIEW")process.exit(1)' "${{ inputs.target_sha }}" "${{ inputs.confirmation }}"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
