@@ -27,7 +27,7 @@ export interface MasterProjectOperationConfig {
   readonly masterKey: string;
   readonly retireTarget: MasterTarget;
   readonly scheduleTargets: readonly MasterScheduleTarget[];
-  readonly availabilityTargets: readonly MasterAvailabilityTarget[];
+  readonly availabilityTargets: readonly [MasterAvailabilityTarget, ...MasterAvailabilityTarget[]];
 }
 
 /**
