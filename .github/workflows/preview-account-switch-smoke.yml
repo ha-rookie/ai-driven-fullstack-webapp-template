@@ -1,0 +1,34 @@
+name: Preview account switch smoke (sessions only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-account-switch-smoke
+  cancel-in-progress: false
+
+jobs:
+  preview-session-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout test at main
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Install pinned Playwright
+        run: npm install --no-save --package-lock=false @playwright/test@1.63.0
+      - name: Install Chromium only
+        run: npx playwright install --with-deps chromium
+      - name: Verify Preview Aoi-to-Ren switch and Kai logout only
+        # Do NOT include preview-browser-smoke.spec.ts, which can retry
+        # real Preview jobs and restore Preview business records.
+        run: npx playwright test e2e/preview/preview-account-switch.spec.ts --config playwright.preview.config.ts
