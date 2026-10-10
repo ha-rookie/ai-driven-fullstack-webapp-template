@@ -37,7 +37,12 @@ try {
   const db = proxy.env.DB;
   assert.ok(db && typeof db.batch === "function", "Wrangler local D1 batch() must be available");
   for (const migration of ["0016_durable_audit_storage", "0022_master_data"]) {
-    await db.exec(readFileSync(resolve("migrations", migration + ".sql"), "utf8"));
+    // D1 exec() splits source text on newlines; real migration CREATE TABLE
+    // statements are multiline. Execute each semicolon-delimited DDL statement.
+    const source = readFileSync(resolve("migrations", migration + ".sql"), "utf8");
+    for (const ddl of source.split(";").map((statement) => statement.trim()).filter(Boolean)) {
+      await db.prepare(ddl).run();
+    }
   }
   const store = new D1MasterDataStore(db);
   const createdAt = "2026-10-10T00:00:00.000Z";
