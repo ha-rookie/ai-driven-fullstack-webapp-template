@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import { WORKHUB_RETIRE_DEMO_ITEM_ID } from "../workhub/travel-request";
 
@@ -75,32 +76,20 @@ export default function MasterRetireDemo() {
           reason: reason.trim(), confirmed,
         }),
       });
-      if (response.status === 409) {
-        setStatus("他の操作で状態が変わりました。再取得した内容を確認してください");
-        setConfirmed(false);
-        await refresh();
-        return;
-      }
-      if (!response.ok) {
-        setStatus("廃止処理を確認できませんでした。HTTP " + response.status + " / Request ID: " +
-          (response.headers.get("x-request-id") ?? "unknown"));
-        await refresh();
-        return;
-      }
-      const result = await response.json() as {
-        readonly execution: { readonly result: string };
-        readonly verification: { readonly status: string };
-      };
-      if (result.execution.result !== "SUCCESS" || result.verification.status !== "PASSED") {
-        setStatus("廃止後の状態確認が完了していません。再確認してください");
-      } else {
-        setStatus("廃止と検証が完了しました");
-      }
-      setReason("");
+      const receipt = response.ok
+        ? await response.json().catch(() => null) as MasterOperationReceipt | null
+        : null;
+      const outcome = classifyMasterOperationOutcome(response.status, receipt);
+      setStatus(outcome === "verified"
+        ? "廃止と検証が完了しました"
+        : masterOperationRecoveryMessage(outcome) + "（HTTP " + response.status + " / Request ID: " +
+          (response.headers.get("x-request-id") ?? "unknown") + "）");
+      if (outcome === "verified") setReason("");
       setConfirmed(false);
       await refresh();
     } catch {
-      setStatus("処理結果を確認できませんでした。状態を再取得してください");
+      setConfirmed(false);
+      setStatus(masterOperationRecoveryMessage("unknown"));
       await refresh();
     } finally {
       setBusy(false);
@@ -115,6 +104,12 @@ export default function MasterRetireDemo() {
         <h2 id="admin-retire-title">拠点マスタ廃止（専用デモ）</h2>
         <p>出張申請では使用しないLEGACY拠点のみが対象です。理由・確認・Versionの一致を必須にし、履歴を削除せず新規選択だけを停止します。</p>
       </div>
+    </div>
+    <div className="admin-retry-actions">
+      <button type="button" disabled={busy || state.kind === "loading"}
+        onClick={() => { setConfirmed(false); void refresh(); }}>
+        最新Version・下見を再取得
+      </button>
     </div>
     {state.kind === "loading" && <div className="admin-audit-state" role="status">廃止対象を確認しています…</div>}
     {state.kind === "error" && <div className="admin-audit-state is-error" role="alert">
