@@ -5,6 +5,13 @@ import type {
 } from "../../../worker/workflow";
 
 export const WORKHUB_OFFICE_MASTER_KEY = "workhub.office";
+// Separate read-only reference definition. It is NOT yet used by the
+// travel-request domain, and never authorizes Master mutations.
+export const WORKHUB_EXPENSE_CATEGORY_MASTER_KEY = "workhub.expense_category";
+export const WORKHUB_REFERENCE_EXPENSE_CATEGORIES = [
+  { id: "workhub-expense-transport", code: "TRANSPORT", label: "Transport", displayOrder: 10 },
+  { id: "workhub-expense-lodging", code: "LODGING", label: "Lodging", displayOrder: 20 },
+] as const;
 export const WORKHUB_RETIRE_DEMO_ITEM_ID = "workhub-office-legacy";
 export const WORKHUB_SCHEDULE_DEMO_ITEM_ID = "workhub-office-schedule";
 export const WORKHUB_AUDIT_SCHEDULE_ITEM_ID = "workhub-office-audit-schedule";

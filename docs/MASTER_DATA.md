@@ -259,3 +259,19 @@ A 200 status from `/api/auth/login` indicates only that HTTP response **headers*
 The shared Preview browser sign-in helper now waits at most **seven seconds** for the **actual login JSON body** after status 200, validates the authentication payload, then lets the session helper inspect real session cookies and verify actual authorization. Do not use Playwright `Response.finished()` as the gate: run 37869794448 demonstrated it timed out for every login, even when response headers reported 200. Incomplete/failed bodies are classified as test failures with sanitized metadata. No credential/session material or response bodies are logged. `401`, `403`, `429`, application-generated `503` remain fatal, and only unattributed `503` receives the existing bounded two retries.
 
 The new unit tests distinguish complete, transport-broken and never-completing responses. This is a **fail-fast stabilization**, not a root-cause fix or permission to mark #521 complete. Do not lower scrypt parameters, bypass user login, weaken attack guards, or raise the Preview acceptance bar silently. Keep #521 open for Cloudflare edge/Worker and D1 observability correlation.
+
+
+## #418 Stage 4: WORKHUB multi-Definition read-only example
+
+WORKHUB Admin Portal now exposes **two Project-approved read-only definitions** through the existing Master Viewer selector:
+
+- `workhub.office`: existing office reference data, with only the previously approved demo Schedule / Retire operation targets
+- `workhub.expense_category`: reference-only `TRANSPORT` / `LODGING` samples, with **no mutation targets**; not wired to travel-request business calculations
+
+Both keys must be independently present in the Worker's fixed server-side `masterKeys` allowlist. Selecting a different Master does not grant mutation privileges; the Worker always checks the authenticated scope, runtime environment, item key and role. Project UI metadata alone cannot change server privileges. No generic table selector, SQL execution or additional Master CRUD route is added.
+
+`npm run workhub:seed:local` populates both keys in **Local D1 only**; the HTTP + Local D1 acceptance tests check cross-definition isolation and that no schedule/retire capabilities are disclosed for the expense-category sample.
+
+`scripts/workhub-demo-seed-preview.mjs` is prepared to populate the same sample, **but is not executed on merge**. Applying it to Preview requires the existing pinned-environment, merged SHA and explicit human confirmation workflow. Production fixture seeding and Production migration are outside the change.
+
+This second Master view tests definition switching, history and permission boundaries. It is not a commitment that WORKHUB expenses have been implemented as a business feature.

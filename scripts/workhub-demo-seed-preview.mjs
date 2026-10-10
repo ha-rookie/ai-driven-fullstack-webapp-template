@@ -4,6 +4,7 @@ const timestamp = "2026-10-04T00:00:00.000Z";
 const scopeId = "workhub-company";
 const masterEnvironment = "preview";
 const officeMasterKey = "workhub.office";
+const expenseCategoryMasterKey = "workhub.expense_category";
 
 const personas = [
   ["workhub-demo-haru", "Haru Newcomer", "haru", "newcomer", "scrypt$32768$8$3$AAECAwQFBgcICQoLDA0ODw$cf5wGgfu3sy4cO_RvujgkwrUnyDG-RgZKMcc6oaDbgU"],
@@ -17,6 +18,17 @@ const personas = [
 const offices = [
   ["workhub-office-nagoya", "workhub-office-nagoya-r1", "NAGOYA", "Nagoya Office", 10],
   ["workhub-office-tokyo", "workhub-office-tokyo-r1", "TOKYO", "Tokyo Office", 20],
+];
+
+// Future Preview fixture only; applying this script requires its existing
+// explicit confirmation and remote-environment Human Gate.
+const referenceMasters = [
+  ...offices.map(([id, revisionId, code, label, order]) =>
+    [id, revisionId, officeMasterKey, code, label, order]),
+  ["workhub-expense-transport", "workhub-expense-transport-r1",
+    expenseCategoryMasterKey, "TRANSPORT", "Transport", 10],
+  ["workhub-expense-lodging", "workhub-expense-lodging-r1",
+    expenseCategoryMasterKey, "LODGING", "Lodging", 20],
 ];
 
 const quote = (value) => `'${String(value).replaceAll("'", "''")}'`;
@@ -48,12 +60,12 @@ ON CONFLICT(scope_id, user_id) DO UPDATE SET
   role = excluded.role,
   updated_at = excluded.updated_at;`).join("\n");
 
-const officeItemSql = offices.map(([itemId, , code]) => `
+const officeItemSql = referenceMasters.map(([itemId, , masterKey, code]) => `
 INSERT INTO master_items (
   id, environment, master_key, code, version, next_revision, last_mutation_id,
   retired_at, created_at, created_by, updated_at, updated_by
 ) VALUES (
-  ${quote(itemId)}, ${quote(masterEnvironment)}, ${quote(officeMasterKey)}, ${quote(code)},
+  ${quote(itemId)}, ${quote(masterEnvironment)}, ${quote(masterKey)}, ${quote(code)},
   2, 2, ${quote(`${itemId}-seed-r1`)}, NULL,
   ${quote(timestamp)}, 'workhub-preview-fixture', ${quote(timestamp)}, 'workhub-preview-fixture'
 )
@@ -68,7 +80,7 @@ ON CONFLICT(id) DO UPDATE SET
   updated_at = excluded.updated_at,
   updated_by = excluded.updated_by;`).join("\n");
 
-const officeRevisionSql = offices.map(([itemId, revisionId, , label, displayOrder]) => `
+const officeRevisionSql = referenceMasters.map(([itemId, revisionId, , , label, displayOrder]) => `
 INSERT INTO master_revisions (
   id, environment, master_item_id, revision, label, enabled,
   effective_from, effective_to, display_order, parent_item_id,
@@ -212,4 +224,4 @@ ORDER BY c.identifier_normalized;
 `;
 run(["d1", "execute", "DB", "--remote", "--env", "preview", "--command", credentialProbeSql]);
 
-console.log("WORKHUB Preview demo users, Office master, recoverable job/data-correction fixtures, and normal operation mode seeded and credential join probed.");
+console.log("WORKHUB Preview demo users, Office and read-only Expense Category masters, recoverable job/data-correction fixtures, and normal operation mode seeded and credential join probed.");
