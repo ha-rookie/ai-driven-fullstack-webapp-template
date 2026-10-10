@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./showcase.css";
+import ReusePathPicker from "./ReusePathPicker";
 
 /**
  * Public, static evaluation entry for WORKHUB. No auth bypass, demo login,
@@ -115,6 +116,7 @@ export default function WorkhubShowcase() {
               <a className="showcase-primary" href="#showcase-tour">3分で見る <span aria-hidden="true">↗</span></a>
               <a className="showcase-secondary" href="/">WORKHUBデモへ →</a>
             </div>
+            <a className="showcase-reuse-jump" href="#showcase-reuse">必要な部品だけ探す →</a>
             <p className="showcase-hero-fine">架空企業のReference Applicationです。商用業務パッケージでも、本番運用の保証でもありません。</p>
           </div>
           <div className="showcase-preview" aria-label="WORKHUBの画面構成を示す概念図。実際のスクリーンショットではありません">
@@ -146,6 +148,7 @@ export default function WorkhubShowcase() {
           <h3>{item.title}</h3><p>{item.description}</p><small>{item.capability}</small>
           <a href={item.evidence} target="_blank" rel="noopener noreferrer">{item.evidenceLabel} ↗</a>
         </article>)}</div>
+        <ReusePathPicker />
       </section>
 
       <section className="showcase-tour-section" id="showcase-tour" aria-labelledby="showcase-tour-title">
