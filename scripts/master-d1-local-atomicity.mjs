@@ -368,6 +368,45 @@ try {
     assert.equal((await outboxGet(admin, outboxUrl + "&status=dead_letter")).status, 400);
     assert.equal((await outboxGet(admin, outboxUrl, "POST")).status, 405);
     console.log("Wrangler Local D1 Outbox summary passed: 13 current failures, 8 sampled, auth and environment isolation");
+    const detailUrl = baseUrl + "/api/admin/integrations/outbox/dl-1?scopeId=workhub-company";
+    const detail = await outboxGet(admin, detailUrl);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.headers.get("cache-control"), "no-store");
+    const detailBody = await detail.json();
+    assert.equal(detailBody.outbox.outboxId, "dl-1");
+    assert.equal(detailBody.outbox.status, "dead_letter");
+    assert.equal(detailBody.outbox.version, 1);
+    assert.equal(detailBody.decision.nextAction, "reconcile_external_first");
+    assert.equal(detailBody.decision.providerOutcome, "unverified");
+    assert.equal(detailBody.decision.manualRetryAllowed, false);
+    assert.ok(!("payload" in detailBody) && !("destinationKey" in detailBody.outbox));
+    const pendingDetail = await outboxGet(admin,
+      baseUrl + "/api/admin/integrations/outbox/r-1?scopeId=workhub-company");
+    assert.equal((await pendingDetail.json()).decision.nextAction, "await_scheduled_retry");
+    const doneDetail = await outboxGet(admin,
+      baseUrl + "/api/admin/integrations/outbox/done?scopeId=workhub-company");
+    assert.equal((await doneDetail.json()).decision.nextAction, "none");
+    const masked = await outboxGet(admin,
+      baseUrl + "/api/admin/integrations/outbox/r-9?scopeId=workhub-company");
+    const maskedBody = await masked.json();
+    assert.equal(maskedBody.outbox.failureCode, "other");
+    assert.ok(!JSON.stringify(maskedBody).includes("sensitive-provider-credential"));
+    assert.equal((await outboxGet(admin, baseUrl
+      + "/api/admin/integrations/outbox/pd-1?scopeId=workhub-company")).status, 404,
+      "records in another environment are not addressable");
+    assert.equal((await outboxGet(admin, baseUrl
+      + "/api/admin/integrations/outbox/not-found?scopeId=workhub-company")).status, 404);
+    assert.equal((await outboxGet(null, detailUrl)).status, 401);
+    assert.equal((await outboxGet(observer, detailUrl)).status, 403);
+    assert.equal((await outboxGet(admin, detailUrl + "&state=dead_letter")).status, 400);
+    assert.equal((await outboxGet(admin, detailUrl, "POST")).status, 405);
+    assert.equal((await outboxGet(admin, baseUrl
+      + "/api/admin/integrations/outbox/%2F?scopeId=workhub-company")).status, 400);
+    assert.equal((await outboxGet(admin, baseUrl
+      + "/api/admin/integrations/outbox/dl-1?scopeId=other-company")).status, 403);
+    assert.equal((await db.prepare("SELECT version FROM integration_outbox WHERE id='dl-1' AND environment='test'")
+      .first()).version, 1, "read-only detail never modifies Outbox");
+    console.log("Wrangler Local D1 Outbox detail passed: read only, reconcile guidance, mask, cross-environment denial");
 
     await assertWorkerRead(projectSchedule, admin, ["schedule"]);
     await assertWorkerRead(projectRetire, admin, ["retire"]);
@@ -408,6 +447,8 @@ try {
       "job summary must also revoke privileges on the same live session");
     assert.equal((await outboxGet(admin)).status, 403,
       "integration summary must also revoke privileges on the same live session");
+    assert.equal((await outboxGet(admin, detailUrl)).status, 403,
+      "integration detail must also revoke privileges on the same live session");
   } finally {
     await new Promise((resolve, reject) =>
       httpServer.close((err) => err ? reject(err) : resolve()));
