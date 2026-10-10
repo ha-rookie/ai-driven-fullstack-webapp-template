@@ -23,12 +23,14 @@ import {
 } from "../operations";
 
 export const SCHEDULE_MASTER_REVISION = "SCHEDULE_MASTER_REVISION";
-const ACTION = "master_data:schedule";
+export const MASTER_SCHEDULE_ACTION = "master_data:schedule";
+const ACTION = MASTER_SCHEDULE_ACTION;
 const OPERATION: OperationDefinition = Object.freeze({
   id: SCHEDULE_MASTER_REVISION, capability: ACTION, baseRisk: "CONTROLLED_CHANGE",
   reversible: false, idempotent: false, externalSideEffect: false, requiresVerification: true,
 });
-const defaultPolicy: RolePolicy = { [ACTION]: ["system_admin"] };
+export const MASTER_SCHEDULE_DEFAULT_POLICY: RolePolicy = { [ACTION]: ["system_admin"] };
+const defaultPolicy = MASTER_SCHEDULE_DEFAULT_POLICY;
 export interface MasterScheduleEnvironment {
   readonly DB: D1Database;
   readonly RUNTIME_ENVIRONMENT?: string;
