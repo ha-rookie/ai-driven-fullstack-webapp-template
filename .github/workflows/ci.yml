@@ -55,8 +55,8 @@ jobs:
         if: steps.impact.outputs.tier != 'docs'
         run: npm ci
 
-      # Only the small portable Workflow/AuthZ consumer; do not make all PRs
-      # pay for another full TypeScript build. No Cloudflare/Node ambient types.
+      # Keep checks focused on Workflow/AuthZ or the explicit consumer.
+      # Verify type portability plus isolated Node execution without extra npm install.
       - name: Verify portable Workflow/AuthZ reuse (impact selected)
         if: steps.impact.outputs.tier == 'full'
         shell: bash
@@ -67,13 +67,16 @@ jobs:
           set -euo pipefail
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
             npx tsc -p examples/reuse/tsconfig.portable.json
+            node scripts/reuse-isolated-smoke.mjs
           elif [[ -z "$CHANGE_BASE" || -z "$CHANGE_HEAD" ]]; then
             echo "Missing PR diff boundary for portable reuse check"
             exit 1
           elif git diff --name-only --no-renames "$CHANGE_BASE" "$CHANGE_HEAD" -- \
             examples/reuse/ src/worker/workflow/ src/worker/authorization/ \
+            scripts/reuse-isolated-smoke.mjs \
             .github/workflows/ci.yml package.json package-lock.json | grep -q .; then
             npx tsc -p examples/reuse/tsconfig.portable.json
+            node scripts/reuse-isolated-smoke.mjs
           else
             echo "Skipping portable reuse check: unrelated files"
           fi
