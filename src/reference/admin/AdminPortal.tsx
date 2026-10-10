@@ -493,6 +493,7 @@ const AuditViewer = () => {
 
 export default function AdminPortal() {
   const auth = useAuth();
+  const [selectedMasterItemId, setSelectedMasterItemId] = useState<string | null>(null);
   const environment = import.meta.env.MODE === "production" ? "PRODUCTION" : "PREVIEW / LOCAL";
   const authorized = auth.status === "authenticated" && auth.user?.id === ADMIN_USER_ID;
 
@@ -519,11 +520,11 @@ export default function AdminPortal() {
         <section className="admin-grid" aria-label="管理領域">
           {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Audit & Security" ? <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a> : key === "Jobs & Integrations" ? <a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> : key === "Business Operations" ? <><a className="admin-section-link" href="#admin-master-data">マスタ管理を見る</a> <a className="admin-section-link" href="#admin-business-operations">安全なデータ補正を見る</a></> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
         </section>
-        <MasterDataViewer />
+        <MasterDataViewer onSelectionChange={setSelectedMasterItemId} />
         <MasterRetireDemo />
         <MasterScheduleDemo />
         <MasterScheduleDemo variant="order" />
-        <MasterAvailabilityDemo />
+        <MasterAvailabilityDemo requestedItemId={selectedMasterItemId} />
         <DataCorrectionViewer />
         <JobOperationsViewer />
         <AuditViewer />
