@@ -87,7 +87,7 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
     revision.lifecycle === "current" || revision.lifecycle === "disabled",
   );
   const inspect = async () => {
-    if (!detail || !current || busy) return;
+    if (!detail || detail.item.id !== itemId || !current || busy) return;
     setBusy(true);
     invalidatePreview();
     const generation = previewGeneration.current;
@@ -111,7 +111,7 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
     }
   };
   const execute = async () => {
-    if (!detail || !current || !preview?.available || !preview.priorRevisionId
+    if (!detail || detail.item.id !== itemId || !current || !preview?.available || !preview.priorRevisionId
       || preview.enabled !== target.enabled || !confirmed || !reason.trim() || busy) return;
     setBusy(true);
     setMessage("");
@@ -176,7 +176,7 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
       </label>
       {status === "loading" && <p role="status">デモの状態を取得しています…</p>}
       {status === "error" && <p role="alert">マスタを取得できませんでした</p>}
-      {status === "ready" && detail && <div>
+      {status === "ready" && detail?.item.id === itemId && <div>
         <p>対象：<strong>{detail.item.code}</strong> / Item Version：{detail.item.version}</p>
         <p data-testid="master-availability-history">Revision：{detail.revisions.length} 件</p>
         <div className="admin-audit-table-wrap">
