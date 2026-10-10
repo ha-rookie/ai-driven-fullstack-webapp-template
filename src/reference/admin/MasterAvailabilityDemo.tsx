@@ -1,17 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
-import {
-  WORKHUB_AVAILABILITY_DISABLE_ITEM_ID,
-  WORKHUB_AVAILABILITY_ENABLE_ITEM_ID,
-} from "../workhub/travel-request";
-
-const TARGETS = [
-  { id: WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, enabled: false, label: "有効 → 将来無効" },
-  { id: WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, enabled: true, label: "無効 → 将来有効" },
-] as const;
+import type { MasterAvailabilityTarget } from "./master-admin-operation-config";
 const BASE = "/api/admin/master-operations/schedule";
-const SCOPE = "workhub-company";
 const CUTOFF = "2027-04-01T00:00:00.000Z";
 
 interface MasterDetail {
@@ -32,8 +23,11 @@ interface MasterPreview {
   readonly preview: { readonly policyDecision: string; readonly risk: string };
 }
 
-export default function MasterAvailabilityDemo({ requestedItemId }: { readonly requestedItemId?: string | null }) {
-  const [itemId, setItemId] = useState<string>(TARGETS[0].id);
+export default function MasterAvailabilityDemo({ requestedItemId, targets }: {
+  readonly requestedItemId?: string | null;
+  readonly targets: readonly [MasterAvailabilityTarget, ...MasterAvailabilityTarget[]];
+}) {
+  const [itemId, setItemId] = useState<string>(targets[0].itemId);
   const [detail, setDetail] = useState<MasterDetail | null>(null);
   const [preview, setPreview] = useState<MasterPreview | null>(null);
   const [cutover, setCutover] = useState(CUTOFF);
@@ -49,16 +43,16 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
     setPreview(null);
     setConfirmed(false);
   };
-  const target = TARGETS.find((candidate) => candidate.id === itemId) ?? TARGETS[0];
+  const target = targets.find((candidate) => candidate.itemId === itemId) ?? targets[0];
 
-  const query = () => new URLSearchParams({ scopeId: SCOPE, itemId });
+  const query = () => new URLSearchParams({ scopeId: target.scopeId, itemId });
   const reload = async () => {
     const generation = ++loadGeneration.current;
     invalidatePreview();
     setDetail(null);
     setStatus("loading");
     try {
-      const q = new URLSearchParams({ ...Object.fromEntries(query()), masterKey: "workhub.office" });
+      const q = new URLSearchParams({ ...Object.fromEntries(query()), masterKey: target.masterKey });
       const response = await fetch("/api/admin/master-data?" + q);
       if (!response.ok) throw new Error("viewer_unavailable");
       const result = await response.json() as MasterDetail;
@@ -74,7 +68,7 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
     }
   };
   useEffect(() => {
-    if (requestedItemId && TARGETS.some((candidate) => candidate.id === requestedItemId)) {
+    if (requestedItemId && targets.some((candidate) => candidate.itemId === requestedItemId)) {
       ++loadGeneration.current;
       invalidatePreview();
       setItemId(requestedItemId);
@@ -171,7 +165,7 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
           ++loadGeneration.current;
           invalidatePreview(); setItemId(event.target.value); setReason("");
         }}>
-          {TARGETS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+          {targets.map((option) => <option key={option.itemId} value={option.itemId}>{option.label}</option>)}
         </select>
       </label>
       {status === "loading" && <p role="status">デモの状態を取得しています…</p>}
