@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../../frontend/auth";
+import AccountSwitchButton from "../workhub/AccountSwitchButton";
 import MasterDataViewer from "./MasterDataViewer";
 import OperationsOverview from "./OperationsOverview";
 import { WORKHUB_MASTER_ADMIN_CONFIG } from "./workhub-master-admin-config";
@@ -508,7 +509,7 @@ export default function AdminPortal() {
   return <div className="admin-shell">
     <header className="admin-header">
       <a className="admin-brand" href="/"><span>CECIL WORKS</span><strong>Operations Portal</strong></a>
-      <div className="admin-header-context"><span className="admin-environment">{environment}</span><span>{auth.user?.displayName ?? "System Admin"}</span></div>
+      <div className="admin-header-context"><span className="admin-environment">{environment}</span><span>{auth.user?.displayName ?? "System Admin"}</span><AccountSwitchButton /></div>
     </header>
     <div className="admin-layout">
       <nav className="admin-nav" aria-label="管理ポータル">
