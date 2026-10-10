@@ -21,7 +21,7 @@ import {
   MASTER_SCHEDULE_ACTION, MASTER_SCHEDULE_DEFAULT_POLICY,
   MASTER_RETIRE_ACTION, MASTER_RETIRE_DEFAULT_POLICY,
 } from "./worker/administration";
-import { WORKHUB_OFFICE_MASTER_DEFINITION, WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_AUDIT_RETIRE_ITEM_ID, WORKHUB_AUDIT_SCHEDULE_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID } from "./reference/workhub/travel-request";
+import { WORKHUB_OFFICE_MASTER_DEFINITION, WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_AUDIT_RETIRE_ITEM_ID, WORKHUB_AUDIT_SCHEDULE_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID, WORKHUB_EXPENSE_CATEGORY_MASTER_KEY } from "./reference/workhub/travel-request";
 import { handleLiveness, handleReadiness } from "./worker/health";
 import {
   apiErrorResponse,
@@ -75,7 +75,9 @@ const workhubMasterRetireOptions = {
 };
 const workhubMasterViewerOptions = {
   scopeId: "workhub-company",
-  masterKeys: [WORKHUB_OFFICE_MASTER_DEFINITION.key],
+  // The second key is independently approved for read-only access. No
+  // schedule/retire operation grants target this definition.
+  masterKeys: [WORKHUB_OFFICE_MASTER_DEFINITION.key, WORKHUB_EXPENSE_CATEGORY_MASTER_KEY],
   operations: [
     {
       kind: "schedule" as const, masterKey: workhubMasterScheduleOptions.definition.key,
