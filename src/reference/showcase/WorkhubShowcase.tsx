@@ -10,7 +10,7 @@ const REPO = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template";
 const travelTest = REPO + "/blob/main/e2e/tests/workhub-travel-request.spec.ts";
 const travelSource = REPO + "/blob/main/src/reference/workhub/travel-request/service.ts";
 const searchSource = REPO + "/blob/main/src/reference/workhub/travel-search.ts";
-const reportSource = REPO + "/blob/main/src/reference/workhub/travel-report.ts";
+const workhubUiSource = REPO + "/blob/main/src/App.tsx";
 
 const tour = [
   {
@@ -43,8 +43,8 @@ const tour = [
     visible: "Notification / Timeline に分かれて表示される履歴",
     mechanism: "業務の正本・通知・時系列履歴を分離",
     why: "現在の承認状態と「いつ何が起きたか」を混同しない。",
-    source: reportSource,
-    sourceLabel: "承認結果の帳票",
+    source: workhubUiSource,
+    sourceLabel: "通知・履歴の表示実装",
   },
   {
     eyebrow: "04 / BOUNDARY",
@@ -112,7 +112,7 @@ export default function WorkhubShowcase() {
             <h1 id="showcase-title">業務システムを、<br /><em>毎回ゼロから作らない。</em></h1>
             <p className="showcase-lead">AIがコードを書ける時代だからこそ、認証・権限・承認・監査・失敗時の振る舞いまで。<strong>実際に動く業務シナリオ</strong>から、再利用できる設計を確かめる。</p>
             <div className="showcase-actions">
-              <a className="showcase-primary" href="#showcase-tour">3分で体験する <span aria-hidden="true">↗</span></a>
+              <a className="showcase-primary" href="#showcase-tour">3分で見る <span aria-hidden="true">↗</span></a>
               <a className="showcase-secondary" href="/">WORKHUBデモへ →</a>
             </div>
             <p className="showcase-hero-fine">架空企業のReference Applicationです。商用業務パッケージでも、本番運用の保証でもありません。</p>
@@ -181,6 +181,20 @@ export default function WorkhubShowcase() {
         </div>
       </section>
 
+      <section className="showcase-start" aria-labelledby="showcase-start-title">
+        <div className="showcase-section-heading"><p className="showcase-label">TRY WORKHUB / DEMO WALKTHROUGH</p>
+          <h2 id="showcase-start-title">実際の画面では、<span>ここから始める。</span></h2>
+          <p>ガイドで流れをつかんだら、WORKHUBのデモで確かめてください。
+            下記のPersona選択はReference Demoが有効な環境だけに表示されます。</p>
+        </div>
+        <ol className="showcase-start-steps">
+          <li><span>01</span><div><strong>Aoi Employeeでログイン</strong><p>ログイン画面の「デモユーザを選ぶ」から一般社員を選択。出張申請を提出する</p></div></li>
+          <li><span>02</span><div><strong>Ren Managerでログイン</strong><p>いったんログアウトし、上長としてMY WORKから差戻し・承認を確認する</p></div></li>
+          <li><span>03</span><div><strong>Aoi Employeeに戻る</strong><p>通知・再申請・申請履歴を確認する。デモの一部は環境やデータ状態によって異なります</p></div></li>
+        </ol>
+        <a className="showcase-primary showcase-start-cta" href="/">WORKHUBログインを開く →</a>
+        <p className="showcase-start-note">ログインは既存の認証処理を利用します。このShowcaseから自動ログインや業務データ更新は行いません。</p>
+      </section>
       <section className="showcase-boundary" aria-labelledby="showcase-boundary-title">
         <div className="showcase-boundary-copy"><p className="showcase-label">HONEST EVIDENCE</p><h2 id="showcase-boundary-title">できることと、<br />まだできないこと。</h2><p>コードがあること、CIで検証したこと、実環境で検証したことは同じではありません。現時点の状態を区別します。</p></div>
         <div className="showcase-status-grid">

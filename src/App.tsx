@@ -1,7 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "./frontend/auth";
 import AdminPortal from "./reference/admin/AdminPortal";
-import WorkhubShowcase from "./reference/showcase/WorkhubShowcase";
 import "./workhub.css";
 
 interface DemoPersona { readonly key: string; readonly userId: string; readonly displayName: string; readonly roleLabel: string; readonly homeHint: string; }
@@ -138,4 +137,4 @@ function TravelWorkspace() {
   </div>;
 }
 
-export default function App() { const auth = useAuth(); if (window.location.pathname === "/showcase" || window.location.pathname === "/showcase/") return <WorkhubShowcase />; if (auth.status === "loading") return <main className="workhub-loading" aria-live="polite"><Brand /><span className="workhub-loading-bar" aria-hidden="true" /><p>ログイン状態を確認しています…</p></main>; if (auth.status === "authenticated") return window.location.pathname.startsWith("/admin") ? <AdminPortal /> : <TravelWorkspace />; if (auth.status === "error") return <main className="workhub-loading"><Brand /><h1>ログイン状態を確認できません</h1><p>通信状態を確認してから、もう一度お試しください。</p><button className="workhub-primary-button workhub-retry-button" type="button" onClick={() => void auth.synchronize()}>再試行</button></main>; return <LoginScreen />; }
+export default function App() { const auth = useAuth(); if (auth.status === "loading") return <main className="workhub-loading" aria-live="polite"><Brand /><span className="workhub-loading-bar" aria-hidden="true" /><p>ログイン状態を確認しています…</p></main>; if (auth.status === "authenticated") return window.location.pathname.startsWith("/admin") ? <AdminPortal /> : <TravelWorkspace />; if (auth.status === "error") return <main className="workhub-loading"><Brand /><h1>ログイン状態を確認できません</h1><p>通信状態を確認してから、もう一度お試しください。</p><button className="workhub-primary-button workhub-retry-button" type="button" onClick={() => void auth.synchronize()}>再試行</button></main>; return <LoginScreen />; }
