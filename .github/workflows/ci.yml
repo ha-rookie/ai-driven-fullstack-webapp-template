@@ -73,6 +73,7 @@ jobs:
             exit 1
           elif git diff --name-only --no-renames "$CHANGE_BASE" "$CHANGE_HEAD" -- \
             examples/reuse/ src/worker/workflow/ src/worker/authorization/ \
+            scripts/reuse-isolated-smoke.mjs \
             .github/workflows/ci.yml package.json package-lock.json | grep -q .; then
             npx tsc -p examples/reuse/tsconfig.portable.json
             node scripts/reuse-isolated-smoke.mjs
