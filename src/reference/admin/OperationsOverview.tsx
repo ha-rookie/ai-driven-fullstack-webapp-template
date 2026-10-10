@@ -30,6 +30,28 @@ interface OutboxSummary {
     readonly failureCode: string;
   }[];
 }
+interface OutboxDetail {
+  readonly coverage: "environment";
+  readonly environment: string;
+  readonly observedAt: string;
+  readonly outbox: {
+    readonly outboxId: string;
+    readonly status: "pending" | "processing" | "retry_wait" | "delivered" | "dead_letter";
+    readonly attemptCount: number;
+    readonly availableAt: string;
+    readonly lastAttemptAt: string | null;
+    readonly deliveredAt: string | null;
+    readonly deadLetteredAt: string | null;
+    readonly updatedAt: string;
+    readonly version: number;
+    readonly failureCode: string;
+  };
+  readonly decision: {
+    readonly nextAction: "reconcile_external_first" | "await_scheduled_retry" | "observe_in_progress" | "queued" | "none";
+    readonly providerOutcome: "unverified";
+    readonly manualRetryAllowed: false;
+  };
+}
 interface AuditSnapshot {
   readonly items: readonly { readonly category: string; readonly action: string }[];
   readonly nextCursor: string | null;
@@ -109,6 +131,23 @@ const hasOutboxSummary = (value: unknown): value is OutboxSummary =>
     && (item.status === "retry_wait" || item.status === "dead_letter")
     && Number.isSafeInteger(item.attemptCount) && Number(item.attemptCount) >= 0
     && typeof item.updatedAt === "string" && typeof item.failureCode === "string");
+const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
+  isRecord(value) && value.coverage === "environment"
+  && typeof value.environment === "string" && typeof value.observedAt === "string"
+  && isRecord(value.outbox) && typeof value.outbox.outboxId === "string"
+  && ["pending", "processing", "retry_wait", "delivered", "dead_letter"].includes(String(value.outbox.status))
+  && Number.isSafeInteger(value.outbox.attemptCount) && Number(value.outbox.attemptCount) >= 0
+  && Number.isSafeInteger(value.outbox.version) && Number(value.outbox.version) > 0
+  && typeof value.outbox.availableAt === "string" && typeof value.outbox.updatedAt === "string"
+  && typeof value.outbox.failureCode === "string"
+  && [value.outbox.lastAttemptAt, value.outbox.deliveredAt, value.outbox.deadLetteredAt]
+    .every((date) => date === null || typeof date === "string")
+  && isRecord(value.decision)
+  && ["reconcile_external_first", "await_scheduled_retry", "observe_in_progress", "queued", "none"]
+    .includes(String(value.decision.nextAction))
+  && value.decision.providerOutcome === "unverified"
+  && value.decision.manualRetryAllowed === false;
+
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
   && value.items.every((item: unknown) => isRecord(item)
@@ -244,8 +283,45 @@ const StatusCard = ({ title, value, note, href, sourceState: state, coverage }: 
     {href && <a href={href}>詳細を確認 →</a>}
   </article>;
 
+const actionLabel: Record<OutboxDetail["decision"]["nextAction"], string> = {
+  reconcile_external_first: "外部サービス側の配送結果を照合してください。再送はまだできません。",
+  await_scheduled_retry: "再試行予定を確認してください。手動の再送はできません。",
+  observe_in_progress: "処理中です。時間経過だけで再送しないでください。",
+  queued: "送信待ちです。送信処理の状態を確認してください。",
+  none: "ローカル記録では配送済みです。外部側の受領は未照合です。",
+};
+
+const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: string; readonly environment: string }) => {
+  const [detail, setDetail] = useState<Probe<OutboxDetail> | null>(null);
+  useEffect(() => {
+    let active = true;
+    setDetail(null);
+    void read("/api/admin/integrations/outbox/" + encodeURIComponent(outboxId) + "?"
+      + params({ scopeId: SCOPE_ID }), hasOutboxDetail).then((result) => {
+      if (active) setDetail(result.kind === "ready" && result.data.environment !== environment
+        ? { kind: "unknown" } : result);
+    });
+    return () => { active = false; };
+  }, [outboxId, environment]);
+  return <div className="admin-audit-state" role="status" data-testid="outbox-detail">
+    <h4>個別Outbox確認：<code>{outboxId}</code></h4>
+    {detail === null ? <p>最新の状態を取得中…</p>
+      : detail.kind !== "ready" ? <p>{unavailableLabel(detail)}。再試行はできません。</p>
+        : <>
+          <p>状態：{detail.data.outbox.status} / 試行回数：{detail.data.outbox.attemptCount}
+            {" / Version: " + detail.data.outbox.version}</p>
+          <p>再試行可能になる予定時刻：{detail.data.outbox.availableAt}
+            {" / 最終試行：" + (detail.data.outbox.lastAttemptAt ?? "記録なし")}</p>
+          <p>更新：{detail.data.outbox.updatedAt} / 診断コード：{detail.data.outbox.failureCode}</p>
+          <p><strong>次の確認：</strong>{actionLabel[detail.data.decision.nextAction]}</p>
+          <p>外部配送結果：未照合。再送可否は判断できません（この画面では再送しません）。</p>
+        </>}
+  </div>;
+};
+
 export default function OperationsOverview() {
   const [generation, setGeneration] = useState(0);
+  const [selectedOutboxId, setSelectedOutboxId] = useState<string | null>(null);
   const [state, setState] = useState<
     | { readonly kind: "loading" }
     | { readonly kind: "ready"; readonly data: OverviewSnapshot }
@@ -279,7 +355,7 @@ export default function OperationsOverview() {
       </div>
       <div className="admin-overview-refresh">
         <button type="button" disabled={state.kind === "loading"}
-          onClick={() => setGeneration((value) => value + 1)}>最新状態を確認</button>
+          onClick={() => { setSelectedOutboxId(null); setGeneration((value) => value + 1); }}>最新状態を確認</button>
         <small>{ready ? "取得日時: " + new Date(ready.updatedAt).toLocaleString("ja-JP") : "取得中…"}</small>
       </div>
     </div>
@@ -293,9 +369,13 @@ export default function OperationsOverview() {
         ? <ul>{outboxSnapshot.items.map((item) => <li key={item.outboxId}>
           <code>{item.outboxId}</code> — {item.status === "dead_letter" ? "要確認" : "再試行待ち"}
           {" / 試行 " + item.attemptCount + " 回 / " + item.failureCode + " / " + item.updatedAt}
+          {" "}<button type="button" onClick={() => setSelectedOutboxId(item.outboxId)}>状態と対応方針を確認</button>
         </li>)}</ul>
         : <p>{outboxSnapshot ? "該当する現在記録はありません（外部連携の正常性は未確認）。"
           : ready?.outbox.kind === "denied" ? "閲覧不可" : "取得できません／未確認"}</p>}
+      {selectedOutboxId && outboxSnapshot?.items.some((item) => item.outboxId === selectedOutboxId)
+        ? <OutboxDetailPanel key={selectedOutboxId} outboxId={selectedOutboxId}
+            environment={outboxSnapshot.environment} /> : null}
     </section>
     <p className="admin-overview-footnote" data-testid="operations-overview-environment">
       Server Environment: <strong>{environment}</strong> / Scope: {SCOPE_ID} / Application Version: 未提供
