@@ -145,6 +145,44 @@ try {
   assert.equal((await rows("SELECT id FROM durable_audit_events")).length, 1,
     "failed audit must not overwrite the winning audit");
 
+  // Session and role acceptance against the real D1-backed API handler.
+  const scheduleId = "local-allowed-schedule";
+  const retireId = "local-allowed-retire";
+  const ordinaryId = "local-read-only-item";
+  const retiredId = "local-retired-item";
+  const productionId = "local-production-item";
+  for (const id of [scheduleId, retireId, ordinaryId, retiredId]) await seed(id);
+  await seed(productionId, "production");
+  await db.prepare("UPDATE master_items SET retired_at = ? WHERE id = ?")
+    .bind(createdAt, retiredId).run();
+  await db.batch([
+    ...["admin", "observer", "outsider"].map((id) =>
+      db.prepare("INSERT INTO users(id,created_at,updated_at,status) VALUES(?,?,?,?)")
+        .bind(id, createdAt, createdAt, "active")),
+    ...["workhub-company", "other-company"].map((id) =>
+      db.prepare("INSERT INTO resource_scopes(id,name,created_at,updated_at) VALUES(?,?,?,?)")
+        .bind(id, id, createdAt, createdAt)),
+    ...[["workhub-company", "admin", "system_admin"], ["workhub-company", "observer", "observer"],
+      ["other-company", "outsider", "system_admin"]].map(([scope, id, role]) =>
+      db.prepare("INSERT INTO scope_memberships(scope_id,user_id,role,created_at,updated_at) VALUES(?,?,?,?,?)")
+        .bind(scope, id, role, createdAt, createdAt)),
+  ]);
+  const sessions = await Promise.all(
+    ["admin", "observer", "outsider"].map((id) => issueApplicationSession(db, id)),
+  );
+  const [admin, observer, outsider] = sessions;
+  const viewerOptions = {
+    scopeId: "workhub-company",
+    masterKeys: ["workhub.office"],
+    authorizationPolicy: { "master_data:view": ["system_admin", "observer"] },
+    operations: [
+      { kind: "schedule", masterKey: "workhub.office", allowedItemIds: [scheduleId, retiredId, productionId],
+        action: "master_data:schedule", authorizationPolicy: { "master_data:schedule": ["system_admin"] } },
+      { kind: "retire", masterKey: "workhub.office", allowedItemIds: [retireId],
+        action: "master_data:retire", authorizationPolicy: { "master_data:retire": ["system_admin"] } },
+    ],
+  };
+  // Actual production Master handler: only the options are local fixtures.
   console.log("Wrangler Local D1 Master atomic batch passed: competing cutover=1 winner, audit rollback=clean");
 } finally {
   if (proxy) await proxy.dispose();
