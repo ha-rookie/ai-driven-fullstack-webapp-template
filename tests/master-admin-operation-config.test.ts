@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildMasterOperationLinks, type MasterProjectOperationConfig } from "../src/reference/admin/master-admin-operation-config";
+import { buildMasterOperationLinks, masterSchedulePanelId, type MasterProjectOperationConfig } from "../src/reference/admin/master-admin-operation-config";
 
 const scopeId = "demo-scope";
 const masterKey = "demo.department";
@@ -22,8 +22,8 @@ test("Project's eligible capabilities map to fixed operation panel anchors only"
   const result = buildMasterOperationLinks(config());
   assert.deepEqual(Object.keys(result).sort(), ["retire", "schedule", "order", "availability"].sort());
   assert.equal(result.retire.href, "#admin-master-retire-demo");
-  assert.equal(result.schedule.href, "#admin-master-schedule-demo");
-  assert.equal(result.order.href, "#admin-master-order-demo");
+  assert.equal(result.schedule.href, "#admin-master-schedule-demo-schedule");
+  assert.equal(result.order.href, "#admin-master-order-demo-order");
   assert.equal(result.availability.href, "#admin-master-availability");
 });
 
@@ -59,4 +59,28 @@ test("special object keys cannot inherit capabilities from Object.prototype", ()
   assert.equal(Object.getPrototypeOf(result), null);
   assert.equal(result["__proto__"]?.href, "#admin-master-retire-demo");
   assert.equal(result["constructor"]?.href, "#admin-master-availability");
+});
+
+
+test("multiple targets sharing a schedule variant link to distinct rendered panel IDs", () => {
+  const result = buildMasterOperationLinks(config({
+    scheduleTargets: [
+      { ...target("first"), variant: "revision", effectiveFrom: "2027-04-01T00:00:00.000Z", label: "First" },
+      { ...target("second"), variant: "revision", effectiveFrom: "2027-04-01T00:00:00.000Z", label: "Second" },
+    ],
+  }));
+  assert.notEqual(result.first.href, result.second.href);
+  for (const itemId of ["first", "second"]) {
+    assert.equal(result[itemId].href, "#" + masterSchedulePanelId({ variant: "revision", itemId }));
+  }
+});
+
+test("invalid Project target IDs never expose an operation link", () => {
+  const result = buildMasterOperationLinks(config({
+    retireTarget: target("unsafe#fragment"),
+    scheduleTargets: [{ ...target("space in id"), variant: "revision",
+      effectiveFrom: "2027-04-01T00:00:00.000Z", label: "Invalid" }],
+    availabilityTargets: [{ ...target("safe"), enabled: false, label: "Safe" }],
+  }));
+  assert.deepEqual(Object.keys(result), ["safe"]);
 });
