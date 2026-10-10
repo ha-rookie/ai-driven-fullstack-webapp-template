@@ -89,7 +89,7 @@ export function createPurchaseApprovalSpike(options: PurchaseApprovalSpikeOption
     generateId: () => `purchase-test-${++idCounter}`,
   });
 
-  const submit = (request: PurchaseRequest, actor: PurchaseActor): Promise<WorkflowMutationResult> => {
+  const submit = async (request: PurchaseRequest, actor: PurchaseActor): Promise<WorkflowMutationResult> => {
     if (actor.id !== request.requesterId) throw new Error("requester_mismatch");
     requirePurchaseAccess(actor, request, "purchase:submit");
     if (!Number.isSafeInteger(request.totalYen) || request.totalYen <= 0) {
@@ -106,7 +106,7 @@ export function createPurchaseApprovalSpike(options: PurchaseApprovalSpikeOption
     });
   };
 
-  const approve = (
+  const approve = async (
     request: PurchaseRequest,
     actor: PurchaseActor,
     current: WorkflowMutationResult,
