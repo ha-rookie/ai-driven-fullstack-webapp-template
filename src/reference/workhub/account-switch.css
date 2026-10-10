@@ -1,0 +1,10 @@
+.workhub-account-switch{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.workhub-account-switch-button{min-height:38px;border:1px solid #a8c7cc;border-radius:9px;padding:0 12px;background:#eff8f7;color:#14566a;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}
+.workhub-account-switch-button:hover{background:#dff0ef;border-color:#6aa6ad}
+.workhub-account-switch-button:focus-visible{outline:3px solid #e5ab42;outline-offset:2px}
+.workhub-account-switch-button:disabled{cursor:wait;opacity:.65}
+.workhub-account-switch-error{max-width:260px;color:#ad2828;font-size:11px;line-height:1.5;margin:0;text-align:right}
+.admin-header .workhub-account-switch-button{background:#173744;border-color:#8faab1;color:white}
+.admin-header .workhub-account-switch-button:hover{background:#285465}
+.admin-header .workhub-account-switch-error{color:#ffd1d1}
+@media(max-width:560px){.workhub-account-switch-button{padding:0 9px;font-size:11px}.workhub-account-switch-error{max-width:195px}}
