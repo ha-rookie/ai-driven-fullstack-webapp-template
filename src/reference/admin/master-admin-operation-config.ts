@@ -22,6 +22,11 @@ export interface MasterOperationLink {
   readonly href: `#${string}`;
   readonly label: string;
 }
+
+/** Each configured schedule/order target needs its own addressable panel. */
+export function masterSchedulePanelId(target: Pick<MasterScheduleTarget, "variant" | "itemId">): string {
+  return `admin-master-${target.variant === "order" ? "order" : "schedule"}-demo-${target.itemId}`;
+}
 export interface MasterProjectOperationConfig {
   readonly scopeId: string;
   readonly masterKey: string;
@@ -40,7 +45,8 @@ export function buildMasterOperationLinks(
   const links: Record<string, MasterOperationLink> = Object.create(null) as Record<string, MasterOperationLink>;
   const duplicates = new Set<string>();
   const add = (target: MasterTarget, link: MasterOperationLink) => {
-    if (target.scopeId !== config.scopeId || target.masterKey !== config.masterKey || !target.itemId) return;
+    if (target.scopeId !== config.scopeId || target.masterKey !== config.masterKey
+      || !/^[A-Za-z0-9_.:-]{1,128}$/u.test(target.itemId)) return;
     if (Object.prototype.hasOwnProperty.call(links, target.itemId)) {
       delete links[target.itemId];
       duplicates.add(target.itemId);
@@ -49,9 +55,10 @@ export function buildMasterOperationLinks(
   };
   add(config.retireTarget, { href: "#admin-master-retire-demo", label: "廃止操作の下見へ" });
   for (const target of config.scheduleTargets) {
-    add(target, target.variant === "order"
-      ? { href: "#admin-master-order-demo", label: "将来表示順変更の下見へ" }
-      : { href: "#admin-master-schedule-demo", label: "将来Revision予約の下見へ" });
+    add(target, {
+      href: `#${masterSchedulePanelId(target)}`,
+      label: target.variant === "order" ? "将来表示順変更の下見へ" : "将来Revision予約の下見へ",
+    });
   }
   for (const target of config.availabilityTargets) {
     add(target, { href: "#admin-master-availability", label: "有効・無効切替の下見へ" });
