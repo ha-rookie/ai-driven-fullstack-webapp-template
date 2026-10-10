@@ -522,10 +522,12 @@ export default function AdminPortal() {
           {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Audit & Security" ? <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a> : key === "Jobs & Integrations" ? <a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> : key === "Business Operations" ? <><a className="admin-section-link" href="#admin-master-data">マスタ管理を見る</a> <a className="admin-section-link" href="#admin-business-operations">安全なデータ補正を見る</a></> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
         </section>
         <MasterDataViewer {...WORKHUB_MASTER_ADMIN_CONFIG} onSelectionChange={setSelectedMasterItemId} />
-        <MasterRetireDemo />
-        <MasterScheduleDemo />
-        <MasterScheduleDemo variant="order" />
-        <MasterAvailabilityDemo requestedItemId={selectedMasterItemId} />
+        <MasterRetireDemo target={WORKHUB_MASTER_ADMIN_CONFIG.retireTarget} />
+        {WORKHUB_MASTER_ADMIN_CONFIG.scheduleTargets.map((target) =>
+          <MasterScheduleDemo key={target.itemId} target={target} />)}
+        <MasterAvailabilityDemo
+          targets={WORKHUB_MASTER_ADMIN_CONFIG.availabilityTargets}
+          requestedItemId={selectedMasterItemId} />
         <DataCorrectionViewer />
         <JobOperationsViewer />
         <AuditViewer />
