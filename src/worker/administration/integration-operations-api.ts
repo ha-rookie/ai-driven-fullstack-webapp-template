@@ -177,20 +177,42 @@ export const handleIntegrationOperationsApi = async (
       });
     }
 
-    // Already-indexed environment/status columns; no payload or provider credentials read.
+    // Snapshot of LOCAL Outbox states only. Due means eligible by available_at,
+    // NOT a missed SLA or verified provider failure. No arbitrary alarm threshold.
+    const observedAt = new Date().toISOString();
     const counts = await env.DB.prepare(`
-      SELECT status, COUNT(*) AS total
+      SELECT status, COUNT(*) AS total,
+        SUM(CASE WHEN available_at <= ? THEN 1 ELSE 0 END) AS eligible,
+        MIN(updated_at) AS oldest_updated_at
       FROM integration_outbox
-      WHERE environment = ? AND status IN ('retry_wait', 'dead_letter')
+      WHERE environment = ? AND status IN ('pending', 'processing', 'retry_wait', 'dead_letter')
       GROUP BY status
-    `).bind(environment).all<{ status: string; total: number }>();
+    `).bind(observedAt, environment).all<{
+      status: string; total: number; eligible: number; oldest_updated_at: string | null;
+    }>();
     let retryWait = 0;
     let deadLetter = 0;
+    let duePending = 0;
+    let dueRetryWait = 0;
+    let processing = 0;
+    let oldestProcessingUpdatedAt: string | null = null;
     for (const row of counts.results ?? []) {
-      if (!Number.isSafeInteger(row.total) || row.total < 0) throw new Error("Invalid Outbox count");
-      if (row.status === "retry_wait") retryWait = row.total;
-      else if (row.status === "dead_letter") deadLetter = row.total;
-      else throw new Error("Unexpected Outbox status");
+      if (!Number.isSafeInteger(row.total) || row.total < 0
+        || !Number.isSafeInteger(row.eligible) || row.eligible < 0 || row.eligible > row.total) {
+        throw new Error("Invalid Outbox count");
+      }
+      if (row.status === "retry_wait") {
+        retryWait = row.total;
+        dueRetryWait = row.eligible;
+      } else if (row.status === "dead_letter") deadLetter = row.total;
+      else if (row.status === "pending") duePending = row.eligible;
+      else if (row.status === "processing") {
+        processing = row.total;
+        if (row.oldest_updated_at !== null && typeof row.oldest_updated_at !== "string") {
+          throw new Error("Invalid processing timestamp");
+        }
+        oldestProcessingUpdatedAt = row.oldest_updated_at;
+      } else throw new Error("Unexpected Outbox status");
     }
 
     const recent = await env.DB.prepare(`
@@ -216,12 +238,40 @@ export const handleIntegrationOperationsApi = async (
         failureCode: safeFailureCode(row.failure_code),
       };
     });
+    const candidates = await env.DB.prepare(`
+      SELECT id, status, attempt_count, updated_at, available_at, failure_code
+      FROM integration_outbox
+      WHERE environment = ? AND
+        (status = 'processing'
+          OR (status IN ('pending', 'retry_wait') AND available_at <= ?))
+      ORDER BY updated_at ASC, id ASC
+      LIMIT ?
+    `).bind(environment, observedAt, MAX_RECENT).all<{
+      id: string; status: string; attempt_count: number; updated_at: string;
+      available_at: string; failure_code: string | null;
+    }>();
+    const attentionItems = (candidates.results ?? []).map((row) => {
+      if ((row.status !== "pending" && row.status !== "processing" && row.status !== "retry_wait")
+        || !OUTBOX_ID_PATTERN.test(row.id) || !Number.isSafeInteger(row.attempt_count)
+        || row.attempt_count < 0 || typeof row.updated_at !== "string"
+        || typeof row.available_at !== "string") throw new Error("Invalid Outbox candidate");
+      if (row.status !== "processing" && row.available_at > observedAt) {
+        throw new Error("Outbox candidate is not yet eligible");
+      }
+      return {
+        outboxId: row.id, status: row.status, attemptCount: row.attempt_count,
+        updatedAt: row.updated_at, availableAt: row.available_at,
+        failureCode: safeFailureCode(row.failure_code),
+      };
+    });
     return response({
       coverage: "environment",
       environment,
-      observedAt: new Date().toISOString(),
+      observedAt,
       counts: { retryWait, deadLetter },
+      watch: { duePending, dueRetryWait, processing, oldestProcessingUpdatedAt },
       items,
+      attentionItems,
       sampleLimit: MAX_RECENT,
     });
   } catch {

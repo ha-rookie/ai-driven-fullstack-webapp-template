@@ -21,6 +21,20 @@ interface OutboxSummary {
   readonly environment: string;
   readonly observedAt: string;
   readonly counts: { readonly retryWait: number; readonly deadLetter: number };
+  readonly watch: {
+    readonly duePending: number;
+    readonly dueRetryWait: number;
+    readonly processing: number;
+    readonly oldestProcessingUpdatedAt: string | null;
+  };
+  readonly attentionItems: readonly {
+    readonly outboxId: string;
+    readonly status: "pending" | "processing" | "retry_wait";
+    readonly attemptCount: number;
+    readonly updatedAt: string;
+    readonly availableAt: string;
+    readonly failureCode: string;
+  }[];
   readonly sampleLimit: number;
   readonly items: readonly {
     readonly outboxId: string;
@@ -124,8 +138,22 @@ const hasOutboxSummary = (value: unknown): value is OutboxSummary =>
   && Number.isSafeInteger(value.counts.retryWait) && Number(value.counts.retryWait) >= 0
   && Number.isSafeInteger(value.counts.deadLetter) && Number(value.counts.deadLetter) >= 0
   && Number.isSafeInteger(Number(value.counts.retryWait) + Number(value.counts.deadLetter))
+  && isRecord(value.watch)
+  && [value.watch.duePending, value.watch.dueRetryWait, value.watch.processing]
+    .every((count) => Number.isSafeInteger(count) && Number(count) >= 0)
+  && Number(value.watch.dueRetryWait) <= Number(value.counts.retryWait)
+  && (value.watch.oldestProcessingUpdatedAt === null
+    || typeof value.watch.oldestProcessingUpdatedAt === "string")
   && Number.isSafeInteger(value.sampleLimit) && Number(value.sampleLimit) >= 0
   && Array.isArray(value.items) && value.items.length <= Number(value.sampleLimit)
+  && Array.isArray(value.attentionItems)
+  && value.attentionItems.length <= Number(value.sampleLimit)
+  && value.attentionItems.every((item: unknown) => isRecord(item)
+    && typeof item.outboxId === "string" && item.outboxId.length <= 191
+    && (item.status === "pending" || item.status === "processing" || item.status === "retry_wait")
+    && Number.isSafeInteger(item.attemptCount) && Number(item.attemptCount) >= 0
+    && typeof item.updatedAt === "string" && typeof item.availableAt === "string"
+    && typeof item.failureCode === "string")
   && value.items.every((item: unknown) => isRecord(item)
     && typeof item.outboxId === "string" && item.outboxId.length <= 191
     && (item.status === "retry_wait" || item.status === "dead_letter")
@@ -373,7 +401,27 @@ export default function OperationsOverview() {
         </li>)}</ul>
         : <p>{outboxSnapshot ? "該当する現在記録はありません（外部連携の正常性は未確認）。"
           : ready?.outbox.kind === "denied" ? "閲覧不可" : "取得できません／未確認"}</p>}
-      {selectedOutboxId && outboxSnapshot?.items.some((item) => item.outboxId === selectedOutboxId)
+      {outboxSnapshot ? <div data-testid="outbox-watch">
+        <h4>未配送の確認候補（障害確定ではありません）</h4>
+        <p>送信待ちで予定時刻到達：{outboxSnapshot.watch.duePending} 件
+          {" / 再試行待ちで予定時刻到達：" + outboxSnapshot.watch.dueRetryWait + " 件"}
+          {" / 処理中：" + outboxSnapshot.watch.processing + " 件"}
+        </p>
+        <p>処理中の最古更新：{outboxSnapshot.watch.oldestProcessingUpdatedAt ?? "該当なし"}。
+          予定時刻到達は処理可能時刻に達したことだけを示します。
+          処理中は異常や停止と断定できません。外部側の受領結果は未照合です。</p>
+        {outboxSnapshot.attentionItems.length > 0
+          ? <ul>{outboxSnapshot.attentionItems.map((item) => <li key={item.outboxId}>
+            <code>{item.outboxId}</code> — {item.status === "processing" ? "処理中"
+              : item.status === "pending" ? "送信待ち・予定時刻到達" : "再試行予定時刻到達"}
+            {" / 最終更新 " + item.updatedAt + " / 予定 " + item.availableAt}
+            {" "}<button type="button" onClick={() => setSelectedOutboxId(item.outboxId)}>状態と対応方針を確認</button>
+          </li>)}</ul>
+          : <p>確認候補はありません（外部連携の正常性を保証しません）。</p>}
+      </div> : null}
+      {selectedOutboxId && outboxSnapshot
+        && [...outboxSnapshot.items, ...outboxSnapshot.attentionItems]
+          .some((item) => item.outboxId === selectedOutboxId)
         ? <OutboxDetailPanel key={selectedOutboxId} outboxId={selectedOutboxId}
             environment={outboxSnapshot.environment} /> : null}
     </section>

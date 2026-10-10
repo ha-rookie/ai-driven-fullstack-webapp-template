@@ -257,6 +257,9 @@ try {
   const outboxFixtures = [
     ...Array.from({ length: 10 }, (_, n) => ["test", "retry_wait", "r-" + n]),
     ...Array.from({ length: 3 }, (_, n) => ["test", "dead_letter", "dl-" + n]),
+    ...Array.from({ length: 3 }, (_, n) => ["test", "pending", "pending-due-" + n]),
+    ...Array.from({ length: 2 }, (_, n) => ["test", "pending", "pending-future-" + n]),
+    ...Array.from({ length: 2 }, (_, n) => ["test", "processing", "processing-" + n]),
     ["test", "delivered", "done"],
     ...Array.from({ length: 4 }, (_, n) => ["production", "dead_letter", "pd-" + n]),
   ];
@@ -265,7 +268,8 @@ try {
   ).bind(id, environment, "travel.approved", 1, createdAt, "{}", createdAt)));
   await db.batch(outboxFixtures.map(([environment, status, id]) => db.prepare(
     "INSERT INTO integration_outbox(id,environment,integration_event_id,destination_key,status,available_at,attempt_count,failure_code,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-  ).bind(id, environment, id, "test-provider", status, createdAt, 1,
+  ).bind(id, environment, id, "test-provider", status,
+    id.startsWith("pending-future-") ? "2099-01-01T00:00:00.000Z" : createdAt, 1,
     id === "r-9" ? "sensitive-provider-credential" : "provider_unavailable", 1, createdAt, createdAt)));
 
   await db.prepare("UPDATE master_items SET retired_at=? WHERE id=?")
@@ -356,6 +360,19 @@ try {
     assert.equal(outbox.environment, "test");
     assert.deepEqual(outbox.counts, { retryWait: 10, deadLetter: 3 },
       "delivery failures are distinct from async job failures and from production");
+    assert.deepEqual(outbox.watch, {
+      duePending: 3, dueRetryWait: 10, processing: 2,
+      oldestProcessingUpdatedAt: createdAt,
+    }, "due != failure; processing is a candidate for inspection, not a proven stuck job");
+    assert.equal(outbox.attentionItems.length, 8, "candidate rows remain bounded");
+    assert.ok(outbox.attentionItems.every((item) =>
+      ["pending", "processing", "retry_wait"].includes(item.status)
+      && !item.outboxId.startsWith("pending-future-")
+      && !item.outboxId.startsWith("pd-")));
+    assert.ok(outbox.attentionItems.some((item) => item.status === "pending"));
+    assert.ok(outbox.attentionItems.some((item) => item.status === "processing"));
+    assert.ok(outbox.attentionItems.every((item) => !("payload" in item)
+      && !("destinationKey" in item) && item.failureCode !== "sensitive-provider-credential"));
     assert.equal(outbox.sampleLimit, 8);
     assert.equal(outbox.items.length, 8);
     assert.ok(outbox.items.every((item) => !JSON.stringify(item).includes("sensitive-provider-credential")));
@@ -367,7 +384,7 @@ try {
     assert.equal((await outboxGet(admin, baseUrl + "/api/admin/integrations/outbox?scopeId=other-company")).status, 403);
     assert.equal((await outboxGet(admin, outboxUrl + "&status=dead_letter")).status, 400);
     assert.equal((await outboxGet(admin, outboxUrl, "POST")).status, 405);
-    console.log("Wrangler Local D1 Outbox summary passed: 13 current failures, 8 sampled, auth and environment isolation");
+    console.log("Wrangler Local D1 Outbox summary passed: failures + due-eligible/processing candidates, environment and auth isolation");
     const detailUrl = baseUrl + "/api/admin/integrations/outbox/dl-1?scopeId=workhub-company";
     const detail = await outboxGet(admin, detailUrl);
     assert.equal(detail.status, 200);
