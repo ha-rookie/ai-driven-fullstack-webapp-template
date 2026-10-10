@@ -6,7 +6,7 @@ const login = async (page: Page, user = "kai") => {
   await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill(user);
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await expect(page.getByRole("heading", { name: /Admin|Employee/u })).toBeVisible();
+  await expect(page.getByRole("heading", { name: user === "kai" ? /Kai Admin/u : /Aoi Employee/u })).toBeVisible();
 };
 
 const card = (page: Page, title: string) =>
