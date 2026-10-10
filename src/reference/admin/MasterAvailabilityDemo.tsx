@@ -30,7 +30,7 @@ interface MasterPreview {
   readonly preview: { readonly policyDecision: string; readonly risk: string };
 }
 
-export default function MasterAvailabilityDemo() {
+export default function MasterAvailabilityDemo({ requestedItemId }: { readonly requestedItemId?: string | null }) {
   const [itemId, setItemId] = useState<string>(TARGETS[0].id);
   const [detail, setDetail] = useState<MasterDetail | null>(null);
   const [preview, setPreview] = useState<MasterPreview | null>(null);
@@ -57,6 +57,14 @@ export default function MasterAvailabilityDemo() {
       setStatus("error");
     }
   };
+  useEffect(() => {
+    if (requestedItemId && TARGETS.some((candidate) => candidate.id === requestedItemId)) {
+      setItemId(requestedItemId);
+      setPreview(null);
+      setReason("");
+      setConfirmed(false);
+    }
+  }, [requestedItemId]);
   useEffect(() => { void reload(); }, [itemId]);
   const current = detail?.revisions.find((revision) =>
     revision.lifecycle === "current" || revision.lifecycle === "disabled",

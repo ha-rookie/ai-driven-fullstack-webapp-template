@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID,
+  WORKHUB_ORDER_DEMO_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID,
+  WORKHUB_AVAILABILITY_ENABLE_ITEM_ID,
+} from "../workhub/travel-request";
 
 const WORKHUB_SCOPE_ID = "workhub-company";
 const WORKHUB_MASTER_KEY = "workhub.office";
@@ -44,7 +49,19 @@ const listUrl = "/api/admin/master-data?" + new URLSearchParams({
 
 const dateTime = (value: string): string => new Date(value).toLocaleString("ja-JP");
 
-export default function MasterDataViewer() {
+/** Reference-only action destinations; actual authorization and allowlists belong to the API. */
+const DEMO_MASTER_ACTIONS: Readonly<Record<string, { readonly href: string; readonly label: string }>> = {
+  [WORKHUB_RETIRE_DEMO_ITEM_ID]: { href: "#admin-master-retire-demo", label: "廃止操作の下見へ" },
+  [WORKHUB_SCHEDULE_DEMO_ITEM_ID]: { href: "#admin-master-schedule-demo", label: "将来Revision予約の下見へ" },
+  [WORKHUB_ORDER_DEMO_ITEM_ID]: { href: "#admin-master-order-demo", label: "将来表示順変更の下見へ" },
+  [WORKHUB_AVAILABILITY_DISABLE_ITEM_ID]: { href: "#admin-master-availability", label: "有効・無効切替の下見へ" },
+  [WORKHUB_AVAILABILITY_ENABLE_ITEM_ID]: { href: "#admin-master-availability", label: "有効・無効切替の下見へ" },
+};
+
+
+export default function MasterDataViewer({ onSelectionChange }: {
+  readonly onSelectionChange?: (itemId: string | null) => void;
+}) {
   const [list, setList] = useState<LoadState<MasterListResponse>>({ kind: "loading" });
   const [detail, setDetail] = useState<LoadState<MasterDetailResponse>>({ kind: "loading" });
   const [selectedId, setSelectedId] = useState("");
@@ -54,6 +71,7 @@ export default function MasterDataViewer() {
   const loadDetail = async (itemId: string) => {
     const request = ++detailRequest.current;
     currentItemId.current = itemId;
+    onSelectionChange?.(itemId);
     setSelectedId(itemId);
     setDetail({ kind: "loading" });
     try {
@@ -89,6 +107,7 @@ export default function MasterDataViewer() {
         await loadDetail(selected?.id ?? data.items[0].id);
       } else {
         currentItemId.current = "";
+        onSelectionChange?.(null);
         setSelectedId("");
       }
     } catch {
@@ -140,6 +159,17 @@ export default function MasterDataViewer() {
       </div>}
       {detail.kind === "ready" && <>
         <p className="admin-audit-note">Code: <strong>{detail.data.item.code}</strong> / Item version: {detail.data.item.version} / Retired: {detail.data.item.retiredAt ? dateTime(detail.data.item.retiredAt) : "NO"}</p>
+        <nav className="admin-master-actions" aria-label="選択したマスタの操作導線">
+          <strong>この項目の操作導線</strong>
+          {detail.data.item.retiredAt !== null
+            ? <p>廃止済みのため新たな操作は案内しません。履歴は参照できます。</p>
+            : DEMO_MASTER_ACTIONS[detail.data.item.id]
+              ? <a className="admin-section-link" href={DEMO_MASTER_ACTIONS[detail.data.item.id].href}>
+                  {DEMO_MASTER_ACTIONS[detail.data.item.id].label} →
+                </a>
+              : <p>この項目に設定された変更操作はありません。参照のみ可能です。</p>}
+          <small>WORKHUBの専用デモのみ。実行可否はサーバー側で再認可され、Productionへの変更は許可されません。</small>
+        </nav>
         {detail.data.revisions.length === 0
           ? <div className="admin-audit-state">Revision履歴はありません</div>
           : <div className="admin-audit-table-wrap">
