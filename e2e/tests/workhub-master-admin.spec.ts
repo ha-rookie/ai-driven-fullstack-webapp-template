@@ -74,6 +74,34 @@ test("selected master opens the approved operation; HTTP 409 refreshes without r
   const panel = await logInAndMockReadOnlyMasterData(page);
   let previews = 0;
   let posts = 0;
+  let serverVersion = 2;
+  let refreshedLists = 0;
+  // The operation changes the authoritative GET state. Parent Viewer must
+  // reread BOTH list and selected detail, not only the operation panel.
+  await page.route("**/api/admin/master-data?**", async (route) => {
+    const itemId = new URL(route.request().url()).searchParams.get("itemId");
+    if (itemId !== null && itemId !== enableId) return route.fallback();
+    if (itemId === null) {
+      refreshedLists += 1;
+      await route.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({
+          items: [item(tokyoId), item(disableId), { ...item(enableId), version: serverVersion }, item(scheduleId), item(orderId)],
+          hasMore: false, environment: "local", asOf: "2026-10-10T00:00:00.000Z",
+        }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        item: { ...item(enableId), version: serverVersion },
+        revisions: serverVersion === 2 ? [revision(enableId)] : [
+          { ...revision(enableId), id: enableId + "-r2", revision: 2, lifecycle: "future",
+            label: "Updated after concurrent write", effectiveFrom: "2027-04-01T00:00:00.000Z" },
+          { ...revision(enableId), effectiveTo: "2027-04-01T00:00:00.000Z" },
+        ],
+        allowedOperations: ["schedule"], hasMore: false, asOf: "2026-10-10T00:00:00.000Z",
+      }),
+    });
+  });
   await page.route("**/api/admin/master-operations/schedule/preview?**", async (route) => {
     previews += 1;
     const query = new URL(route.request().url()).searchParams;
@@ -84,6 +112,7 @@ test("selected master opens the approved operation; HTTP 409 refreshes without r
   });
   await page.route("**/api/admin/master-operations/schedule/execute?**", async (route) => {
     posts += 1;
+    serverVersion = 3; // Another writer won while the Preview was open.
     expect(route.request().method()).toBe("POST");
     await route.fulfill({ status: 409, contentType: "application/json",
       body: JSON.stringify({ error: { code: "master_state_conflict", message: "Version changed" } }) });
@@ -99,8 +128,14 @@ test("selected master opens the approved operation; HTTP 409 refreshes without r
   await submit.click();
   await expect(panel.getByText(/Versionまたは状態が変更されました/u)).toBeVisible();
   await expect(panel.getByTestId("master-availability-preview")).toHaveCount(0);
+  const viewer = page.locator("#admin-master-data");
+  await expect(viewer.getByLabel("マスタ項目")).toHaveValue(enableId);
+  await expect(viewer.getByRole("option", { name: /AVAIL_ENABLE \(v3\)/u })).toBeAttached();
+  await expect(viewer.getByTestId("master-revision-summary")).toContainText("取得したRevision：2 件");
+  await expect(viewer.getByText("Updated after concurrent write")).toBeVisible();
+  expect(refreshedLists).toBeGreaterThan(0);
   expect(previews).toBe(1);
-  expect(posts).toBe(1); // not replayed after 409
+  expect(posts).toBe(1); // never replay the POST after 409
 });
 
 test("changing the cutover during a delayed preview discards its obsolete response", async ({ page }) => {
@@ -274,4 +309,55 @@ test("Master revision lifecycle filters separate current, future and history wit
   await viewer.getByLabel("マスタ項目").selectOption(enableId);
   await expect(viewer.getByLabel("Revisionの表示")).toHaveValue("all");
   await expect(viewer.getByText("現在無効")).toBeVisible();
+});
+
+test("verified future cutover refreshes Master list and revision history without a second POST", async ({ page }) => {
+  const panel = await logInAndMockReadOnlyMasterData(page);
+  const viewer = page.locator("#admin-master-data");
+  let version = 2;
+  let listReads = 0;
+  let posts = 0;
+  await page.route("**/api/admin/master-data?**", async (route) => {
+    const id = new URL(route.request().url()).searchParams.get("itemId");
+    if (id !== null && id !== enableId) return route.fallback();
+    if (id === null) {
+      listReads += 1;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        items: [item(tokyoId), item(disableId), { ...item(enableId), version }, item(scheduleId), item(orderId)],
+        hasMore: false, environment: "local", asOf: "2026-10-10T00:00:00.000Z",
+      }) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        item: { ...item(enableId), version }, allowedOperations: ["schedule"], hasMore: false,
+        revisions: version === 2 ? [revision(enableId)] : [
+          { ...revision(enableId), id: enableId + "-r2", revision: 2,
+            label: "Verified cutover", lifecycle: "future",
+            effectiveFrom: "2027-04-01T00:00:00.000Z" },
+          { ...revision(enableId), effectiveTo: "2027-04-01T00:00:00.000Z" },
+        ],
+        asOf: "2026-10-10T00:00:00.000Z",
+      }) });
+    }
+  });
+  await page.route("**/api/admin/master-operations/schedule/preview?**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(previewResponse) }));
+  await page.route("**/api/admin/master-operations/schedule/execute?**", async (route) => {
+    posts += 1;
+    version = 3;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      execution: { result: "SUCCESS" }, verification: { status: "PASSED" },
+    }) });
+  });
+  await panel.getByRole("button", { name: "状態変更を下見" }).click();
+  await expect(panel.getByTestId("master-availability-preview")).toBeVisible();
+  await panel.getByLabel("状態変更の理由").fill("Verified local browser acceptance");
+  await panel.getByLabel("新規選択への影響、切替日時、過去履歴の保持を確認しました").check();
+  await panel.getByRole("button", { name: "状態変更を予約" }).click();
+  await expect(panel.getByText("状態変更を予約し、履歴と永続監査を検証しました")).toBeVisible();
+  await expect(viewer.getByLabel("マスタ項目")).toHaveValue(enableId);
+  await expect(viewer.getByRole("option", { name: "AVAIL_ENABLE (v3)" })).toBeAttached();
+  await expect(viewer.getByTestId("master-revision-summary")).toContainText("取得したRevision：2 件");
+  await expect(viewer.getByText("Verified cutover")).toBeVisible();
+  expect(listReads).toBeGreaterThan(0);
+  expect(posts).toBe(1);
 });

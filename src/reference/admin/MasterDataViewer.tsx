@@ -4,6 +4,8 @@ interface MasterDataViewerProps {
   readonly scopeId: string;
   readonly definitions: readonly [MasterViewDefinition, ...MasterViewDefinition[]];
   readonly onSelectionChange?: (itemId: string | null) => void;
+  /** Changes only after a verified operation or an explicit HTTP 409. */
+  readonly refreshKey?: number;
 }
 
 interface MasterItem {
@@ -61,7 +63,7 @@ type LoadState<T> =
 const dateTime = (value: string): string => new Date(value).toLocaleString("ja-JP");
 
 export default function MasterDataViewer({
-  scopeId, definitions, onSelectionChange,
+  scopeId, definitions, onSelectionChange, refreshKey = 0,
 }: MasterDataViewerProps) {
   const [requestedMasterKey, setRequestedMasterKey] = useState(definitions[0].masterKey);
   const definition = definitions.find((entry) => entry.masterKey === requestedMasterKey) ?? definitions[0];
@@ -137,6 +139,13 @@ export default function MasterDataViewer({
       ++detailRequest.current;
     };
   }, [listUrl]);
+
+  // Do not clear the selected item on mutation/conflict. Fetch the list first,
+  // then its selected detail; in-flight older requests are invalidated by
+  // loadList() and cannot overwrite the refreshed revision state.
+  useEffect(() => {
+    if (refreshKey > 0) void loadList();
+  }, [refreshKey]);
 
   // A rendered item is linked only when this Definition explicitly declares it.
   const selectedOperation = detail.kind === "ready"

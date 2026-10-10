@@ -24,9 +24,10 @@ interface MasterPreview {
   readonly preview: { readonly policyDecision: string; readonly risk: string };
 }
 
-export default function MasterAvailabilityDemo({ requestedItemId, targets }: {
+export default function MasterAvailabilityDemo({ requestedItemId, targets, onMutationSettled }: {
   readonly requestedItemId?: string | null;
   readonly targets: readonly [MasterAvailabilityTarget, ...MasterAvailabilityTarget[]];
+  readonly onMutationSettled?: () => void;
 }) {
   const [itemId, setItemId] = useState<string>(targets[0].itemId);
   const [detail, setDetail] = useState<MasterDetail | null>(null);
@@ -155,6 +156,7 @@ export default function MasterAvailabilityDemo({ requestedItemId, targets }: {
         : masterOperationRecoveryMessage(outcome) + "（HTTP " + response.status + "）");
       if (outcome === "verified") setReason("");
       setConfirmed(false);
+      if (outcome === "verified" || outcome === "conflict") onMutationSettled?.();
       await reload();
     } catch {
       setConfirmed(false);
