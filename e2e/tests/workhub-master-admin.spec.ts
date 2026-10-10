@@ -53,7 +53,8 @@ const logInAndMockReadOnlyMasterData = async (page: Page) => {
   const viewer = page.locator("#admin-master-data");
   await expect(viewer.getByRole("heading", { name: "マスタ管理（参照）" })).toBeVisible();
   await expect(viewer.getByLabel("マスタ定義")).toHaveValue("workhub.office");
-  await expect(viewer.getByLabel("マスタ定義")).toBeDisabled(); // no unapproved Definition
+  await expect(viewer.getByLabel("マスタ定義")).toBeEnabled();
+  await expect(viewer.getByLabel("マスタ定義").locator("option")).toHaveCount(2);
   await expect(viewer.getByText("TOKYO", { exact: true }).first()).toBeVisible();
 
   // Ordinary office masters must not acquire a privileged action link.
@@ -360,4 +361,77 @@ test("verified future cutover refreshes Master list and revision history without
   await expect(viewer.getByText("Verified cutover")).toBeVisible();
   expect(listReads).toBeGreaterThan(0);
   expect(posts).toBe(1);
+});
+
+
+test("switching two Project Master definitions isolates rows and exposes no second-master mutations", async ({ page }) => {
+  const categoryKey = "workhub.expense_category";
+  const categories = [
+    { id: "workhub-expense-lodging", code: "LODGING", label: "Lodging" },
+    { id: "workhub-expense-transport", code: "TRANSPORT", label: "Transport" },
+  ];
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill("kai");
+  await page.getByLabel("パスワード", { exact: true }).fill(demoPassword);
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /Kai Admin/u })).toBeVisible();
+
+  await page.route("**/api/admin/master-data?**", async (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    expect(query.get("scopeId")).toBe("workhub-company");
+    const masterKey = query.get("masterKey");
+    const id = query.get("itemId");
+    expect(["workhub.office", categoryKey]).toContain(masterKey);
+    if (masterKey === categoryKey) {
+      const record = categories.find((entry) => entry.id === id) ?? categories[0];
+      const body = id === null
+        ? {
+          items: categories.map((entry) => ({ id: entry.id, code: entry.code, version: 2, retiredAt: null })),
+          hasMore: false, environment: "local", asOf: "2026-10-10T00:00:00.000Z",
+        }
+        : {
+          item: { id: record.id, code: record.code, version: 2, retiredAt: null },
+          revisions: [{ ...revision(record.id), label: record.label, lifecycle: "current" }],
+          // A malformed/overbroad server response still cannot invent
+          // a Project mutation target when Project config has none.
+          allowedOperations: ["schedule", "retire"], hasMore: false,
+          asOf: "2026-10-10T00:00:00.000Z",
+        };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      return;
+    }
+    const body = id === null
+      ? {
+        items: [item(tokyoId), item(enableId)], hasMore: false,
+        environment: "local", asOf: "2026-10-10T00:00:00.000Z",
+      }
+      : {
+        item: item(id), revisions: [revision(id)], hasMore: false,
+        allowedOperations: id === enableId ? ["schedule"] : [],
+        asOf: "2026-10-10T00:00:00.000Z",
+      };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+
+  await page.goto("/admin");
+  const viewer = page.locator("#admin-master-data");
+  const definition = viewer.getByLabel("マスタ定義");
+  await expect(definition).toBeEnabled();
+  await expect(definition.locator("option")).toHaveCount(2);
+  await expect(viewer.getByLabel("マスタ項目")).toHaveValue(tokyoId);
+
+  await definition.selectOption(categoryKey);
+  await expect(viewer.getByLabel("マスタ項目")).toHaveValue(categories[0].id);
+  await expect(viewer.getByText(categories[0].label, { exact: true })).toBeVisible();
+  await expect(viewer.getByText("この項目に設定された変更操作はありません。参照のみ可能です。")).toBeVisible();
+  await expect(viewer.getByRole("link", { name: /下見へ/u })).toHaveCount(0);
+  await viewer.getByLabel("マスタ項目").selectOption(categories[1].id);
+  await expect(viewer.getByText(categories[1].label, { exact: true })).toBeVisible();
+
+  // Switching back must invalidate category detail and restore the Office-only
+  // operation mapping without carrying the secondary item selection across.
+  await definition.selectOption("workhub.office");
+  await expect(viewer.getByLabel("マスタ項目")).toHaveValue(tokyoId);
+  await viewer.getByLabel("マスタ項目").selectOption(enableId);
+  await expect(viewer.getByRole("link", { name: /有効・無効切替の下見へ/u })).toBeVisible();
 });
