@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -21,6 +22,7 @@ try {
     "src/worker/audit/durable-audit-store.ts",
     "src/worker/administration/master-data-viewer-api.ts",
     "src/worker/auth/application-session.ts",
+    "src/worker.ts",
     "--outDir", compiled, "--rootDir", "src", "--target", "ES2023",
     "--module", "CommonJS", "--moduleResolution", "Node",
     "--types", "node,@cloudflare/workers-types", "--strict", "--skipLibCheck",
@@ -30,6 +32,7 @@ try {
   const { D1MasterDataStore } = require(join(compiled, "worker/master-data/d1-store.js"));
   const { handleMasterDataViewerApi } = require(join(compiled, "worker/administration/master-data-viewer-api.js"));
   const { issueApplicationSession } = require(join(compiled, "worker/auth/application-session.js"));
+  const applicationWorker = require(join(compiled, "worker.js")).default;
   const { prepareDurableAuditRecord, verifyDurableAuditRecord } = require(
     join(compiled, "worker/audit/durable-audit-store.js"),
   );
