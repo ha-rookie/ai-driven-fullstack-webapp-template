@@ -19,6 +19,8 @@ try {
     resolve("node_modules/typescript/bin/tsc"),
     "src/worker/master-data/d1-store.ts",
     "src/worker/audit/durable-audit-store.ts",
+    "src/worker/administration/master-data-viewer-api.ts",
+    "src/worker/auth/application-session.ts",
     "--outDir", compiled, "--rootDir", "src", "--target", "ES2023",
     "--module", "CommonJS", "--moduleResolution", "Node",
     "--types", "node,@cloudflare/workers-types", "--strict", "--skipLibCheck",
@@ -26,6 +28,8 @@ try {
   writeFileSync(join(compiled, "package.json"), '{"type":"commonjs"}');
   const require = createRequire(import.meta.url);
   const { D1MasterDataStore } = require(join(compiled, "worker/master-data/d1-store.js"));
+  const { handleMasterDataViewerApi } = require(join(compiled, "worker/administration/master-data-viewer-api.js"));
+  const { issueApplicationSession } = require(join(compiled, "worker/auth/application-session.js"));
   const { prepareDurableAuditRecord, verifyDurableAuditRecord } = require(
     join(compiled, "worker/audit/durable-audit-store.js"),
   );
@@ -36,7 +40,7 @@ try {
   });
   const db = proxy.env.DB;
   assert.ok(db && typeof db.batch === "function", "Wrangler local D1 batch() must be available");
-  for (const migration of ["0016_durable_audit_storage", "0022_master_data"]) {
+  for (const migration of ["0002_auth_foundation", "0003_authorization_foundation", "0007_session_idle_timeout", "0008_user_lifecycle", "0016_durable_audit_storage", "0022_master_data"]) {
     // D1 exec() splits source text on newlines; real migration CREATE TABLE
     // statements are multiline. Execute each semicolon-delimited DDL statement.
     const source = readFileSync(resolve("migrations", migration + ".sql"), "utf8");
@@ -49,13 +53,13 @@ try {
   const cutoff = "2027-04-01T00:00:00.000Z";
   const firstEffectiveFrom = "2026-01-01T00:00:00.000Z";
 
-  const seed = async (id) => {
+  const seed = async (id, environment = "test") => {
     await db.batch([
       db.prepare("INSERT INTO master_items (id, environment, master_key, code, version, next_revision, last_mutation_id, retired_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(id, "test", "workhub.office", id, 2, 2, "seed-r1", null,
+        .bind(id, environment, "workhub.office", id, 2, 2, "seed-r1", null,
           createdAt, "fixture", createdAt, "fixture"),
       db.prepare("INSERT INTO master_revisions (id, environment, master_item_id, revision, label, enabled, effective_from, effective_to, display_order, parent_item_id, attributes_json, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(id + "-r1", "test", id, 1, "Before", 1, firstEffectiveFrom, null, 10,
+        .bind(id + "-r1", environment, id, 1, "Before", 1, firstEffectiveFrom, null, 10,
           null, "{}", createdAt, "fixture"),
     ]);
   };
@@ -140,6 +144,88 @@ try {
   assert.equal((await rows("SELECT id FROM durable_audit_events WHERE resource_id = ?", rollbackId)).length, 0);
   assert.equal((await rows("SELECT id FROM durable_audit_events")).length, 1,
     "failed audit must not overwrite the winning audit");
+
+  // Session and role acceptance against the real D1-backed API handler.
+  const scheduleId = "local-allowed-schedule";
+  const retireId = "local-allowed-retire";
+  const ordinaryId = "local-read-only-item";
+  const retiredId = "local-retired-item";
+  const productionId = "local-production-item";
+  for (const id of [scheduleId, retireId, ordinaryId, retiredId]) await seed(id);
+  await seed(productionId, "production");
+  await db.prepare("UPDATE master_items SET retired_at = ? WHERE id = ?")
+    .bind(createdAt, retiredId).run();
+  await db.batch([
+    ...["admin", "observer", "outsider"].map((id) =>
+      db.prepare("INSERT INTO users(id,created_at,updated_at,status) VALUES(?,?,?,?)")
+        .bind(id, createdAt, createdAt, "active")),
+    ...["workhub-company", "other-company"].map((id) =>
+      db.prepare("INSERT INTO resource_scopes(id,name,created_at,updated_at) VALUES(?,?,?,?)")
+        .bind(id, id, createdAt, createdAt)),
+    ...[["workhub-company", "admin", "system_admin"], ["workhub-company", "observer", "observer"],
+      ["other-company", "outsider", "system_admin"]].map(([scope, id, role]) =>
+      db.prepare("INSERT INTO scope_memberships(scope_id,user_id,role,created_at,updated_at) VALUES(?,?,?,?,?)")
+        .bind(scope, id, role, createdAt, createdAt)),
+  ]);
+  const sessions = await Promise.all(
+    ["admin", "observer", "outsider"].map((id) => issueApplicationSession(db, id)),
+  );
+  const [admin, observer, outsider] = sessions;
+  const viewerOptions = {
+    scopeId: "workhub-company",
+    masterKeys: ["workhub.office"],
+    authorizationPolicy: { "master_data:view": ["system_admin", "observer"] },
+    operations: [
+      { kind: "schedule", masterKey: "workhub.office", allowedItemIds: [scheduleId, retiredId, productionId],
+        action: "master_data:schedule", authorizationPolicy: { "master_data:schedule": ["system_admin"] } },
+      { kind: "retire", masterKey: "workhub.office", allowedItemIds: [retireId],
+        action: "master_data:retire", authorizationPolicy: { "master_data:retire": ["system_admin"] } },
+    ],
+  };
+  // Actual production Master handler: only the options are local fixtures.
+  const readMaster = (id, session, overrides = {}) => {
+    const query = new URLSearchParams({
+      scopeId: overrides.scopeId ?? "workhub-company",
+      masterKey: overrides.masterKey ?? "workhub.office",
+      itemId: id,
+    });
+    return handleMasterDataViewerApi(
+      new Request("https://local.test/api/admin/master-data?" + query, {
+        headers: session ? { cookie: "app_session=" + session.token } : {},
+      }),
+      { DB: db, RUNTIME_ENVIRONMENT: overrides.environment ?? "test" },
+      "master-local-d1-auth", viewerOptions,
+    );
+  };
+  const assertOperations = async (id, session, expected) => {
+    const response = await readMaster(id, session);
+    assert.equal(response?.status, 200, "detail must be readable");
+    const data = await response.json();
+    assert.equal(data.item.id, id);
+    assert.deepEqual(data.allowedOperations, expected);
+    assert.equal(data.revisions.length, 1);
+  };
+  await assertOperations(scheduleId, admin, ["schedule"]);
+  await assertOperations(retireId, admin, ["retire"]);
+  await assertOperations(ordinaryId, admin, []);
+  await assertOperations(scheduleId, observer, []);
+  await assertOperations(retireId, observer, []);
+  await assertOperations(retiredId, admin, []);
+  const production = await readMaster(productionId, admin, { environment: "production" });
+  assert.equal(production?.status, 200);
+  assert.deepEqual((await production.json()).allowedOperations, []);
+  assert.equal((await readMaster(scheduleId, null))?.status, 401);
+  assert.equal((await readMaster(scheduleId, outsider))?.status, 403);
+  assert.equal((await readMaster(scheduleId, admin, { scopeId: "other-company" }))?.status, 403);
+  assert.equal((await readMaster(scheduleId, admin, { masterKey: "other.master" }))?.status, 404);
+  assert.equal((await readMaster(scheduleId, admin, { environment: "production" }))?.status, 404);
+  assert.equal((await readMaster(scheduleId, admin, { environment: "untrusted" }))?.status, 503);
+
+  // Permission is live; a valid session never caches previously allowed links.
+  await db.prepare("UPDATE scope_memberships SET role=? WHERE user_id=? AND scope_id=?")
+    .bind("observer", "admin", "workhub-company").run();
+  await assertOperations(scheduleId, admin, []);
+  console.log("Wrangler Local D1 Master API role and target disclosure passed");
 
   console.log("Wrangler Local D1 Master atomic batch passed: competing cutover=1 winner, audit rollback=clean");
 } finally {
