@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
-import type { MasterScheduleTarget } from "./master-admin-operation-config";
+import { masterSchedulePanelId, type MasterScheduleTarget } from "./master-admin-operation-config";
 
 const path = "/api/admin/master-operations/schedule";
 interface Item {
@@ -36,6 +36,8 @@ type Status = "idle" | "loading" | "ready" | "error";
 
 export default function MasterScheduleDemo({ target }: { readonly target: MasterScheduleTarget }) {
   const orderVariant = target.variant === "order";
+  const panelId = masterSchedulePanelId(target);
+  const titleId = `${panelId}-title`;
   const itemQuery = new URLSearchParams({
     scopeId: target.scopeId, masterKey: target.masterKey, itemId: target.itemId,
   });
@@ -150,11 +152,11 @@ export default function MasterScheduleDemo({ target }: { readonly target: Master
     }
   };
 
-  return <section className="admin-audit-panel" id={orderVariant ? "admin-master-order-demo" : "admin-master-schedule-demo"} aria-labelledby={orderVariant ? "admin-master-order-title" : "admin-master-schedule-title"}>
+  return <section className="admin-audit-panel" id={panelId} aria-labelledby={titleId}>
     <div className="admin-audit-heading">
       <div>
         <p className="admin-eyebrow">FUTURE CUTOVER / PREVIEW DEMO</p>
-        <h2 id={orderVariant ? "admin-master-order-title" : "admin-master-schedule-title"}>{orderVariant ? "マスタ表示順の将来改訂（専用デモ）" : "マスタの将来改訂（専用デモ）"}</h2>
+        <h2 id={titleId}>{orderVariant ? "マスタ表示順の将来改訂（専用デモ）" : "マスタの将来改訂（専用デモ）"}</h2>
         <p>{orderVariant ? "出張申請で使わないORDER_DEMO拠点のみ。名称・有効状態は変更せず、表示順だけを将来のRevisionに予約します。" : "出張申請で使わないSCHEDULE_DEMO拠点のみ。現行Revisionの終了と将来Revisionの追加を一体で行い、過去の履歴は残します。"}</p>
       </div>
     </div>
