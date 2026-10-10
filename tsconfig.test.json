@@ -3,8 +3,14 @@
     "target": "ES2023",
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "lib": ["ES2023", "DOM"],
-    "types": ["node", "@cloudflare/workers-types"],
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "types": [
+      "node",
+      "@cloudflare/workers-types"
+    ],
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
@@ -26,6 +32,7 @@
     "src/worker/master-data/**/*.ts",
     "src/worker/business-activity/**/*.ts",
     "src/worker/transactional-notification/**/*.ts",
-    "tests/**/*.ts"
+    "tests/**/*.ts",
+    "examples/reuse/**/*.ts"
   ]
 }
