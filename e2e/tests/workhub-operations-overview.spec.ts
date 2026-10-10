@@ -39,8 +39,25 @@ test("overview summarizes bounded authorized signals without claiming complete h
     body: JSON.stringify({
       coverage: "environment", environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
       counts: { retryWait: 10, deadLetter: 3 }, sampleLimit: 8,
+      watch: { duePending: 3, dueRetryWait: 4, processing: 2,
+        oldestProcessingUpdatedAt: "2026-10-09T00:00:00.000Z" },
       items: [{ outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
         updatedAt: "2026-10-10T00:00:00.000Z", failureCode: "other" }],
+      attentionItems: [{ outboxId: "due-1", status: "pending", attemptCount: 0,
+        updatedAt: "2026-10-09T00:00:00.000Z", availableAt: "2026-10-09T00:00:00.000Z",
+        failureCode: "other" }],
+    }),
+  }));
+  await page.route("**/api/admin/integrations/outbox/due-1?**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+      outbox: { outboxId: "due-1", status: "pending", attemptCount: 0,
+        availableAt: "2026-10-09T00:00:00.000Z", lastAttemptAt: null,
+        deliveredAt: null, deadLetteredAt: null,
+        updatedAt: "2026-10-09T00:00:00.000Z", version: 1, failureCode: "other" },
+      decision: { nextAction: "queued", providerOutcome: "unverified",
+        manualRetryAllowed: false },
     }),
   }));
   await page.route("**/api/admin/integrations/outbox/safe-1?**", (route) => route.fulfill({
@@ -97,10 +114,18 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(card(page, "外部連携Outbox").locator("strong")).toHaveText("要確認 3 / 再試行待ち 10 件（環境内の現在状態）");
   await expect(card(page, "外部連携Outbox")).toHaveAttribute("data-coverage", "environment_current");
   await expect(page.locator("#admin-integration-outbox")).toContainText("safe-1");
-  await page.locator("#admin-integration-outbox").getByRole("button", { name: "状態と対応方針を確認" }).click();
+  await expect(page.getByTestId("outbox-watch")).toContainText("送信待ちで予定時刻到達：3 件");
+  await expect(page.getByTestId("outbox-watch")).toContainText("再試行待ちで予定時刻到達：4 件");
+  await expect(page.getByTestId("outbox-watch")).toContainText("処理中：2 件");
+  await expect(page.getByTestId("outbox-watch")).toContainText("障害確定ではありません");
+  await page.locator("#admin-integration-outbox").getByRole("button", { name: "状態と対応方針を確認" }).first().click();
   const detail = page.getByTestId("outbox-detail");
   await expect(detail).toContainText("外部サービス側の配送結果を照合してください");
   await expect(detail).toContainText("Version: 3");
+  await expect(detail).toContainText("外部配送結果：未照合");
+  await page.getByTestId("outbox-watch").getByRole("button", { name: "状態と対応方針を確認" }).click();
+  await expect(detail).toContainText("個別Outbox確認：due-1");
+  await expect(detail).toContainText("送信待ちです。送信処理の状態を確認してください。");
   await expect(detail).toContainText("外部配送結果：未照合");
   await expect(page.locator("#admin-integration-outbox").getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
 
@@ -198,6 +223,9 @@ test("overview refuses to combine a job count from a different environment", asy
       coverage: "environment", environment: "production",
       observedAt: "2026-10-10T00:00:00.000Z",
       counts: { retryWait: 7, deadLetter: 4 }, sampleLimit: 8, items: [],
+      watch: { duePending: 3, dueRetryWait: 0, processing: 1,
+        oldestProcessingUpdatedAt: "2026-10-10T00:00:00.000Z" },
+      attentionItems: [],
     }),
   }));
   await page.route("**/api/admin/audit?**", (route) => route.fulfill({
