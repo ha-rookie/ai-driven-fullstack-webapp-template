@@ -25,6 +25,10 @@ test("Project's eligible capabilities map to fixed operation panel anchors only"
   assert.equal(result.schedule.href, "#admin-master-schedule-demo-schedule");
   assert.equal(result.order.href, "#admin-master-order-demo-order");
   assert.equal(result.availability.href, "#admin-master-availability");
+  assert.equal(result.retire.requiredCapability, "retire");
+  for (const id of ["schedule", "order", "availability"]) {
+    assert.equal(result[id].requiredCapability, "schedule");
+  }
 });
 
 test("cross-scope and cross-definition capability declarations are never linked", () => {

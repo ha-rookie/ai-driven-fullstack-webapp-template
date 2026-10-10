@@ -41,7 +41,9 @@ const logInAndMockReadOnlyMasterData = async (page: Page) => {
     expect(query.get("masterKey")).toBe("workhub.office");
     const id = query.get("itemId");
     const body = id
-      ? { item: item(id), revisions: [revision(id)], hasMore: false, asOf: "2026-10-10T00:00:00.000Z" }
+      ? { item: item(id), revisions: [revision(id)], hasMore: false,
+          allowedOperations: id === tokyoId ? [] : ["schedule"],
+          asOf: "2026-10-10T00:00:00.000Z" }
       : { items: [item(tokyoId), item(disableId), item(enableId), item(scheduleId), item(orderId)],
         hasMore: false, environment: "local", asOf: "2026-10-10T00:00:00.000Z" };
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
@@ -174,4 +176,48 @@ test("server Preview rejection or outage never enables a Master mutation", async
     await expect(panel.getByTestId("master-availability-preview")).toHaveCount(0);
   }
   expect(posts).toBe(0);
+});
+
+
+test("Project links disappear when the server omits/denies the operation capability", async ({ page }) => {
+  await logInAndMockReadOnlyMasterData(page);
+  const viewer = page.locator("#admin-master-data");
+  // Simulate a trusted Worker response with the same item and no approved
+  // operation, even though Project presentation still declares a link.
+  await page.route("**/api/admin/master-data?**", async (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    if (query.get("itemId") !== enableId) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        item: item(enableId), revisions: [revision(enableId)],
+        allowedOperations: [], hasMore: false, asOf: "2026-10-10T00:00:00.000Z",
+      }),
+    });
+  });
+  await viewer.getByLabel("マスタ項目").selectOption(disableId);
+  await expect(viewer.getByRole("link", { name: /有効・無効切替の下見へ/u })).toBeVisible();
+  await viewer.getByLabel("マスタ項目").selectOption(enableId);
+  await expect(viewer.getByText("この項目の操作はサーバー側で利用可能と確認できません。")).toBeVisible();
+  await expect(viewer.getByRole("link", { name: /有効・無効切替の下見へ/u })).toHaveCount(0);
+});
+
+test("actual Master API fails closed when local Worker runtime environment is not declared", async ({ page }) => {
+  // Browser harness deliberately runs the root wrangler config, which does
+  // not set RUNTIME_ENVIRONMENT. This is not a successful Master read:
+  // without a trusted environment the Worker must never disclose capabilities.
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill("kai");
+  await page.getByLabel("パスワード", { exact: true }).fill(demoPassword);
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /Kai Admin/u })).toBeVisible();
+  const response = await page.request.get(
+    "/api/admin/master-data?scopeId=workhub-company&masterKey=workhub.office&itemId=" + tokyoId,
+  );
+  expect(response.status()).toBe(503);
+  const body = await response.json() as { error: { code: string } };
+  expect(body.error.code).toBe("runtime_environment_required");
 });

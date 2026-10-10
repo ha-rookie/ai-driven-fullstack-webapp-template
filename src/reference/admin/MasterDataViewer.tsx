@@ -31,6 +31,7 @@ interface MasterListResponse {
 }
 interface MasterDetailResponse {
   readonly item: MasterItem;
+  readonly allowedOperations?: readonly ("schedule" | "retire")[];
   readonly revisions: readonly MasterRevision[];
   readonly hasMore: boolean;
   readonly asOf: string;
@@ -123,6 +124,10 @@ export default function MasterDataViewer({
     && Object.prototype.hasOwnProperty.call(definition.operations, detail.data.item.id)
     ? definition.operations[detail.data.item.id]
     : undefined;
+  // Missing/invalid server capabilities are NOT grants. A configured UI link
+  // never overrides Worker scope, role, target allowlist or Production gating.
+  const canShowOperation = selectedOperation !== undefined && detail.kind === "ready"
+    && detail.data.allowedOperations?.includes(selectedOperation.requiredCapability) === true;
 
   return <section className="admin-audit-panel" id="admin-master-data" aria-labelledby="admin-master-title">
     <div className="admin-audit-heading">
@@ -182,12 +187,14 @@ export default function MasterDataViewer({
           <strong>この項目の操作導線</strong>
           {detail.data.item.retiredAt !== null
             ? <p>廃止済みのため新たな操作は案内しません。履歴は参照できます。</p>
-            : selectedOperation
+            : canShowOperation && selectedOperation
               ? <a className="admin-section-link" href={selectedOperation.href}>
                   {selectedOperation.label} →
                 </a>
-              : <p>この項目に設定された変更操作はありません。参照のみ可能です。</p>}
-          <small>表示している操作導線はProject側の構成情報です。実行可否はサーバー側で再認可され、Productionへの変更は許可されません。</small>
+              : selectedOperation
+                ? <p>この項目の操作はサーバー側で利用可能と確認できません。参照のみ可能です。</p>
+                : <p>この項目に設定された変更操作はありません。参照のみ可能です。</p>}
+          <small>Project側の操作設定と、サーバーが返した対象・権限情報の両方が一致した場合のみ操作導線を表示します。下見・実行時も再認可され、Productionへの変更は許可されません。</small>
         </nav>
         {detail.data.revisions.length === 0
           ? <div className="admin-audit-state">Revision履歴はありません</div>

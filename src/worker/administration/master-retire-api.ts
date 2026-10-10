@@ -20,12 +20,14 @@ import {
 } from "../operations";
 
 export const RETIRE_MASTER_ITEM = "RETIRE_MASTER_ITEM";
-const ACTION = "master_data:retire";
+export const MASTER_RETIRE_ACTION = "master_data:retire";
+const ACTION = MASTER_RETIRE_ACTION;
 const OPERATION: OperationDefinition = Object.freeze({
   id: RETIRE_MASTER_ITEM, capability: ACTION, baseRisk: "CONTROLLED_CHANGE",
   reversible: false, idempotent: false, externalSideEffect: false, requiresVerification: true,
 });
-const defaultPolicy: RolePolicy = { [ACTION]: ["system_admin"] };
+export const MASTER_RETIRE_DEFAULT_POLICY: RolePolicy = { [ACTION]: ["system_admin"] };
+const defaultPolicy = MASTER_RETIRE_DEFAULT_POLICY;
 
 export interface MasterRetireEnvironment {
   readonly DB: D1Database;
