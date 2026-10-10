@@ -38,6 +38,7 @@ const logInAndMockReadOnlyMasterData = async (page: Page) => {
 
   await page.route("**/api/admin/master-data?**", async (route) => {
     const query = new URL(route.request().url()).searchParams;
+    expect(query.get("masterKey")).toBe("workhub.office");
     const id = query.get("itemId");
     const body = id
       ? { item: item(id), revisions: [revision(id)], hasMore: false, asOf: "2026-10-10T00:00:00.000Z" }
@@ -49,6 +50,8 @@ const logInAndMockReadOnlyMasterData = async (page: Page) => {
   await page.goto("/admin");
   const viewer = page.locator("#admin-master-data");
   await expect(viewer.getByRole("heading", { name: "マスタ管理（参照）" })).toBeVisible();
+  await expect(viewer.getByLabel("マスタ定義")).toHaveValue("workhub.office");
+  await expect(viewer.getByLabel("マスタ定義")).toBeDisabled(); // no unapproved Definition
   await expect(viewer.getByText("TOKYO", { exact: true }).first()).toBeVisible();
 
   // Ordinary office masters must not acquire a privileged action link.
