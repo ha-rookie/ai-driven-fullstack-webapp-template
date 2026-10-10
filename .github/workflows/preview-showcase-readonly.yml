@@ -1,0 +1,47 @@
+name: Preview Showcase read-only browser evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-showcase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install repository dependencies
+        run: npm ci
+      - name: Install pinned Playwright runner
+        run: npm install --no-save --package-lock=false @playwright/test@1.63.0
+      - name: Install Chromium only
+        run: npx playwright install --with-deps chromium
+      # Explicitly target ONLY the public, non-mutating Showcase spec.
+      # Existing preview-browser-smoke.spec.ts may modify Demo state;
+      # it must NOT be part of this dedicated read-only verification.
+      - name: Verify public Preview Showcase on desktop and mobile
+        run: npx playwright test e2e/preview/showcase-readonly.spec.ts --config playwright.preview.config.ts
+      - name: Upload public-only Showcase screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-showcase-public-${{ github.run_id }}
+          path: test-results/preview-browser-smoke/**/preview-showcase-*.png
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload safe failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-showcase-failure-${{ github.run_id }}
+          path: test-results/preview-browser-smoke
+          if-no-files-found: ignore
+          retention-days: 7
