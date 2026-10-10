@@ -36,6 +36,12 @@ export interface JobOperationsApiOptions {
   readonly authorizationPolicy?: RolePolicy;
   readonly recoveryRegistry?: JobRecoveryRegistry;
   readonly auditLogger?: AuditLogger;
+  /**
+   * Enables an environment-wide failure count ONLY for a single-scope Project.
+   * async_job_runs has no scope_id; never expose these counts as per-scope
+   * numbers in a multi-scope application.
+   */
+  readonly singleScopeSummaryId?: string;
 }
 
 interface JobRow {
@@ -188,7 +194,8 @@ export const handleJobOperationsApi = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   const retry = retryRoute(url.pathname);
-  if (url.pathname !== "/api/admin/jobs" && !retry) return null;
+  const isSummary = url.pathname === "/api/admin/jobs/summary";
+  if (url.pathname !== "/api/admin/jobs" && !isSummary && !retry) return null;
 
   const environment = env.RUNTIME_ENVIRONMENT;
   if (!environment || !isRuntimeEnvironment(environment)) {
@@ -197,6 +204,59 @@ export const handleJobOperationsApi = async (
 
   const policy = options.authorizationPolicy ?? defaultAuthorizationPolicy;
   const recoveryRegistry = options.recoveryRegistry ?? new JobRecoveryRegistry();
+
+  if (isSummary) {
+    if (request.method !== "GET") {
+      return error(requestId, 405, "method_not_allowed", "Method not allowed");
+    }
+    let scopeId: string;
+    try {
+      // No caller-defined filters: this is a fixed, environment-wide snapshot.
+      if ([...url.searchParams.keys()].some((key) => key !== "scopeId")
+        || url.searchParams.getAll("scopeId").length !== 1) {
+        throw new TypeError("Invalid summary query");
+      }
+      scopeId = bounded(url.searchParams.get("scopeId")) ?? "";
+      if (!scopeId) throw new TypeError("scopeId required");
+    } catch {
+      return error(requestId, 400, "invalid_job_query", "Job query is invalid");
+    }
+
+    const auth = await authorize(request, env, requestId, policy, JOB_VIEW_ACTION, scopeId);
+    if (!auth.ok) return auth.response;
+    if (!options.singleScopeSummaryId || scopeId !== options.singleScopeSummaryId) {
+      return error(requestId, 404, "job_summary_unavailable", "Job summary is not available for this scope");
+    }
+
+    try {
+      // One indexed D1 query, not a limited list or all-time event counter.
+      // Current state counts (failed/dead_letter) may change after this read.
+      const result = await env.DB.prepare(`
+        SELECT state, COUNT(*) AS total
+        FROM async_job_runs
+        WHERE environment = ? AND state IN ('failed', 'dead_letter')
+        GROUP BY state
+      `).bind(environment).all<{ state: string; total: number }>();
+      let failed = 0;
+      let deadLetter = 0;
+      for (const row of result.results ?? []) {
+        if (!Number.isSafeInteger(row.total) || row.total < 0) {
+          throw new Error("Invalid count");
+        }
+        if (row.state === "failed") failed = row.total;
+        else if (row.state === "dead_letter") deadLetter = row.total;
+        else throw new Error("Unexpected job state");
+      }
+      return json({
+        coverage: "environment",
+        environment,
+        counts: { failed, deadLetter },
+        observedAt: new Date().toISOString(),
+      });
+    } catch {
+      return error(requestId, 503, "job_operations_unavailable", "Job operations are unavailable");
+    }
+  }
 
   if (url.pathname === "/api/admin/jobs") {
     if (request.method !== "GET") {
