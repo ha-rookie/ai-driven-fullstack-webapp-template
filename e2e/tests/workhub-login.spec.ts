@@ -67,3 +67,60 @@ test("invalid credential uses a generic error and does not reveal account existe
     message: "User ID or password is incorrect",
   });
 });
+
+test("switch user revokes server session and logs in as another Persona", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
+    .getByRole("button", { name: /Aoi Employee/u }).click();
+  await page.getByRole("checkbox", { name: /ログイン情報を保持する/u }).check();
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
+  await expect(page.getByRole("button", { name: "ログアウトして別のユーザーでログイン" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("workhub.rememberedUserId"))).toBe("aoi");
+
+  await page.getByRole("button", { name: "ログアウトして別のユーザーでログイン" }).click();
+  await expect(page.getByRole("heading", { name: "WORKHUBにログイン" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "ユーザーID", exact: true })).toHaveValue("");
+  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(401);
+
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
+    .getByRole("button", { name: /Ren Manager/u }).click();
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /おはようございます、Ren Managerさん/u })).toBeVisible();
+  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(200);
+});
+
+test("system admin can switch users from the admin portal header", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
+    .getByRole("button", { name: /Kai Admin/u }).click();
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /おはようございます、Kai Adminさん/u })).toBeVisible();
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "管理できている状態を、ひとつの入口から" })).toBeVisible();
+  await page.getByRole("button", { name: "ログアウトして別のユーザーでログイン" }).click();
+  await expect(page).toHaveURL(/\\/$/u);
+  await expect(page.getByRole("heading", { name: "WORKHUBにログイン" })).toBeVisible();
+  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(401);
+});
+
+test("failed logout keeps current identity and offers safe retry", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
+    .getByRole("button", { name: /Aoi Employee/u }).click();
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
+
+  await page.route("**/api/auth/logout", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: "{}" }));
+  const switchButton = page.getByRole("button", { name: "ログアウトして別のユーザーでログイン" });
+  await switchButton.click();
+  await expect(page.getByRole("alert")).toContainText("ログアウトできませんでした");
+  await expect(switchButton).toBeEnabled();
+  await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
+  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(200);
+});
