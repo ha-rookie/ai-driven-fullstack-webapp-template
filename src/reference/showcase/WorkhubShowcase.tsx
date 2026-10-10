@@ -215,6 +215,13 @@ export default function WorkhubShowcase() {
           <a href={REPO + "/blob/main/docs/README.md"} className="showcase-secondary" target="_blank" rel="noopener noreferrer">開発・設計資料 ↗</a>
           <a href={REPO} className="showcase-secondary" target="_blank" rel="noopener noreferrer">GitHub Source ↗</a>
         </div>
+        <div id="showcase-feedback" className="showcase-feedback">
+          <p>使ってみて迷った点や、「自分の開発では使わない」という理由も改善の手がかりになります。</p>
+          <a href={REPO + "/issues/new?template=showcase-feedback.yml"} target="_blank" rel="noopener noreferrer">
+            気づいたことを報告する ↗
+          </a>
+          <small>GitHubアカウントが必要です。内容は公開Issueとして掲載されます。機密情報や個人情報は入力しないでください。</small>
+        </div>
       </section>
     </main>
     <footer className="showcase-footer"><span>WORKHUB · REFERENCE SHOWCASE</span><span>React / TypeScript / Cloudflare Workers / D1</span><a href="/">デモのログイン画面へ →</a></footer>
