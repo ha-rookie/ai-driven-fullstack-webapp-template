@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../../frontend/auth";
 import MasterDataViewer from "./MasterDataViewer";
+import OperationsOverview from "./OperationsOverview";
 import { WORKHUB_MASTER_ADMIN_CONFIG } from "./workhub-master-admin-config";
 import MasterRetireDemo from "./MasterRetireDemo";
 import MasterScheduleDemo from "./MasterScheduleDemo";
@@ -520,6 +521,7 @@ export default function AdminPortal() {
           <div><p className="admin-eyebrow">OPERATIONS / ADMINISTRATION</p><h1>管理できている状態を、ひとつの入口から</h1><p>何でも直接変更できる画面ではなく、状態を確認し、安全な運用操作へ進むためのPortal Foundationです。</p></div>
           <div className="admin-context-card"><span>Environment</span><strong>{environment}</strong><small>環境を常に明示し、誤操作を減らします</small></div>
         </section>
+        <OperationsOverview />
         <section className="admin-grid" aria-label="管理領域">
           {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Audit & Security" ? <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a> : key === "Jobs & Integrations" ? <a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> : key === "Business Operations" ? <><a className="admin-section-link" href="#admin-master-data">マスタ管理を見る</a> <a className="admin-section-link" href="#admin-business-operations">安全なデータ補正を見る</a></> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
         </section>
