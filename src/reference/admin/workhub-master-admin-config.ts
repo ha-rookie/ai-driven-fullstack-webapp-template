@@ -3,25 +3,33 @@ import {
   WORKHUB_ORDER_DEMO_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID,
   WORKHUB_AVAILABILITY_ENABLE_ITEM_ID,
 } from "../workhub/travel-request";
-import type { MasterOperationLink } from "./MasterDataViewer";
+import { buildMasterOperationLinks, type MasterProjectOperationConfig } from "./master-admin-operation-config";
 
 /**
- * WORKHUB project-specific presentation metadata, NOT an authorization grant.
- * The API independently checks environment, principal, scope, operation policy,
- * target allowlists, version, confirmation and durable audit.
+ * WORKHUB is a reference Project: its declared targets and labels are
+ * presentation metadata, NEVER a server-side capability or permission grant.
+ * The server enforces an independent, strict, project-approved allowlist.
  */
-export const WORKHUB_MASTER_ADMIN_CONFIG: {
-  readonly scopeId: string;
-  readonly masterKey: string;
-  readonly operations: Readonly<Record<string, MasterOperationLink>>;
-} = {
-  scopeId: "workhub-company",
-  masterKey: "workhub.office",
-  operations: {
-    [WORKHUB_RETIRE_DEMO_ITEM_ID]: { href: "#admin-master-retire-demo", label: "廃止操作の下見へ" },
-    [WORKHUB_SCHEDULE_DEMO_ITEM_ID]: { href: "#admin-master-schedule-demo", label: "将来Revision予約の下見へ" },
-    [WORKHUB_ORDER_DEMO_ITEM_ID]: { href: "#admin-master-order-demo", label: "将来表示順変更の下見へ" },
-    [WORKHUB_AVAILABILITY_DISABLE_ITEM_ID]: { href: "#admin-master-availability", label: "有効・無効切替の下見へ" },
-    [WORKHUB_AVAILABILITY_ENABLE_ITEM_ID]: { href: "#admin-master-availability", label: "有効・無効切替の下見へ" },
-  },
+const scopeId = "workhub-company";
+const masterKey = "workhub.office";
+const target = (itemId: string) => ({ scopeId, masterKey, itemId });
+const projectOperations: MasterProjectOperationConfig = {
+  scopeId, masterKey,
+  retireTarget: target(WORKHUB_RETIRE_DEMO_ITEM_ID),
+  scheduleTargets: [
+    { ...target(WORKHUB_SCHEDULE_DEMO_ITEM_ID), variant: "revision",
+      effectiveFrom: "2027-04-01T00:00:00.000Z", label: "Scheduled Office Next" },
+    { ...target(WORKHUB_ORDER_DEMO_ITEM_ID), variant: "order",
+      effectiveFrom: "2027-10-01T00:00:00.000Z", label: "Order demo unchanged", displayOrder: 73 },
+  ],
+  availabilityTargets: [
+    { ...target(WORKHUB_AVAILABILITY_DISABLE_ITEM_ID), enabled: false, label: "有効 → 将来無効" },
+    { ...target(WORKHUB_AVAILABILITY_ENABLE_ITEM_ID), enabled: true, label: "無効 → 将来有効" },
+  ],
+};
+
+/** The same Project declaration configures navigation AND the bounded forms. */
+export const WORKHUB_MASTER_ADMIN_CONFIG = {
+  ...projectOperations,
+  operations: buildMasterOperationLinks(projectOperations),
 };
