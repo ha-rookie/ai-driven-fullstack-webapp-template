@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "./frontend/auth";
 import AdminPortal from "./reference/admin/AdminPortal";
+import AccountSwitchButton from "./reference/workhub/AccountSwitchButton";
 import "./workhub.css";
 
 interface DemoPersona { readonly key: string; readonly userId: string; readonly displayName: string; readonly roleLabel: string; readonly homeHint: string; }
@@ -77,6 +78,7 @@ function TravelWorkspace() {
         <button className="workhub-header-action workhub-header-icon" type="button" aria-label={`通知 未読${unreadCount}件`}>🔔<span className="workhub-notification-badge">{unreadCount}</span></button>
         <button className="workhub-header-action workhub-header-icon" type="button" aria-label="アプリ一覧">▦</button>
         <div className="workhub-user-chip"><span className="workhub-user-dot" aria-hidden="true" /><span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span></div>
+        <AccountSwitchButton />
       </div>
     </header>
     <div className="workhub-portal-layout">
