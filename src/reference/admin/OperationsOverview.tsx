@@ -78,7 +78,8 @@ const hasJobSummary = (value: unknown): value is JobSummary =>
   && typeof value.observedAt === "string"
   && isRecord(value.counts)
   && Number.isSafeInteger(value.counts.failed) && Number(value.counts.failed) >= 0
-  && Number.isSafeInteger(value.counts.deadLetter) && Number(value.counts.deadLetter) >= 0;
+  && Number.isSafeInteger(value.counts.deadLetter) && Number(value.counts.deadLetter) >= 0
+  && Number.isSafeInteger(Number(value.counts.failed) + Number(value.counts.deadLetter));
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
   && value.items.every((item: unknown) => isRecord(item)
