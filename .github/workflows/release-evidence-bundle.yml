@@ -69,7 +69,7 @@ jobs:
             --output=.evidence/release-bundle.json
       - name: Upload projected release evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-evidence-${{ github.run_id }}
           path: .evidence/release-bundle.json
