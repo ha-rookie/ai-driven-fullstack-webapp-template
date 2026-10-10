@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -21,6 +22,7 @@ try {
     "src/worker/audit/durable-audit-store.ts",
     "src/worker/administration/master-data-viewer-api.ts",
     "src/worker/auth/application-session.ts",
+    "src/worker.ts",
     "--outDir", compiled, "--rootDir", "src", "--target", "ES2023",
     "--module", "CommonJS", "--moduleResolution", "Node",
     "--types", "node,@cloudflare/workers-types", "--strict", "--skipLibCheck",
@@ -30,6 +32,7 @@ try {
   const { D1MasterDataStore } = require(join(compiled, "worker/master-data/d1-store.js"));
   const { handleMasterDataViewerApi } = require(join(compiled, "worker/administration/master-data-viewer-api.js"));
   const { issueApplicationSession } = require(join(compiled, "worker/auth/application-session.js"));
+  const applicationWorker = require(join(compiled, "worker.js")).default;
   const { prepareDurableAuditRecord, verifyDurableAuditRecord } = require(
     join(compiled, "worker/audit/durable-audit-store.js"),
   );
@@ -220,6 +223,97 @@ try {
   assert.equal((await readMaster(scheduleId, admin, { masterKey: "other.master" }))?.status, 404);
   assert.equal((await readMaster(scheduleId, admin, { environment: "production" }))?.status, 404);
   assert.equal((await readMaster(scheduleId, admin, { environment: "untrusted" }))?.status, 503);
+
+  // Loopback HTTP acceptance through the ACTUAL application Worker router.
+  // The only bridge is Node HTTP -> Web Request/Response; Worker auth, role
+  // policy, Project allowlist, routing and security headers remain unmocked.
+  const projectTargets = require(join(compiled, "reference/workhub/travel-request/index.js"));
+  const projectSchedule = projectTargets.WORKHUB_SCHEDULE_DEMO_ITEM_ID;
+  const projectRetire = projectTargets.WORKHUB_RETIRE_DEMO_ITEM_ID;
+  const projectRetired = projectTargets.WORKHUB_AVAILABILITY_DISABLE_ITEM_ID;
+  const projectProduction = projectTargets.WORKHUB_ORDER_DEMO_ITEM_ID;
+  const projectReadOnly = "workhub-office-tokyo";
+  for (const id of [projectSchedule, projectRetire, projectRetired, projectReadOnly]) await seed(id);
+  await seed(projectProduction, "production");
+  await db.prepare("UPDATE master_items SET retired_at=? WHERE id=?")
+    .bind(createdAt, projectRetired).run();
+
+  let localRuntime = "test";
+  const httpServer = createServer((incoming, outgoing) => {
+    void (async () => {
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (Array.isArray(value)) headers.set(name, value.join(", "));
+        else if (typeof value === "string") headers.set(name, value);
+      }
+      const request = new Request("http://127.0.0.1" + incoming.url, {
+        method: incoming.method, headers,
+      });
+      const response = await applicationWorker.fetch(request, {
+        DB: db, RUNTIME_ENVIRONMENT: localRuntime,
+        ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+      });
+      outgoing.writeHead(response.status, Object.fromEntries(response.headers));
+      outgoing.end(Buffer.from(await response.arrayBuffer()));
+    })().catch((error) => {
+      console.error("Isolated Master Worker HTTP bridge failed", error);
+      if (!outgoing.headersSent) outgoing.writeHead(500);
+      outgoing.end();
+    });
+  });
+  await new Promise((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = httpServer.address();
+    assert.ok(address && typeof address !== "string");
+    const baseUrl = "http://127.0.0.1:" + address.port;
+    const workerRead = async (itemId, session, overrides = {}) => {
+      const query = new URLSearchParams({
+        scopeId: overrides.scopeId ?? "workhub-company",
+        masterKey: overrides.masterKey ?? "workhub.office",
+        itemId,
+      });
+      const response = await fetch(baseUrl + "/api/admin/master-data?" + query, {
+        headers: {
+          "x-request-id": "local-master-http-001",
+          ...(session ? { cookie: "app_session=" + session.token } : {}),
+        },
+      });
+      return { response, body: await response.json() };
+    };
+    const assertWorkerRead = async (itemId, session, expected) => {
+      const { response, body } = await workerRead(itemId, session);
+      assert.equal(response.status, 200, "real Worker HTTP read should succeed");
+      assert.deepEqual(body.allowedOperations, expected);
+      assert.equal(body.item.id, itemId);
+      assert.equal(body.revisions.length, 1);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+      assert.equal(response.headers.get("x-request-id"), "local-master-http-001");
+    };
+    await assertWorkerRead(projectSchedule, admin, ["schedule"]);
+    await assertWorkerRead(projectRetire, admin, ["retire"]);
+    await assertWorkerRead(projectReadOnly, admin, []);
+    await assertWorkerRead(projectRetired, admin, []);
+    assert.equal((await workerRead(projectSchedule, observer)).response.status, 403);
+    assert.equal((await workerRead(projectSchedule, outsider)).response.status, 403);
+    assert.equal((await workerRead(projectSchedule, null)).response.status, 401);
+    assert.equal((await workerRead(projectSchedule, admin, { scopeId: "other-company" })).response.status, 403);
+    assert.equal((await workerRead(projectSchedule, admin, { masterKey: "other.master" })).response.status, 404);
+
+    localRuntime = "production"; // Only a local test flag; no remote resource.
+    const prod = await workerRead(projectProduction, admin);
+    assert.equal(prod.response.status, 200);
+    assert.deepEqual(prod.body.allowedOperations, []);
+    localRuntime = "test";
+    await db.prepare("UPDATE scope_memberships SET role=? WHERE user_id=? AND scope_id=?")
+      .bind("observer", "admin", "workhub-company").run();
+    assert.equal((await workerRead(projectSchedule, admin)).response.status, 403,
+      "role revocation must apply to the same session over HTTP");
+  } finally {
+    await new Promise((resolve, reject) =>
+      httpServer.close((err) => err ? reject(err) : resolve()));
+  }
+  console.log("Wrangler Local D1 Master Worker loopback HTTP passed: authorize, deny, retire, Production, role revoke");
 
   // Permission is live; a valid session never caches previously allowed links.
   await db.prepare("UPDATE scope_memberships SET role=? WHERE user_id=? AND scope_id=?")
