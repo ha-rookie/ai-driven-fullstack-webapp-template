@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import {
   WORKHUB_AVAILABILITY_DISABLE_ITEM_ID,
   WORKHUB_AVAILABILITY_ENABLE_ITEM_ID,
@@ -162,10 +163,8 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
             </tr>)}</tbody>
           </table>
         </div>
-        <label>切替開始日時（ISO UTC）
-          <input value={cutover} onChange={(event) => { setCutover(event.target.value); setPreview(null); }}
-            placeholder={CUTOFF} required />
-        </label>
+        <MasterFutureDateField label="切替開始日時（ISO UTC）" value={cutover}
+          placeholder={CUTOFF} onChange={(value) => { setCutover(value); setPreview(null); }} />
         <button type="button" onClick={() => { void inspect(); }} disabled={busy || !current}>状態変更を下見</button>
         {preview && <div className="admin-retry-panel">
           <p data-testid="master-availability-preview">
@@ -174,15 +173,11 @@ export default function MasterAvailabilityDemo({ requestedItemId }: { readonly r
           </p>
           {preview.available && preview.preview.policyDecision === "REQUIRE_REASON"
             ? <form onSubmit={(event) => { event.preventDefault(); void execute(); }}>
-                <label>状態変更の理由
-                  <textarea value={reason} onChange={(event) => setReason(event.target.value)}
-                    required maxLength={200} />
-                </label>
-                <label><input type="checkbox" checked={confirmed}
-                  onChange={(event) => setConfirmed(event.target.checked)} />
-                  新規選択への影響、切替日時、過去履歴の保持を確認しました
-                </label>
-                <button type="submit" disabled={busy || !confirmed || !reason.trim()}>状態変更を予約</button>
+                <MasterOperationConfirmationFields
+                  reason={reason} onReasonChange={setReason} reasonLabel="状態変更の理由"
+                  confirmed={confirmed} onConfirmChange={setConfirmed}
+                  confirmationLabel="新規選択への影響、切替日時、過去履歴の保持を確認しました"
+                  busy={busy} submitLabel="状態変更を予約" />
               </form>
             : <p>この状態変更は予約できません：{preview.reasonCode ?? "現在の状態を確認してください"}</p>}
         </div>}
