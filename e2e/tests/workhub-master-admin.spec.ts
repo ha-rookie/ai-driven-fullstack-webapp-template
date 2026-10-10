@@ -205,7 +205,10 @@ test("Project links disappear when the server omits/denies the operation capabil
   await expect(viewer.getByRole("link", { name: /有効・無効切替の下見へ/u })).toHaveCount(0);
 });
 
-test("actual authenticated Master read does not disclose operations for normal WORKHUB office", async ({ page }) => {
+test("actual Master API fails closed when local Worker runtime environment is not declared", async ({ page }) => {
+  // Browser harness deliberately runs the root wrangler config, which does
+  // not set RUNTIME_ENVIRONMENT. This is not a successful Master read:
+  // without a trusted environment the Worker must never disclose capabilities.
   await page.goto("/");
   await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill("kai");
   await page.getByLabel("パスワード", { exact: true }).fill(demoPassword);
@@ -214,8 +217,7 @@ test("actual authenticated Master read does not disclose operations for normal W
   const response = await page.request.get(
     "/api/admin/master-data?scopeId=workhub-company&masterKey=workhub.office&itemId=" + tokyoId,
   );
-  expect(response.status()).toBe(200);
-  const detail = await response.json() as { allowedOperations?: string[]; item: { id: string } };
-  expect(detail.item.id).toBe(tokyoId);
-  expect(detail.allowedOperations).toEqual([]);
+  expect(response.status()).toBe(503);
+  const body = await response.json() as { error: { code: string } };
+  expect(body.error.code).toBe("runtime_environment_required");
 });
