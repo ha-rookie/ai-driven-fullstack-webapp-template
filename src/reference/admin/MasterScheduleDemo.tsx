@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
-import { WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID } from "../workhub/travel-request";
+import type { MasterScheduleTarget } from "./master-admin-operation-config";
 
 const path = "/api/admin/master-operations/schedule";
 interface Item {
@@ -34,20 +34,19 @@ interface SchedulePreview {
 }
 type Status = "idle" | "loading" | "ready" | "error";
 
-export default function MasterScheduleDemo({ variant = "revision" }: { readonly variant?: "revision" | "order" }) {
-  const orderVariant = variant === "order";
-  const demoItemId = orderVariant ? WORKHUB_ORDER_DEMO_ITEM_ID : WORKHUB_SCHEDULE_DEMO_ITEM_ID;
+export default function MasterScheduleDemo({ target }: { readonly target: MasterScheduleTarget }) {
+  const orderVariant = target.variant === "order";
   const itemQuery = new URLSearchParams({
-    scopeId: "workhub-company", masterKey: "workhub.office", itemId: demoItemId,
+    scopeId: target.scopeId, masterKey: target.masterKey, itemId: target.itemId,
   });
-  const operationQuery = new URLSearchParams({ scopeId: "workhub-company", itemId: demoItemId });
+  const operationQuery = new URLSearchParams({ scopeId: target.scopeId, itemId: target.itemId });
   const [detail, setDetail] = useState<Detail | null>(null);
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [message, setMessage] = useState("");
-  const [effectiveFrom, setEffectiveFrom] = useState(orderVariant ? "2027-10-01T00:00:00.000Z" : "2027-04-01T00:00:00.000Z");
-  const [label, setLabel] = useState(orderVariant ? "Order demo unchanged" : "Scheduled Office Next");
-  const [displayOrder, setDisplayOrder] = useState<number | undefined>(orderVariant ? 73 : undefined);
+  const [effectiveFrom, setEffectiveFrom] = useState(target.effectiveFrom);
+  const [label, setLabel] = useState(target.label);
+  const [displayOrder, setDisplayOrder] = useState<number | undefined>(target.displayOrder);
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -70,7 +69,7 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
       setStatus("error");
     }
   };
-  useEffect(() => { void load(); }, [variant]);
+  useEffect(() => { void load(); }, [target.itemId, target.scopeId, target.masterKey]);
 
   const inspect = async () => {
     if (!detail || busy) return;

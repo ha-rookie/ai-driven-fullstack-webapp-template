@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-/** Presentation-only navigation; this never substitutes for server-side authorization. */
-export interface MasterOperationLink {
-  readonly href: `#${string}`;
-  readonly label: string;
-}
+import type { MasterOperationLink } from "./master-admin-operation-config";
 interface MasterDataViewerProps {
   readonly scopeId: string;
   readonly masterKey: string;

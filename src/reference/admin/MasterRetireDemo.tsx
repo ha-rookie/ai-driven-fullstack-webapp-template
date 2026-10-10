@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterOperationConfirmationFields } from "./MasterOperationFormFields";
-import { WORKHUB_RETIRE_DEMO_ITEM_ID } from "../workhub/travel-request";
+import type { MasterTarget } from "./master-admin-operation-config";
 
 const base = "/api/admin/master-operations/retire";
-const params = new URLSearchParams({
-  scopeId: "workhub-company", itemId: WORKHUB_RETIRE_DEMO_ITEM_ID,
-});
 interface RetireProjection {
   readonly id: string;
   readonly code: string;
@@ -25,7 +22,8 @@ type ViewState =
   | { readonly kind: "ready"; readonly preview: RetirePreview }
   | { readonly kind: "error"; readonly requestId: string | null };
 
-export default function MasterRetireDemo() {
+export default function MasterRetireDemo({ target }: { readonly target: MasterTarget }) {
+  const params = new URLSearchParams({ scopeId: target.scopeId, itemId: target.itemId });
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -36,7 +34,7 @@ export default function MasterRetireDemo() {
     setState({ kind: "loading" });
     try {
       const detailParams = new URLSearchParams({
-        scopeId: "workhub-company", masterKey: "workhub.office", itemId: WORKHUB_RETIRE_DEMO_ITEM_ID,
+        scopeId: target.scopeId, masterKey: target.masterKey, itemId: target.itemId,
       });
       const detailResponse = await fetch("/api/admin/master-data?" + detailParams.toString());
       if (!detailResponse.ok) {
@@ -95,7 +93,7 @@ export default function MasterRetireDemo() {
       setBusy(false);
     }
   };
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { void refresh(); }, [target.itemId, target.scopeId, target.masterKey]);
 
   return <section className="admin-audit-panel" id="admin-master-retire-demo" aria-labelledby="admin-retire-title">
     <div className="admin-audit-heading">
