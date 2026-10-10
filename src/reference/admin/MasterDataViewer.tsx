@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const WORKHUB_SCOPE_ID = "workhub-company";
 const WORKHUB_MASTER_KEY = "workhub.office";
@@ -48,26 +48,34 @@ export default function MasterDataViewer() {
   const [list, setList] = useState<LoadState<MasterListResponse>>({ kind: "loading" });
   const [detail, setDetail] = useState<LoadState<MasterDetailResponse>>({ kind: "loading" });
   const [selectedId, setSelectedId] = useState("");
+  const currentItemId = useRef("");
+  const detailRequest = useRef(0);
 
   const loadDetail = async (itemId: string) => {
+    const request = ++detailRequest.current;
+    currentItemId.current = itemId;
     setSelectedId(itemId);
     setDetail({ kind: "loading" });
     try {
       const response = await fetch(listUrl + "&itemId=" + encodeURIComponent(itemId), {
         headers: { accept: "application/json" },
       });
+      if (request !== detailRequest.current) return;
       if (!response.ok) {
         setDetail({ kind: "error", requestId: response.headers.get("x-request-id") });
         return;
       }
-      setDetail({ kind: "ready", data: await response.json() as MasterDetailResponse });
+      const data = await response.json() as MasterDetailResponse;
+      if (request === detailRequest.current) setDetail({ kind: "ready", data });
     } catch {
-      setDetail({ kind: "error", requestId: null });
+      if (request === detailRequest.current) setDetail({ kind: "error", requestId: null });
     }
   };
 
   const loadList = async () => {
+    ++detailRequest.current; // invalidate an older detail response before refreshing
     setList({ kind: "loading" });
+    setDetail({ kind: "loading" });
     try {
       const response = await fetch(listUrl, { headers: { accept: "application/json" } });
       if (!response.ok) {
@@ -77,7 +85,11 @@ export default function MasterDataViewer() {
       const data = await response.json() as MasterListResponse;
       setList({ kind: "ready", data });
       if (data.items.length > 0) {
-        await loadDetail(data.items[0].id);
+        const selected = data.items.find((item) => item.id === currentItemId.current);
+        await loadDetail(selected?.id ?? data.items[0].id);
+      } else {
+        currentItemId.current = "";
+        setSelectedId("");
       }
     } catch {
       setList({ kind: "error", requestId: null });
@@ -98,6 +110,11 @@ export default function MasterDataViewer() {
         <strong>{WORKHUB_SCOPE_ID}</strong>
         <strong>{WORKHUB_MASTER_KEY}</strong>
       </div>
+    </div>
+    <div className="admin-retry-actions">
+      <button type="button" disabled={list.kind === "loading"} onClick={() => { void loadList(); }}>
+        マスタ一覧・Revision履歴を再取得
+      </button>
     </div>
 
     {list.kind === "loading" && <div className="admin-audit-state" role="status">マスタを取得しています…</div>}
