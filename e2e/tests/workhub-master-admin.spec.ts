@@ -74,6 +74,34 @@ test("selected master opens the approved operation; HTTP 409 refreshes without r
   const panel = await logInAndMockReadOnlyMasterData(page);
   let previews = 0;
   let posts = 0;
+  let serverVersion = 2;
+  let refreshedLists = 0;
+  // The operation changes the authoritative GET state. Parent Viewer must
+  // reread BOTH list and selected detail, not only the operation panel.
+  await page.route("**/api/admin/master-data?**", async (route) => {
+    const itemId = new URL(route.request().url()).searchParams.get("itemId");
+    if (itemId !== null && itemId !== enableId) return route.fallback();
+    if (itemId === null) {
+      refreshedLists += 1;
+      await route.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({
+          items: [item(tokyoId), item(disableId), { ...item(enableId), version: serverVersion }, item(scheduleId), item(orderId)],
+          hasMore: false, environment: "local", asOf: "2026-10-10T00:00:00.000Z",
+        }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        item: { ...item(enableId), version: serverVersion },
+        revisions: serverVersion === 2 ? [revision(enableId)] : [
+          { ...revision(enableId), id: enableId + "-r2", revision: 2, lifecycle: "future",
+            label: "Updated after concurrent write", effectiveFrom: "2027-04-01T00:00:00.000Z" },
+          { ...revision(enableId), effectiveTo: "2027-04-01T00:00:00.000Z" },
+        ],
+        allowedOperations: ["schedule"], hasMore: false, asOf: "2026-10-10T00:00:00.000Z",
+      }),
+    });
+  });
   await page.route("**/api/admin/master-operations/schedule/preview?**", async (route) => {
     previews += 1;
     const query = new URL(route.request().url()).searchParams;
@@ -84,6 +112,7 @@ test("selected master opens the approved operation; HTTP 409 refreshes without r
   });
   await page.route("**/api/admin/master-operations/schedule/execute?**", async (route) => {
     posts += 1;
+    serverVersion = 3; // Another writer won while the Preview was open.
     expect(route.request().method()).toBe("POST");
     await route.fulfill({ status: 409, contentType: "application/json",
       body: JSON.stringify({ error: { code: "master_state_conflict", message: "Version changed" } }) });
@@ -99,8 +128,14 @@ test("selected master opens the approved operation; HTTP 409 refreshes without r
   await submit.click();
   await expect(panel.getByText(/Versionまたは状態が変更されました/u)).toBeVisible();
   await expect(panel.getByTestId("master-availability-preview")).toHaveCount(0);
+  const viewer = page.locator("#admin-master-data");
+  await expect(viewer.getByLabel("マスタ項目")).toHaveValue(enableId);
+  await expect(viewer.getByRole("option", { name: /AVAIL_ENABLE \(v3\)/u })).toBeAttached();
+  await expect(viewer.getByTestId("master-revision-summary")).toContainText("取得したRevision：2 件");
+  await expect(viewer.getByText("Updated after concurrent write")).toBeVisible();
+  expect(refreshedLists).toBeGreaterThan(0);
   expect(previews).toBe(1);
-  expect(posts).toBe(1); // not replayed after 409
+  expect(posts).toBe(1); // never replay the POST after 409
 });
 
 test("changing the cutover during a delayed preview discards its obsolete response", async ({ page }) => {
