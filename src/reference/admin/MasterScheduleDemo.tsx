@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import { masterSchedulePanelId, type MasterScheduleTarget } from "./master-admin-operation-config";
+import { classifyMasterPreviewReadiness, masterPreviewReadinessMessage, type MasterPreviewReadiness } from "./master-preview-readiness";
 
 const path = "/api/admin/master-operations/schedule";
 interface Item {
@@ -44,6 +45,7 @@ export default function MasterScheduleDemo({ target }: { readonly target: Master
   const operationQuery = new URLSearchParams({ scopeId: target.scopeId, itemId: target.itemId });
   const [detail, setDetail] = useState<Detail | null>(null);
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
+  const [previewReadiness, setPreviewReadiness] = useState<MasterPreviewReadiness | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [message, setMessage] = useState("");
   const [effectiveFrom, setEffectiveFrom] = useState(target.effectiveFrom);
@@ -56,6 +58,7 @@ export default function MasterScheduleDemo({ target }: { readonly target: Master
   const invalidatePreview = () => {
     ++previewGeneration.current;
     setPreview(null);
+    setPreviewReadiness(null);
     setConfirmed(false);
   };
 
@@ -88,21 +91,24 @@ export default function MasterScheduleDemo({ target }: { readonly target: Master
       const response = await fetch(path + "/preview?" + query);
       if (!response.ok) {
         if (generation === previewGeneration.current) {
-          setMessage("下見を取得できませんでした。日時とラベルを確認してください（HTTP " + response.status + "）");
+          setPreviewReadiness(classifyMasterPreviewReadiness(response.status));
         }
         return;
       }
       const result = await response.json() as SchedulePreview;
-      if (generation === previewGeneration.current) setPreview(result);
+      if (generation === previewGeneration.current) {
+        setPreview(result);
+        setPreviewReadiness(classifyMasterPreviewReadiness(response.status, result));
+      }
     } catch {
-      if (generation === previewGeneration.current) setMessage("下見を取得できませんでした");
+      if (generation === previewGeneration.current) setPreviewReadiness(classifyMasterPreviewReadiness(null));
     } finally {
       setBusy(false);
     }
   };
 
   const schedule = async () => {
-    if (!detail || !preview || !preview.available || !preview.priorRevisionId
+    if (!detail || !preview || previewReadiness !== "reviewable" || !preview.available || !preview.priorRevisionId
       || !confirmed || !reason.trim() || busy) return;
     setBusy(true);
     setMessage("");
@@ -194,11 +200,14 @@ export default function MasterScheduleDemo({ target }: { readonly target: Master
           <button type="submit" disabled={busy}>切替内容を下見</button>
         </div>
       </form>
+      {previewReadiness && <p role="status" data-testid="master-schedule-readiness" className="admin-audit-note">
+        {masterPreviewReadinessMessage(previewReadiness)}
+      </p>}
       {preview && <div className="admin-retry-panel">
         <p>現在の名称：{preview.currentLabel ?? "なし"} → 予約後：{label}</p>
         {orderVariant && <p data-testid="master-order-preview">表示順：{preview.currentDisplayOrder ?? "-"} → {preview.displayOrder ?? "-"}</p>}
         <p>Risk: {preview.preview.risk} / Policy: {preview.preview.policyDecision}</p>
-        {preview.available && preview.preview.policyDecision === "REQUIRE_REASON"
+        {previewReadiness === "reviewable" && preview.available && preview.preview.policyDecision === "REQUIRE_REASON"
           ? <form onSubmit={(event) => { event.preventDefault(); void schedule(); }}>
               <MasterOperationConfirmationFields
                 reason={reason} onReasonChange={setReason} reasonLabel="変更理由"
