@@ -116,3 +116,9 @@
 .showcase-start-cta{display:inline-flex;padding:13px 20px;min-height:48px;border-radius:10px;font-size:14px;font-weight:800}
 .showcase-start-note{color:var(--sc-muted);font-size:12px;margin:14px 0 0}
 @media(max-width:700px){.showcase-start{padding:10px 20px 65px}.showcase-start-steps{grid-template-columns:1fr}}
+
+.showcase-feedback{margin:35px auto 0;padding-top:23px;border-top:1px solid var(--sc-border);max-width:720px;display:flex;flex-direction:column;align-items:center;gap:7px}
+.showcase-feedback p{font-size:13px;color:var(--sc-muted);line-height:1.8;margin:0}
+.showcase-feedback a{font-size:14px;font-weight:750;color:#11677a;text-decoration:underline;text-underline-offset:4px}
+.showcase-feedback a:hover{color:#104453}
+.showcase-feedback small{font-size:11px;line-height:1.7;color:#607783}
