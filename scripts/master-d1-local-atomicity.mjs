@@ -56,10 +56,10 @@ try {
   const cutoff = "2027-04-01T00:00:00.000Z";
   const firstEffectiveFrom = "2026-01-01T00:00:00.000Z";
 
-  const seed = async (id, environment = "test") => {
+  const seed = async (id, environment = "test", masterKey = "workhub.office") => {
     await db.batch([
       db.prepare("INSERT INTO master_items (id, environment, master_key, code, version, next_revision, last_mutation_id, retired_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(id, environment, "workhub.office", id, 2, 2, "seed-r1", null,
+        .bind(id, environment, masterKey, id, 2, 2, "seed-r1", null,
           createdAt, "fixture", createdAt, "fixture"),
       db.prepare("INSERT INTO master_revisions (id, environment, master_item_id, revision, label, enabled, effective_from, effective_to, display_order, parent_item_id, attributes_json, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(id + "-r1", environment, id, 1, "Before", 1, firstEffectiveFrom, null, 10,
@@ -233,7 +233,10 @@ try {
   const projectRetired = projectTargets.WORKHUB_AVAILABILITY_DISABLE_ITEM_ID;
   const projectProduction = projectTargets.WORKHUB_ORDER_DEMO_ITEM_ID;
   const projectReadOnly = "workhub-office-tokyo";
+  const expenseKey = projectTargets.WORKHUB_EXPENSE_CATEGORY_MASTER_KEY;
+  const expenseSample = projectTargets.WORKHUB_REFERENCE_EXPENSE_CATEGORIES[0];
   for (const id of [projectSchedule, projectRetire, projectRetired, projectReadOnly]) await seed(id);
+  await seed(expenseSample.id, "test", expenseKey);
   await seed(projectProduction, "production");
   await db.prepare("UPDATE master_items SET retired_at=? WHERE id=?")
     .bind(createdAt, projectRetired).run();
@@ -294,6 +297,22 @@ try {
     await assertWorkerRead(projectRetire, admin, ["retire"]);
     await assertWorkerRead(projectReadOnly, admin, []);
     await assertWorkerRead(projectRetired, admin, []);
+    // Project-approved second definition must be readable but never mutable.
+    // An office item under the expense key, and vice versa, are always 404.
+    const expense = await workerRead(expenseSample.id, admin, { masterKey: expenseKey });
+    assert.equal(expense.response.status, 200);
+    assert.equal(expense.body.masterKey, expenseKey);
+    assert.equal(expense.body.item.id, expenseSample.id);
+    assert.deepEqual(expense.body.allowedOperations, []);
+    assert.equal(expense.body.revisions.length, 1);
+    const categoryList = await fetch(baseUrl + "/api/admin/master-data?" + new URLSearchParams({
+      scopeId: "workhub-company", masterKey: expenseKey,
+    }), { headers: { cookie: "app_session=" + admin.token } });
+    assert.equal(categoryList.status, 200);
+    assert.deepEqual((await categoryList.json()).items.map((item) => item.id), [expenseSample.id]);
+    assert.equal((await workerRead(projectSchedule, admin, { masterKey: expenseKey })).response.status, 404);
+    assert.equal((await workerRead(expenseSample.id, admin)).response.status, 404);
+    assert.equal((await workerRead(expenseSample.id, observer, { masterKey: expenseKey })).response.status, 403);
     assert.equal((await workerRead(projectSchedule, observer)).response.status, 403);
     assert.equal((await workerRead(projectSchedule, outsider)).response.status, 403);
     assert.equal((await workerRead(projectSchedule, null)).response.status, 401);
