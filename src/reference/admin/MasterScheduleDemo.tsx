@@ -35,7 +35,10 @@ interface SchedulePreview {
 }
 type Status = "idle" | "loading" | "ready" | "error";
 
-export default function MasterScheduleDemo({ target }: { readonly target: MasterScheduleTarget }) {
+export default function MasterScheduleDemo({ target, onMutationSettled }: {
+  readonly target: MasterScheduleTarget;
+  readonly onMutationSettled?: () => void;
+}) {
   const orderVariant = target.variant === "order";
   const panelId = masterSchedulePanelId(target);
   const titleId = `${panelId}-title`;
@@ -148,6 +151,7 @@ export default function MasterScheduleDemo({ target }: { readonly target: Master
         : masterOperationRecoveryMessage(outcome) + "（HTTP " + response.status + "）");
       if (outcome === "verified") setReason("");
       setConfirmed(false);
+      if (outcome === "verified" || outcome === "conflict") onMutationSettled?.();
       await load();
     } catch {
       setConfirmed(false);
