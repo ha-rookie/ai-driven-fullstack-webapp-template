@@ -189,7 +189,7 @@ export default function WorkhubShowcase() {
         </div>
         <ol className="showcase-start-steps">
           <li><span>01</span><div><strong>Aoi Employeeでログイン</strong><p>ログイン画面の「デモユーザを選ぶ」から一般社員を選択。出張申請を提出する</p></div></li>
-          <li><span>02</span><div><strong>Ren Managerでログイン</strong><p>いったんログアウトし、上長としてMY WORKから差戻し・承認を確認する</p></div></li>
+          <li><span>02</span><div><strong>Ren Managerでログイン</strong><p>画面右上の「ユーザー切替」でログアウトし、上長としてMY WORKから差戻し・承認を確認する</p></div></li>
           <li><span>03</span><div><strong>Aoi Employeeに戻る</strong><p>通知・再申請・申請履歴を確認する。デモの一部は環境やデータ状態によって異なります</p></div></li>
         </ol>
         <a className="showcase-primary showcase-start-cta" href="/">WORKHUBログインを開く →</a>
