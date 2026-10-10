@@ -43,7 +43,7 @@ try {
   });
   const db = proxy.env.DB;
   assert.ok(db && typeof db.batch === "function", "Wrangler local D1 batch() must be available");
-  for (const migration of ["0002_auth_foundation", "0003_authorization_foundation", "0007_session_idle_timeout", "0008_user_lifecycle", "0016_durable_audit_storage", "0017_async_job_runs", "0022_master_data"]) {
+  for (const migration of ["0002_auth_foundation", "0003_authorization_foundation", "0007_session_idle_timeout", "0008_user_lifecycle", "0016_durable_audit_storage", "0017_async_job_runs", "0022_master_data", "0026_integration_event_outbox"]) {
     // D1 exec() splits source text on newlines; real migration CREATE TABLE
     // statements are multiline. Execute each semicolon-delimited DDL statement.
     const source = readFileSync(resolve("migrations", migration + ".sql"), "utf8");
@@ -253,6 +253,21 @@ try {
   ).bind(environment, id, "test.job", environment + "-" + id,
     "a".repeat(64), state, 1, createdAt, createdAt)));
 
+  // Read-only Outbox projection acceptance: data is environment-scoped, not Scope-scoped.
+  const outboxFixtures = [
+    ...Array.from({ length: 10 }, (_, n) => ["test", "retry_wait", "r-" + n]),
+    ...Array.from({ length: 3 }, (_, n) => ["test", "dead_letter", "dl-" + n]),
+    ["test", "delivered", "done"],
+    ...Array.from({ length: 4 }, (_, n) => ["production", "dead_letter", "pd-" + n]),
+  ];
+  await db.batch(outboxFixtures.map(([environment, status, id]) => db.prepare(
+    "INSERT INTO integration_events(id,environment,event_type,schema_version,occurred_at,payload_json,created_at) VALUES(?,?,?,?,?,?,?)",
+  ).bind(id, environment, "travel.approved", 1, createdAt, "{}", createdAt)));
+  await db.batch(outboxFixtures.map(([environment, status, id]) => db.prepare(
+    "INSERT INTO integration_outbox(id,environment,integration_event_id,destination_key,status,available_at,attempt_count,failure_code,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+  ).bind(id, environment, id, "test-provider", status, createdAt, 1,
+    id === "r-9" ? "sensitive-provider-credential" : "provider_unavailable", 1, createdAt, createdAt)));
+
   await db.prepare("UPDATE master_items SET retired_at=? WHERE id=?")
     .bind(createdAt, projectRetired).run();
 
@@ -329,6 +344,31 @@ try {
     assert.equal((await summaryGet(admin, summaryUrl, "POST")).status, 405);
     console.log("Wrangler Local D1 Job summary passed: exact >20 count, environment isolation, safe refusal");
 
+    const outboxUrl = baseUrl + "/api/admin/integrations/outbox?scopeId=workhub-company";
+    const outboxGet = (session, url = outboxUrl, method = "GET") => fetch(url, {
+      method, headers: session ? { cookie: "app_session=" + session.token } : {},
+    });
+    const outboxResponse = await outboxGet(admin);
+    assert.equal(outboxResponse.status, 200);
+    assert.equal(outboxResponse.headers.get("cache-control"), "no-store");
+    const outbox = await outboxResponse.json();
+    assert.equal(outbox.coverage, "environment");
+    assert.equal(outbox.environment, "test");
+    assert.deepEqual(outbox.counts, { retryWait: 10, deadLetter: 3 },
+      "delivery failures are distinct from async job failures and from production");
+    assert.equal(outbox.sampleLimit, 8);
+    assert.equal(outbox.items.length, 8);
+    assert.ok(outbox.items.every((item) => !JSON.stringify(item).includes("sensitive-provider-credential")));
+    assert.ok(outbox.items.every((item) => !("destinationKey" in item) && !("payload" in item)));
+    assert.ok(outbox.items.some((item) => item.failureCode === "other"),
+      "untrusted provider diagnostic codes must not be emitted raw");
+    assert.equal((await outboxGet(null)).status, 401);
+    assert.equal((await outboxGet(observer)).status, 403);
+    assert.equal((await outboxGet(admin, baseUrl + "/api/admin/integrations/outbox?scopeId=other-company")).status, 403);
+    assert.equal((await outboxGet(admin, outboxUrl + "&status=dead_letter")).status, 400);
+    assert.equal((await outboxGet(admin, outboxUrl, "POST")).status, 405);
+    console.log("Wrangler Local D1 Outbox summary passed: 13 current failures, 8 sampled, auth and environment isolation");
+
     await assertWorkerRead(projectSchedule, admin, ["schedule"]);
     await assertWorkerRead(projectRetire, admin, ["retire"]);
     await assertWorkerRead(projectReadOnly, admin, []);
@@ -366,6 +406,8 @@ try {
       "role revocation must apply to the same session over HTTP");
     assert.equal((await summaryGet(admin)).status, 403,
       "job summary must also revoke privileges on the same live session");
+    assert.equal((await outboxGet(admin)).status, 403,
+      "integration summary must also revoke privileges on the same live session");
   } finally {
     await new Promise((resolve, reject) =>
       httpServer.close((err) => err ? reject(err) : resolve()));

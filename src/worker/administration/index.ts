@@ -9,6 +9,7 @@ export * from "./operation-mode-api";
 export * from "./audit-log-viewer-api";
 
 export * from "./job-operations-api";
+export * from "./integration-operations-api";
 
 export * from "./job-recovery";
 

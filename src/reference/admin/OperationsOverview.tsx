@@ -16,6 +16,20 @@ interface JobSummary {
   readonly observedAt: string;
   readonly counts: { readonly failed: number; readonly deadLetter: number };
 }
+interface OutboxSummary {
+  readonly coverage: "environment";
+  readonly environment: string;
+  readonly observedAt: string;
+  readonly counts: { readonly retryWait: number; readonly deadLetter: number };
+  readonly sampleLimit: number;
+  readonly items: readonly {
+    readonly outboxId: string;
+    readonly status: "retry_wait" | "dead_letter";
+    readonly attemptCount: number;
+    readonly updatedAt: string;
+    readonly failureCode: string;
+  }[];
+}
 interface AuditSnapshot {
   readonly items: readonly { readonly category: string; readonly action: string }[];
   readonly nextCursor: string | null;
@@ -47,6 +61,7 @@ interface OverviewCard {
 
 interface OverviewSnapshot {
   readonly jobs: Probe<JobSummary>;
+  readonly outbox: Probe<OutboxSummary>;
   readonly auditFailures: Probe<AuditSnapshot>;
   readonly privileged: Probe<AuditSnapshot>;
   readonly master: Probe<MasterSnapshot>;
@@ -80,6 +95,20 @@ const hasJobSummary = (value: unknown): value is JobSummary =>
   && Number.isSafeInteger(value.counts.failed) && Number(value.counts.failed) >= 0
   && Number.isSafeInteger(value.counts.deadLetter) && Number(value.counts.deadLetter) >= 0
   && Number.isSafeInteger(Number(value.counts.failed) + Number(value.counts.deadLetter));
+const hasOutboxSummary = (value: unknown): value is OutboxSummary =>
+  isRecord(value) && value.coverage === "environment"
+  && typeof value.environment === "string" && typeof value.observedAt === "string"
+  && isRecord(value.counts)
+  && Number.isSafeInteger(value.counts.retryWait) && Number(value.counts.retryWait) >= 0
+  && Number.isSafeInteger(value.counts.deadLetter) && Number(value.counts.deadLetter) >= 0
+  && Number.isSafeInteger(Number(value.counts.retryWait) + Number(value.counts.deadLetter))
+  && Number.isSafeInteger(value.sampleLimit) && Number(value.sampleLimit) >= 0
+  && Array.isArray(value.items) && value.items.length <= Number(value.sampleLimit)
+  && value.items.every((item: unknown) => isRecord(item)
+    && typeof item.outboxId === "string" && item.outboxId.length <= 191
+    && (item.status === "retry_wait" || item.status === "dead_letter")
+    && Number.isSafeInteger(item.attemptCount) && Number(item.attemptCount) >= 0
+    && typeof item.updatedAt === "string" && typeof item.failureCode === "string");
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
   && value.items.every((item: unknown) => isRecord(item)
@@ -93,20 +122,22 @@ const hasReadiness = (value: unknown): value is ReadinessSnapshot =>
 
 const sourceUrl = {
   jobs: "/api/admin/jobs/summary?" + params({ scopeId: SCOPE_ID }),
+  outbox: "/api/admin/integrations/outbox?" + params({ scopeId: SCOPE_ID }),
   auditFailures: "/api/admin/audit?" + params({ scopeId: SCOPE_ID, outcome: "failure", limit: String(LIMIT) }),
   privileged: "/api/admin/audit?" + params({ scopeId: SCOPE_ID, category: "system", limit: String(LIMIT) }),
   master: "/api/admin/master-data?" + params({ scopeId: SCOPE_ID, masterKey: "workhub.office" }),
 };
 
 const snapshot = async (): Promise<OverviewSnapshot> => {
-  const [jobs, auditFailures, privileged, master, database] = await Promise.all([
+  const [jobs, outbox, auditFailures, privileged, master, database] = await Promise.all([
     read(sourceUrl.jobs, hasJobSummary),
+    read(sourceUrl.outbox, hasOutboxSummary),
     read(sourceUrl.auditFailures, hasAudit),
     read(sourceUrl.privileged, hasAudit),
     read(sourceUrl.master, hasMaster),
     read("/api/health/ready", hasReadiness),
   ]);
-  return { jobs, auditFailures, privileged, master, database,
+  return { jobs, outbox, auditFailures, privileged, master, database,
     updatedAt: new Date().toISOString() };
 };
 
@@ -123,6 +154,12 @@ const jobCountLabel = (probe: Probe<JobSummary>): string => {
   return Number.isSafeInteger(total) ? total + " 件（環境内の現在状態）" : "取得できません";
 };
 
+const outboxCountLabel = (probe: Probe<OutboxSummary>): string =>
+  probe.kind === "ready"
+    ? "要確認 " + probe.data.counts.deadLetter + " / 再試行待ち "
+      + probe.data.counts.retryWait + " 件（環境内の現在状態）"
+    : unavailableLabel(probe);
+
 const auditCountLabel = (probe: Probe<AuditSnapshot>): string =>
   probe.kind === "ready"
     ? probe.data.items.length + (probe.data.nextCursor === null
@@ -138,11 +175,14 @@ const privilegedCountLabel = (probe: Probe<AuditSnapshot>): string =>
 /** One view contract for every card, including sources not yet connected. */
 const toCards = (ready: OverviewSnapshot | null): readonly OverviewCard[] => {
   const jobs = ready?.jobs ?? null;
+  const outbox = ready?.outbox ?? null;
   const audit = ready?.auditFailures ?? null;
   const privileged = ready?.privileged ?? null;
   const db = ready?.database ?? null;
   const jobEnvironmentMismatch = ready?.jobs.kind === "ready"
     && ready.master.kind === "ready" && ready.jobs.data.environment !== ready.master.data.environment;
+  const outboxEnvironmentMismatch = ready?.outbox.kind === "ready"
+    && ready.master.kind === "ready" && ready.outbox.data.environment !== ready.master.data.environment;
   return [
     {
       title: "Database Readiness",
@@ -175,10 +215,18 @@ const toCards = (ready: OverviewSnapshot | null): readonly OverviewCard[] => {
       href: "#admin-audit-and-security",
     },
     {
-      title: "連携・Metrics / Alert", value: "未接続",
+      title: "外部連携Outbox",
+      value: outbox === null ? "取得中" : outboxEnvironmentMismatch
+        ? "環境情報が不一致" : outboxCountLabel(outbox),
+      sourceState: outboxEnvironmentMismatch ? "unknown" : sourceState(outbox),
+      coverage: "environment_current",
+      note: "WORKHUB単一Scopeの環境内Outbox記録。dead_letterは要確認、retry_waitは再試行待ち。0件でも外部Providerの正常性は保証しません。",
+      href: "#admin-integration-outbox",
+    },
+    {
+      title: "Metrics / Alert", value: "未接続",
       sourceState: "not_monitored", coverage: "not_monitored",
-      note: "Provider横断の連携失敗集計・メトリクス評価は接続されていません。正常とは判定しません。",
-      href: "#admin-jobs-and-integrations",
+      note: "持続的なMetrics / Alert評価は未接続です。正常とは判定しません。",
     },
     {
       title: "Security Finding", value: "未接続",
@@ -214,6 +262,9 @@ export default function OperationsOverview() {
 
   const ready = state.kind === "ready" ? state.data : null;
   const cards = toCards(ready);
+  const outboxSnapshot = ready?.outbox.kind === "ready"
+    && !(ready.master.kind === "ready" && ready.outbox.data.environment !== ready.master.data.environment)
+    ? ready.outbox.data : null;
   const environment = ready
     ? ready.master.kind === "ready" ? ready.master.data.environment : unavailableLabel(ready.master)
     : "取得中";
@@ -224,7 +275,7 @@ export default function OperationsOverview() {
       <div>
         <p className="admin-eyebrow">OPERATIONS / READ-ONLY SNAPSHOT</p>
         <h2 id="admin-operations-overview-title">運用状況サマリー</h2>
-        <p>既存の管理APIから要確認の兆候を表示します。失敗ジョブは環境内の現在件数、監査は直近20件の観測値です。継続監視の正本ではありません。</p>
+        <p>既存の管理APIから要確認の兆候を表示します。失敗ジョブ・外部連携Outboxは環境内の現在件数、監査は直近20件の観測値です。継続監視の正本ではありません。</p>
       </div>
       <div className="admin-overview-refresh">
         <button type="button" disabled={state.kind === "loading"}
@@ -235,11 +286,22 @@ export default function OperationsOverview() {
     <div className="admin-overview-grid" aria-label="運用状況の概要">
       {cards.map((item) => <StatusCard key={item.title} {...item} />)}
     </div>
+    <section id="admin-integration-outbox" className="admin-overview-outbox" aria-label="外部連携の失敗記録">
+      <h3>直近の外部連携失敗記録</h3>
+      <p>Outboxに残っている失敗・再試行待ちの最新{outboxSnapshot?.sampleLimit ?? 8}件まで。Providerの稼働監視や配送履歴全件ではありません。</p>
+      {outboxSnapshot && outboxSnapshot.items.length > 0
+        ? <ul>{outboxSnapshot.items.map((item) => <li key={item.outboxId}>
+          <code>{item.outboxId}</code> — {item.status === "dead_letter" ? "要確認" : "再試行待ち"}
+          {" / 試行 " + item.attemptCount + " 回 / " + item.failureCode + " / " + item.updatedAt}
+        </li>)}</ul>
+        : <p>{outboxSnapshot ? "該当する現在記録はありません（外部連携の正常性は未確認）。"
+          : ready?.outbox.kind === "denied" ? "閲覧不可" : "取得できません／未確認"}</p>}
+    </section>
     <p className="admin-overview-footnote" data-testid="operations-overview-environment">
       Server Environment: <strong>{environment}</strong> / Scope: {SCOPE_ID} / Application Version: 未提供
       {ready?.master.kind === "ready" ? " / Server As-Of: " + ready.master.data.asOf : ""}
     </p>
-    <p className="admin-overview-footnote">ジョブ集計はWORKHUB単一Scope環境内の状態別件数です（複数Scopeへ転用不可）。
+    <p className="admin-overview-footnote">ジョブ・Outbox集計はWORKHUB単一Scope環境内の状態別件数です（複数Scopeへ転用不可）。
       権限エラー・API障害・未監視は正常状態に変換しません。監査の取得範囲外や未接続領域に問題がないことは保証しません。</p>
   </section>;
 }
