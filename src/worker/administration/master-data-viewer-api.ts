@@ -42,10 +42,24 @@ export interface MasterDataViewerEnvironment {
   readonly RUNTIME_ENVIRONMENT?: string;
 }
 
+/**
+ * Server-owned disclosure rules derived from the SAME allowlists and role
+ * policies as the authoritative mutation APIs. Never trust browser config.
+ * A listed operation is only an available link, not an execution authorization.
+ */
+export interface MasterViewerOperationDisclosure {
+  readonly kind: "schedule" | "retire";
+  readonly masterKey: string;
+  readonly allowedItemIds: readonly string[];
+  readonly action: string;
+  readonly authorizationPolicy: RolePolicy;
+}
+
 /** Inject project-approved definitions and scope; no table selector or arbitrary master lookup. */
 export interface MasterDataViewerOptions {
   readonly scopeId: string;
   readonly masterKeys: readonly string[];
+  readonly operations?: readonly MasterViewerOperationDisclosure[];
   readonly authorizationPolicy?: RolePolicy;
   readonly now?: () => Date;
 }
@@ -141,6 +155,27 @@ export const handleMasterDataViewerApi = async (
     ).bind(itemId, environment, masterKey).first<MasterItemRow>();
     if (!item) return error(requestId, 404, "master_item_not_found", "Master item was not found");
 
+    // Read access alone never grants a mutation link. Only the server can
+    // disclose a per-item operation, after its own scope/role/target checks.
+    // Production demo mutations remain gated even for privileged readers.
+    const allowedOperations: Array<"schedule" | "retire"> = [];
+    if (environment !== "production" && item.retired_at === null) {
+      for (const operation of options.operations ?? []) {
+        if (operation.masterKey !== masterKey || !operation.allowedItemIds.includes(item.id)
+          || allowedOperations.includes(operation.kind)) continue;
+        let authorization;
+        try {
+          authorization = await requireScopedAuthorization({
+            db: env.DB, userId: authentication.user.id, policy: operation.authorizationPolicy,
+            action: operation.action, requestedScopeId: scopeId, resourceScopeId: options.scopeId,
+          });
+        } catch {
+          return error(requestId, 503, "authorization_unavailable", "Authorization is unavailable");
+        }
+        if (authorization.allowed) allowedOperations.push(operation.kind);
+      }
+    }
+
     const result = await env.DB.prepare(
       "SELECT id, revision, label, enabled, effective_from, effective_to, display_order, parent_item_id " +
       "FROM master_revisions WHERE master_item_id = ? AND environment = ? " +
@@ -150,6 +185,7 @@ export const handleMasterDataViewerApi = async (
     return json({
       ...context,
       item: { id: item.id, code: item.code, version: item.version, retiredAt: item.retired_at },
+      allowedOperations, // provisional disclosure only; execute rechecks all guards
       revisions: rows.slice(0, HISTORY_LIMIT).map((row) => ({
         id: row.id,
         revision: row.revision,
