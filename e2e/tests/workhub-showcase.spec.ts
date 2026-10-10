@@ -32,6 +32,13 @@ test("public showcase explains the reference, offers real demo and source eviden
   await expect(page.locator(".showcase-start-steps")).toContainText("Aoi Employeeでログイン");
   await expect(page.locator(".showcase-start-steps")).toContainText("Ren Managerでログイン");
   await expect(page.getByRole("link", { name: "WORKHUBログインを開く →" })).toHaveAttribute("href", "/");
+  const feedback = page.getByRole("link", { name: "気づいたことを報告する ↗" });
+  await expect(feedback).toHaveAttribute("href",
+    "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/new?template=showcase-feedback.yml");
+  await expect(feedback).toHaveAttribute("target", "_blank");
+  await expect(feedback).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.locator("#showcase-feedback")).toContainText("公開Issue");
+  await expect(page.locator("#showcase-feedback")).toContainText("機密情報や個人情報は入力しないでください");
   expect(apiRequests, "public Showcase must not query Auth/D1 or business APIs").toEqual([]);
 });
 
@@ -78,6 +85,7 @@ test("showcase visual evidence: public desktop/mobile, no credential capture", a
   await expect(page.getByRole("heading", { level: 1, name: /業務システムを/u })).toBeVisible();
   await expect(page.getByRole("link", { name: "WORKHUBを試す ↗" })).toBeVisible();
   await expect(page.getByRole("link", { name: "WORKHUBログインを開く →" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "気づいたことを報告する ↗" })).toBeVisible();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width, "no horizontal scroll at 390px").toBeLessThanOrEqual(390);
   await page.screenshot({
