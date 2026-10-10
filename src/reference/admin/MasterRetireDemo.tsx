@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import { WORKHUB_RETIRE_DEMO_ITEM_ID } from "../workhub/travel-request";
 
 const base = "/api/admin/master-operations/retire";
@@ -129,13 +130,12 @@ export default function MasterRetireDemo() {
       </div>
       {state.preview.available && state.preview.preview.policyDecision === "REQUIRE_REASON"
         ? <form onSubmit={(event) => { event.preventDefault(); void execute(); }}>
-            <label>廃止理由
-              <textarea value={reason} maxLength={200} onChange={(event) => setReason(event.target.value)} required placeholder="例：利用しなくなった拠点コードの選択を終了するため" />
-            </label>
-            <label className="admin-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />LEGACY拠点・環境・変更の影響を確認しました</label>
-            <div className="admin-retry-actions">
-              <button type="submit" disabled={busy || !reason.trim() || !confirmed}>デモ拠点を廃止</button>
-            </div>
+            <MasterOperationConfirmationFields
+              reason={reason} onReasonChange={setReason} reasonLabel="廃止理由"
+              reasonPlaceholder="例：利用しなくなった拠点コードの選択を終了するため"
+              confirmed={confirmed} onConfirmChange={setConfirmed}
+              confirmationLabel="LEGACY拠点・環境・変更の影響を確認しました"
+              busy={busy} submitLabel="デモ拠点を廃止" />
           </form>
         : <p className="admin-audit-note">操作不可: {state.preview.reasonCode ?? state.preview.preview.policyDecision}。履歴はマスタ管理（参照）で引き続き確認できます。</p>}
     </div>}
