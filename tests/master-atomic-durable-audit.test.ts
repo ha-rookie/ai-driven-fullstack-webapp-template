@@ -249,9 +249,9 @@ test("two competing cutovers on the same D1-style store leave exactly one revisi
   const state = sqlite.prepare(
     "SELECT version, next_revision, last_mutation_id FROM master_items WHERE id = ?",
   ).get(itemId) as { version: number; next_revision: number; last_mutation_id: string };
-  assert.deepEqual(state, {
-    version: 3, next_revision: 3, last_mutation_id: winner.mutationId,
-  });
+  assert.equal(state.version, 3);
+  assert.equal(state.next_revision, 3);
+  assert.equal(state.last_mutation_id, winner.mutationId);
   assert.equal((sqlite.prepare("SELECT effective_to FROM master_revisions WHERE id = 'cutover-r1'")
     .get() as { effective_to: string }).effective_to, cutoff);
   const savedRevisions = sqlite.prepare(
