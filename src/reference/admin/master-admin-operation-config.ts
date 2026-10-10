@@ -41,7 +41,7 @@ export function buildMasterOperationLinks(
   const duplicates = new Set<string>();
   const add = (target: MasterTarget, link: MasterOperationLink) => {
     if (target.scopeId !== config.scopeId || target.masterKey !== config.masterKey || !target.itemId) return;
-    if (Object.hasOwn(links, target.itemId)) {
+    if (Object.prototype.hasOwnProperty.call(links, target.itemId)) {
       delete links[target.itemId];
       duplicates.add(target.itemId);
     }
