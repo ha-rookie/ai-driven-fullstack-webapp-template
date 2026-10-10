@@ -13,8 +13,8 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    {window.location.pathname === "/showcase" || window.location.pathname === "/showcase/"
+      ? <WorkhubShowcase />
+      : <AuthProvider><App /></AuthProvider>}
   </StrictMode>,
 );
