@@ -94,6 +94,34 @@ jobs:
         if: steps.impact.outputs.tier == 'full' && steps.impact.outputs.operation_mode == 'true'
         run: npm run operation-mode:local
 
+      # A small, local-only D1 contract, run only for Master/Audit source and
+      # contract changes. The expensive performance and operation-mode suites
+      # retain their separate existing selectors.
+      - name: Master Local D1 atomicity (impact selected)
+        if: steps.impact.outputs.tier == 'full'
+        shell: bash
+        env:
+          CHANGE_BASE: ${{ github.event.pull_request.base.sha }}
+          CHANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            node scripts/master-d1-local-atomicity.mjs
+          elif [[ -z "$CHANGE_BASE" || -z "$CHANGE_HEAD" ]]; then
+            echo "Missing PR diff boundary for Master D1 test"
+            exit 1
+          elif git diff --name-only --no-renames "$CHANGE_BASE" "$CHANGE_HEAD" -- \
+            scripts/master-d1-local-atomicity.mjs \
+            scripts/ci-change-impact.mjs \
+            src/worker/master-data/ src/worker/audit/ \
+            migrations/0016_durable_audit_storage.sql \
+            migrations/0022_master_data.sql \
+            wrangler.jsonc package.json package-lock.json .github/workflows/ci.yml | grep -q .; then
+            node scripts/master-d1-local-atomicity.mjs
+          else
+            echo "Skipping Master Local D1 atomicity: unrelated changes"
+          fi
+
       - name: Lint
         if: steps.impact.outputs.tier != 'docs'
         run: npm run lint
