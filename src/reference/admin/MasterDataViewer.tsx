@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID,
-  WORKHUB_ORDER_DEMO_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID,
-  WORKHUB_AVAILABILITY_ENABLE_ITEM_ID,
-} from "../workhub/travel-request";
-
-const WORKHUB_SCOPE_ID = "workhub-company";
-const WORKHUB_MASTER_KEY = "workhub.office";
+/** Presentation-only navigation; this never substitutes for server-side authorization. */
+export interface MasterOperationLink {
+  readonly href: `#${string}`;
+  readonly label: string;
+}
+interface MasterDataViewerProps {
+  readonly scopeId: string;
+  readonly masterKey: string;
+  readonly operations: Readonly<Record<string, MasterOperationLink>>;
+  readonly onSelectionChange?: (itemId: string | null) => void;
+}
 
 interface MasterItem {
   readonly id: string;
@@ -42,26 +45,14 @@ type LoadState<T> =
   | { readonly kind: "ready"; readonly data: T }
   | { readonly kind: "error"; readonly requestId: string | null };
 
-const listUrl = "/api/admin/master-data?" + new URLSearchParams({
-  scopeId: WORKHUB_SCOPE_ID,
-  masterKey: WORKHUB_MASTER_KEY,
-}).toString();
-
 const dateTime = (value: string): string => new Date(value).toLocaleString("ja-JP");
 
-/** Reference-only action destinations; actual authorization and allowlists belong to the API. */
-const DEMO_MASTER_ACTIONS: Readonly<Record<string, { readonly href: string; readonly label: string }>> = {
-  [WORKHUB_RETIRE_DEMO_ITEM_ID]: { href: "#admin-master-retire-demo", label: "廃止操作の下見へ" },
-  [WORKHUB_SCHEDULE_DEMO_ITEM_ID]: { href: "#admin-master-schedule-demo", label: "将来Revision予約の下見へ" },
-  [WORKHUB_ORDER_DEMO_ITEM_ID]: { href: "#admin-master-order-demo", label: "将来表示順変更の下見へ" },
-  [WORKHUB_AVAILABILITY_DISABLE_ITEM_ID]: { href: "#admin-master-availability", label: "有効・無効切替の下見へ" },
-  [WORKHUB_AVAILABILITY_ENABLE_ITEM_ID]: { href: "#admin-master-availability", label: "有効・無効切替の下見へ" },
-};
-
-
-export default function MasterDataViewer({ onSelectionChange }: {
-  readonly onSelectionChange?: (itemId: string | null) => void;
-}) {
+export default function MasterDataViewer({
+  scopeId, masterKey, operations, onSelectionChange,
+}: MasterDataViewerProps) {
+  const listUrl = "/api/admin/master-data?" + new URLSearchParams({
+    scopeId, masterKey,
+  }).toString();
   const [list, setList] = useState<LoadState<MasterListResponse>>({ kind: "loading" });
   const [detail, setDetail] = useState<LoadState<MasterDetailResponse>>({ kind: "loading" });
   const [selectedId, setSelectedId] = useState("");
@@ -115,7 +106,11 @@ export default function MasterDataViewer({ onSelectionChange }: {
     }
   };
 
-  useEffect(() => { void loadList(); }, []);
+  useEffect(() => {
+    currentItemId.current = "";
+    onSelectionChange?.(null);
+    void loadList();
+  }, [listUrl]);
 
   return <section className="admin-audit-panel" id="admin-master-data" aria-labelledby="admin-master-title">
     <div className="admin-audit-heading">
@@ -126,8 +121,8 @@ export default function MasterDataViewer({ onSelectionChange }: {
       </div>
       <div className="admin-audit-scope">
         <span>Scope / Master</span>
-        <strong>{WORKHUB_SCOPE_ID}</strong>
-        <strong>{WORKHUB_MASTER_KEY}</strong>
+        <strong>{scopeId}</strong>
+        <strong>{masterKey}</strong>
       </div>
     </div>
     <div className="admin-retry-actions">
@@ -163,12 +158,12 @@ export default function MasterDataViewer({ onSelectionChange }: {
           <strong>この項目の操作導線</strong>
           {detail.data.item.retiredAt !== null
             ? <p>廃止済みのため新たな操作は案内しません。履歴は参照できます。</p>
-            : DEMO_MASTER_ACTIONS[detail.data.item.id]
-              ? <a className="admin-section-link" href={DEMO_MASTER_ACTIONS[detail.data.item.id].href}>
-                  {DEMO_MASTER_ACTIONS[detail.data.item.id].label} →
+            : operations[detail.data.item.id]
+              ? <a className="admin-section-link" href={operations[detail.data.item.id].href}>
+                  {operations[detail.data.item.id].label} →
                 </a>
               : <p>この項目に設定された変更操作はありません。参照のみ可能です。</p>}
-          <small>WORKHUBの専用デモのみ。実行可否はサーバー側で再認可され、Productionへの変更は許可されません。</small>
+          <small>表示している操作導線はProject側の構成情報です。実行可否はサーバー側で再認可され、Productionへの変更は許可されません。</small>
         </nav>
         {detail.data.revisions.length === 0
           ? <div className="admin-audit-state">Revision履歴はありません</div>
