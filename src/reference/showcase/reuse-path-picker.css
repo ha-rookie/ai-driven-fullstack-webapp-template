@@ -1,0 +1,26 @@
+/* Purpose-first entry; no extra app shell or data request. */
+.showcase-reuse{margin-top:48px;padding:30px;border:1px solid #cbdfe1;border-radius:18px;background:linear-gradient(140deg,#edf6f4,#fff)}
+.showcase-reuse-head h2{font-size:clamp(23px,2.8vw,32px);line-height:1.4;margin:0 0 9px;letter-spacing:-.035em}
+.showcase-reuse-head h2 span{color:#217c88}
+.showcase-reuse-head>p:last-child{font-size:13px;line-height:1.8;color:var(--sc-muted);margin:0 0 20px}
+.showcase-reuse-head .showcase-label{margin-bottom:8px}
+.showcase-reuse-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.showcase-reuse-picker button{cursor:pointer;text-align:left;min-width:0;padding:15px 16px;border:1px solid #cddcde;border-radius:11px;color:#284e5b;background:#fff}
+.showcase-reuse-picker button:hover{border-color:#75b7b5;background:#f4fbfa}
+.showcase-reuse-picker button.is-selected{background:#163e4e;border-color:#163e4e;color:#fff}
+.showcase-reuse-picker button strong,.showcase-reuse-picker button small{display:block}
+.showcase-reuse-picker button strong{font-size:14px;line-height:1.55}
+.showcase-reuse-picker button small{font-size:10px;margin-top:4px;opacity:.8}
+.showcase-reuse-detail{margin-top:13px;display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,.94fr);gap:24px;border:1px solid #dbe6e8;border-radius:12px;background:white;padding:23px}
+.showcase-reuse-description h3{font-size:19px;line-height:1.55;margin:5px 0 9px}
+.showcase-reuse-description>p{font-size:13px;line-height:1.8;color:var(--sc-muted);margin:0 0 9px}
+.showcase-reuse-description .showcase-reuse-outcome{font-weight:750;color:#176e79;font-size:11px}
+.showcase-reuse-description .showcase-reuse-caution{font-size:12px;border-left:3px solid #90b4b9;padding-left:12px;margin-top:14px;color:#576d76}
+.showcase-reuse-links{display:grid;gap:8px}
+.showcase-reuse-links a{display:block;background:#f1f8f7;border:1px solid #d7e6e5;border-radius:9px;padding:12px 15px}
+.showcase-reuse-links a:hover{border-color:#4ba6a6;background:#e5f4f1}
+.showcase-reuse-links a strong{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:#175c69}
+.showcase-reuse-links a small{display:block;font-size:11px;color:#5a7781;margin-top:4px}
+.showcase-reuse-note{font-size:11px;color:#627e84;margin:13px 0 0}
+.showcase-reuse-jump{display:inline-flex;margin-top:14px;color:#a4eadd!important;font-size:13px;font-weight:750;text-decoration:underline!important;text-underline-offset:4px}
+@media(max-width:700px){.showcase-reuse{padding:19px 14px;margin-top:25px}.showcase-reuse-picker{grid-template-columns:1fr;gap:7px}.showcase-reuse-picker button{padding:11px 14px}.showcase-reuse-detail{grid-template-columns:1fr;gap:12px;padding:16px}.showcase-reuse-description h3{font-size:17px}}
