@@ -42,7 +42,7 @@ test("overview summarizes bounded authorized signals without claiming complete h
         ? [{ id: "privileged", category: "system", action: "operation.RETIRE_MASTER_ITEM" },
           { id: "unrelated", category: "system", action: "readiness_probe" }] : [];
     return route.fulfill({ status: 200, contentType: "application/json",
-      body: JSON.stringify({ items, nextCursor: null }) });
+      body: JSON.stringify({ items, nextCursor: query.get("outcome") === "failure" ? "next-page" : null }) });
   });
   await page.route("**/api/admin/master-data?**", (route) => {
     const itemId = new URL(route.request().url()).searchParams.get("itemId");
@@ -66,7 +66,11 @@ test("overview summarizes bounded authorized signals without claiming complete h
   const summary = page.locator("#admin-operations-overview");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
   await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("33 件（環境内の現在状態）");
-  await expect(card(page, "監査失敗").locator("strong")).toHaveText("1 件（取得範囲）");
+  await expect(card(page, "監査失敗").locator("strong")).toHaveText("1 件以上（続きあり）");
+  await expect(card(page, "監査失敗")).toHaveAttribute("data-coverage", "bounded_sample");
+  await expect(card(page, "監査失敗")).toHaveAttribute("data-source-state", "available");
+  await expect(card(page, "Security Finding")).toHaveAttribute("data-source-state", "not_monitored");
+  await expect(card(page, "失敗・Dead Letterジョブ")).toHaveAttribute("data-coverage", "environment_current");
   await expect(card(page, "直近の特権操作").locator("strong")).toContainText("1 件");
   await expect(card(page, "Security Finding").locator("strong")).toHaveText("未接続");
   await expect(card(page, "連携・Metrics / Alert").locator("strong")).toHaveText("未接続");
@@ -128,4 +132,40 @@ test("non-admin user never mounts operational overview or loads privileged overv
   await expect(page.getByRole("heading", { name: "この領域を表示する権限がありません" })).toBeVisible();
   await expect(page.locator("#admin-operations-overview")).toHaveCount(0);
   expect(privilegedReads).toBe(0);
+});
+
+
+test("overview refuses to combine a job count from a different environment", async ({ page }) => {
+  await login(page);
+  await page.route("**/api/health/ready", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ component: "database", status: "ok" }),
+  }));
+  await page.route("**/api/admin/jobs/summary?**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", environment: "production",
+      observedAt: "2026-10-10T00:00:00.000Z",
+      counts: { failed: 9, deadLetter: 1 },
+    }),
+  }));
+  await page.route("**/api/admin/audit?**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ items: [], nextCursor: null }),
+  }));
+  await page.route("**/api/admin/master-data?**", (route) => {
+    const itemId = new URL(route.request().url()).searchParams.get("itemId");
+    const body = itemId ? {
+      item: { id: itemId, code: "DEMO", version: 2, retiredAt: null },
+      revisions: [{ id: itemId + "-r1", revision: 1, label: "Demo",
+        enabled: true, effectiveFrom: "2026-01-01T00:00:00.000Z", effectiveTo: null,
+        displayOrder: 10, parentItemId: null, lifecycle: "current" }],
+      allowedOperations: [], hasMore: false, asOf: "2026-10-10T00:00:00.000Z",
+    } : { environment: "local", asOf: "2026-10-10T00:00:00.000Z", items: [], hasMore: false };
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.goto("/admin");
+  await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("環境情報が不一致");
+  await expect(card(page, "失敗・Dead Letterジョブ")).toHaveAttribute("data-source-state", "unknown");
+  await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
 });
