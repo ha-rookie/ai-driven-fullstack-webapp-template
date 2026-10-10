@@ -23,7 +23,10 @@ type ViewState =
   | { readonly kind: "ready"; readonly preview: RetirePreview }
   | { readonly kind: "error"; readonly requestId: string | null; readonly httpStatus: number | null };
 
-export default function MasterRetireDemo({ target }: { readonly target: MasterTarget }) {
+export default function MasterRetireDemo({ target, onMutationSettled }: {
+  readonly target: MasterTarget;
+  readonly onMutationSettled?: () => void;
+}) {
   const params = new URLSearchParams({ scopeId: target.scopeId, itemId: target.itemId });
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const [reason, setReason] = useState("");
@@ -87,6 +90,7 @@ export default function MasterRetireDemo({ target }: { readonly target: MasterTa
           (response.headers.get("x-request-id") ?? "unknown") + "）");
       if (outcome === "verified") setReason("");
       setConfirmed(false);
+      if (outcome === "verified" || outcome === "conflict") onMutationSettled?.();
       await refresh();
     } catch {
       setConfirmed(false);
