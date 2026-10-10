@@ -83,14 +83,18 @@ const createDatabase = () => {
   return { sqlite, store: new D1MasterDataStore(d1) };
 };
 
-const audit = (action: string) => prepareDurableAuditRecord({
-  requestId: "req-test-atomic-1", method: "POST", path: "/api/admin/master-operations",
+const audit = (
+  action: string,
+  requestId = "req-test-atomic-1",
+  auditId = "audit-atomic-test-1",
+) => prepareDurableAuditRecord({
+  requestId, method: "POST", path: "/api/admin/master-operations",
   category: "system", action, outcome: "success",
   actorId: "kai", scopeId: "workhub-company",
   resourceType: "master_item", resourceId: itemId, reason: "reason_sha256:test",
 }, "test", {
   clock: { now: () => new Date(createdAt) },
-  idGenerator: { generate: () => "audit-atomic-test-1" },
+  idGenerator: { generate: () => auditId },
 });
 
 const item = (version: number, nextRevision: number, retiredAt: string | null = null): MasterItemRecord => ({
@@ -206,4 +210,64 @@ test("ordinary appendRevision also rolls back when open-ended period rejects an 
   assert.equal(appended, false);
   assert.equal((sqlite.prepare("SELECT version FROM master_items").get() as { version: number }).version, 2);
   assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM master_revisions").get() as { n: number }).n, 1);
+});
+
+
+test("two competing cutovers on the same D1-style store leave exactly one revision and durable success audit", async (t) => {
+  // Model two requests which both observed v2 before either one committed.
+  // The SQLite-backed D1 adapter serializes atomic batches; this does NOT
+  // claim Cloudflare remote D1 simultaneous-request coverage.
+  const { sqlite, store } = createDatabase();
+  t.after(() => sqlite.close());
+  const [firstProof, secondProof] = await Promise.all([
+    audit("operation.SCHEDULE_MASTER_REVISION", "req-competing-a", "audit-competing-a"),
+    audit("operation.SCHEDULE_MASTER_REVISION", "req-competing-b", "audit-competing-b"),
+  ]);
+  const competing = [
+    {
+      item: item(3, 3),
+      revision: { ...revision, id: "cutover-a", label: "Candidate A" },
+      mutationId: "mutation-competing-a",
+      priorRevisionId: "cutover-r1",
+      expectedItemVersion: 2,
+      durableAudit: firstProof,
+    },
+    {
+      item: item(3, 3),
+      revision: { ...revision, id: "cutover-b", label: "Candidate B" },
+      mutationId: "mutation-competing-b",
+      priorRevisionId: "cutover-r1",
+      expectedItemVersion: 2,
+      durableAudit: secondProof,
+    },
+  ];
+  const outcomes = await Promise.all(competing.map((command) => store.scheduleRevision(command)));
+  assert.equal(outcomes.filter(Boolean).length, 1, "only one stale-snapshot request may commit");
+
+  const winner = competing[outcomes[0] ? 0 : 1];
+  const loser = competing[outcomes[0] ? 1 : 0];
+  const state = sqlite.prepare(
+    "SELECT version, next_revision, last_mutation_id FROM master_items WHERE id = ?",
+  ).get(itemId) as { version: number; next_revision: number; last_mutation_id: string };
+  assert.deepEqual(state, {
+    version: 3, next_revision: 3, last_mutation_id: winner.mutationId,
+  });
+  assert.equal((sqlite.prepare("SELECT effective_to FROM master_revisions WHERE id = 'cutover-r1'")
+    .get() as { effective_to: string }).effective_to, cutoff);
+  const savedRevisions = sqlite.prepare(
+    "SELECT id, label FROM master_revisions WHERE id IN ('cutover-a', 'cutover-b')",
+  ).all() as { id: string; label: string }[];
+  assert.deepEqual(savedRevisions, [{ id: winner.revision.id, label: winner.revision.label }]);
+  assert.equal(sqlite.prepare("SELECT id FROM master_revisions WHERE id = ?")
+    .get(loser.revision.id), undefined);
+
+  const savedAudits = sqlite.prepare(
+    "SELECT id, request_id, record_json, record_sha256 FROM durable_audit_events",
+  ).all() as { id: string; request_id: string; record_json: string; record_sha256: string }[];
+  assert.equal(savedAudits.length, 1, "rejected competitor must not log a success audit");
+  assert.equal(savedAudits[0].id, winner.durableAudit.id);
+  assert.equal(savedAudits[0].request_id, winner.durableAudit.record.requestId);
+  const validated = await verifyDurableAuditRecord(savedAudits[0].record_json, savedAudits[0].record_sha256);
+  assert.equal(validated.action, "operation.SCHEDULE_MASTER_REVISION");
+  assert.equal(validated.resourceId, itemId);
 });
