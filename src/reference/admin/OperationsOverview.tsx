@@ -33,6 +33,18 @@ type Probe<T> =
   | { readonly kind: "denied" }
   | { readonly kind: "unknown" };
 
+/** Consistent, read-only card projection; does not become a monitoring source of truth. */
+type SourceState = "loading" | "available" | "denied" | "unknown" | "not_monitored";
+type ObservationCoverage = "readiness" | "environment_current" | "bounded_sample" | "not_monitored";
+interface OverviewCard {
+  readonly title: string;
+  readonly value: string;
+  readonly sourceState: SourceState;
+  readonly coverage: ObservationCoverage;
+  readonly note: string;
+  readonly href?: string;
+}
+
 interface OverviewSnapshot {
   readonly jobs: Probe<JobSummary>;
   readonly auditFailures: Probe<AuditSnapshot>;
@@ -69,6 +81,8 @@ const hasJobSummary = (value: unknown): value is JobSummary =>
   && Number.isSafeInteger(value.counts.deadLetter) && Number(value.counts.deadLetter) >= 0;
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
+  && value.items.every((item: unknown) => isRecord(item)
+    && typeof item.category === "string" && typeof item.action === "string")
   && (value.nextCursor === null || typeof value.nextCursor === "string");
 const hasMaster = (value: unknown): value is MasterSnapshot =>
   isRecord(value) && typeof value.environment === "string" && typeof value.asOf === "string";
@@ -98,20 +112,88 @@ const snapshot = async (): Promise<OverviewSnapshot> => {
 const unavailableLabel = (probe: Probe<unknown>): string =>
   probe.kind === "denied" ? "閲覧不可" : "取得できません";
 
-const jobCountLabel = (probe: Probe<JobSummary>): string =>
+const sourceState = (probe: Probe<unknown> | null): SourceState =>
+  probe === null ? "loading"
+    : probe.kind === "ready" ? "available" : probe.kind === "denied" ? "denied" : "unknown";
+
+const jobCountLabel = (probe: Probe<JobSummary>): string => {
+  if (probe.kind !== "ready") return unavailableLabel(probe);
+  const total = probe.data.counts.failed + probe.data.counts.deadLetter;
+  return Number.isSafeInteger(total) ? total + " 件（環境内の現在状態）" : "取得できません";
+};
+
+const auditCountLabel = (probe: Probe<AuditSnapshot>): string =>
   probe.kind === "ready"
-    ? String(probe.data.counts.failed + probe.data.counts.deadLetter) + " 件（環境内の現在状態）"
+    ? probe.data.items.length + (probe.data.nextCursor === null
+      ? " 件（取得範囲）" : " 件以上（続きあり）")
     : unavailableLabel(probe);
 
-const StatusCard = ({ title, value, note, href }: {
-  readonly title: string; readonly value: string;
-  readonly note: string; readonly href?: string;
-}) => <article className="admin-overview-card">
-  <h3>{title}</h3>
-  <strong>{value}</strong>
-  <p>{note}</p>
-  {href && <a href={href}>詳細を確認 →</a>}
-</article>;
+const privilegedCountLabel = (probe: Probe<AuditSnapshot>): string =>
+  probe.kind === "ready"
+    ? probe.data.items.filter((event) => event.action.startsWith("operation.")).length
+      + (probe.data.nextCursor === null ? " 件（直近system履歴内）" : " 件（直近system履歴内・続きあり）")
+    : unavailableLabel(probe);
+
+/** One view contract for every card, including sources not yet connected. */
+const toCards = (ready: OverviewSnapshot | null): readonly OverviewCard[] => {
+  const jobs = ready?.jobs ?? null;
+  const audit = ready?.auditFailures ?? null;
+  const privileged = ready?.privileged ?? null;
+  const db = ready?.database ?? null;
+  const jobEnvironmentMismatch = ready?.jobs.kind === "ready"
+    && ready.master.kind === "ready" && ready.jobs.data.environment !== ready.master.data.environment;
+  return [
+    {
+      title: "Database Readiness",
+      value: db === null ? "取得中" : db.kind === "ready"
+        ? db.data.status === "ok" ? "応答あり" : "接続異常" : unavailableLabel(db),
+      sourceState: sourceState(db), coverage: "readiness",
+      note: "アプリのDB Readiness応答。ジョブや外部連携の健全性は含みません。",
+      href: "/api/health/ready",
+    },
+    {
+      title: "失敗・Dead Letterジョブ",
+      value: jobs === null ? "取得中" : jobEnvironmentMismatch ? "環境情報が不一致" : jobCountLabel(jobs),
+      sourceState: jobEnvironmentMismatch ? "unknown" : sourceState(jobs),
+      coverage: "environment_current",
+      note: "環境内のfailed＋dead_letter現在件数をD1で集計。単一Scope構成専用、履歴全件数や処理全体の健全性ではありません。",
+      href: "#admin-jobs-and-integrations",
+    },
+    {
+      title: "監査失敗",
+      value: audit === null ? "取得中" : auditCountLabel(audit),
+      sourceState: sourceState(audit), coverage: "bounded_sample",
+      note: "Scope内の失敗監査を新しい順に最大20件参照。続きがある場合も全期間件数とは区別します。",
+      href: "#admin-audit-and-security",
+    },
+    {
+      title: "直近の特権操作",
+      value: privileged === null ? "取得中" : privilegedCountLabel(privileged),
+      sourceState: sourceState(privileged), coverage: "bounded_sample",
+      note: "直近system監査最大20件からoperation.*を抽出。全特権操作の件数ではありません。",
+      href: "#admin-audit-and-security",
+    },
+    {
+      title: "連携・Metrics / Alert", value: "未接続",
+      sourceState: "not_monitored", coverage: "not_monitored",
+      note: "Provider横断の連携失敗集計・メトリクス評価は接続されていません。正常とは判定しません。",
+      href: "#admin-jobs-and-integrations",
+    },
+    {
+      title: "Security Finding", value: "未接続",
+      sourceState: "not_monitored", coverage: "not_monitored",
+      note: "継続的なSecurity Findingの集計は未接続です。検出0件とは表示しません。",
+    },
+  ];
+};
+
+const StatusCard = ({ title, value, note, href, sourceState: state, coverage }: OverviewCard) =>
+  <article className="admin-overview-card" data-source-state={state} data-coverage={coverage}>
+    <h3>{title}</h3>
+    <strong>{value}</strong>
+    <p>{note}</p>
+    {href && <a href={href}>詳細を確認 →</a>}
+  </article>;
 
 export default function OperationsOverview() {
   const [generation, setGeneration] = useState(0);
@@ -130,23 +212,7 @@ export default function OperationsOverview() {
   }, [generation]);
 
   const ready = state.kind === "ready" ? state.data : null;
-  const jobLabel = ready ? jobCountLabel(ready.jobs) : "取得中";
-  const auditFailureLabel = ready
-    ? ready.auditFailures.kind === "ready"
-      ? ready.auditFailures.data.items.length + " 件（取得範囲）"
-      : unavailableLabel(ready.auditFailures)
-    : "取得中";
-  const privilegedLabel = ready
-    ? ready.privileged.kind === "ready"
-      ? ready.privileged.data.items.filter((event) => event.action.startsWith("operation.")).length
-        + " 件（直近system履歴内）"
-      : unavailableLabel(ready.privileged)
-    : "取得中";
-  const dbLabel = ready
-    ? ready.database.kind === "ready"
-      ? ready.database.data.status === "ok" ? "応答あり" : "接続異常"
-      : unavailableLabel(ready.database)
-    : "取得中";
+  const cards = toCards(ready);
   const environment = ready
     ? ready.master.kind === "ready" ? ready.master.data.environment : unavailableLabel(ready.master)
     : "取得中";
@@ -166,23 +232,7 @@ export default function OperationsOverview() {
       </div>
     </div>
     <div className="admin-overview-grid" aria-label="運用状況の概要">
-      <StatusCard title="Database Readiness" value={dbLabel}
-        note="アプリのDB Readiness応答。ジョブや外部連携の健全性は含みません。"
-        href="/api/health/ready" />
-      <StatusCard title="失敗・Dead Letterジョブ" value={jobLabel}
-        note="環境内のfailed＋dead_letter現在件数をD1で集計。単一Scope構成専用、履歴全件数や処理全体の健全性ではありません。"
-        href="#admin-jobs-and-integrations" />
-      <StatusCard title="監査失敗" value={auditFailureLabel}
-        note="Scope内の失敗監査を新しい順に最大20件参照。全期間の集計ではありません。"
-        href="#admin-audit-and-security" />
-      <StatusCard title="直近の特権操作" value={privilegedLabel}
-        note="直近system監査最大20件からoperation.*を抽出。全特権操作の件数ではありません。"
-        href="#admin-audit-and-security" />
-      <StatusCard title="連携・Metrics / Alert" value="未接続"
-        note="Provider横断の連携失敗集計・メトリクス評価は接続されていません。正常とは判定しません。"
-        href="#admin-jobs-and-integrations" />
-      <StatusCard title="Security Finding" value="未接続"
-        note="継続的なSecurity Findingの集計は未接続です。検出0件とは表示しません。" />
+      {cards.map((item) => <StatusCard key={item.title} {...item} />)}
     </div>
     <p className="admin-overview-footnote" data-testid="operations-overview-environment">
       Server Environment: <strong>{environment}</strong> / Scope: {SCOPE_ID} / Application Version: 未提供
