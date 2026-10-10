@@ -36,10 +36,24 @@ test("overview summarizes bounded authorized signals without claiming complete h
     return route.fulfill({ status: 200, contentType: "application/json",
       body: JSON.stringify({ items, nextCursor: null }) });
   });
-  await page.route("**/api/admin/master-data?**", (route) => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ items: [], environment: "local", asOf: "2026-10-10T00:00:00.000Z", hasMore: false }),
-  }));
+  await page.route("**/api/admin/master-data?**", (route) => {
+    const itemId = new URL(route.request().url()).searchParams.get("itemId");
+    const body = itemId
+      ? {
+        item: { id: itemId, code: "DEMO", version: 2, retiredAt: null },
+        revisions: [{
+          id: itemId + "-r1", revision: 1, label: "Demo",
+          enabled: true, effectiveFrom: "2026-01-01T00:00:00.000Z",
+          effectiveTo: null, displayOrder: 10, parentItemId: null, lifecycle: "current",
+        }],
+        allowedOperations: [], hasMore: false,
+        asOf: "2026-10-10T00:00:00.000Z",
+      }
+      : { items: [], environment: "local", asOf: "2026-10-10T00:00:00.000Z", hasMore: false };
+    return route.fulfill({
+      status: 200, contentType: "application/json", body: JSON.stringify(body),
+    });
+  });
   await page.goto("/admin");
   const summary = page.locator("#admin-operations-overview");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
