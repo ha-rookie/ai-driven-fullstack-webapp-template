@@ -1,0 +1,60 @@
+name: "WORKHUB Showcase 評価・改善点"
+description: "公開Showcaseを見て、迷った点・再利用できそうな部分・使わない理由を具体的に残す"
+title: "[Showcase Feedback] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        WORKHUB Referenceの改善に使う**公開Issue**です。良い評価を前提とせず、使わない理由も歓迎します。
+        GitHubへのログインが必要です。実名、勤務先・顧客名、実案件の機密、Cookie、パスワード、API key、個人データは記載しないでください。
+        このフォームの送信だけでテンプレートの採用・利用を表明したことにはなりません。
+  - type: dropdown
+    id: evaluation_area
+    attributes:
+      label: "どこを確認しましたか？"
+      options:
+        - "公開Showcase（全体）"
+        - "申請・承認 / Workflow"
+        - "権限制御 / Authorization"
+        - "障害・運用 / Outbox"
+        - "Recipe・Source・Test"
+        - "その他"
+    validations:
+      required: true
+  - type: textarea
+    id: observation
+    attributes:
+      label: "実際に何を試し、何が起きましたか？"
+      description: "操作や読んだ箇所など、観測した事実だけを記載してください"
+      placeholder: |
+        例：3分ツアーを進めてSourceを開こうとした。テストに辿り着けず、どれを見ればよいか分からなかった
+    validations:
+      required: true
+  - type: textarea
+    id: reuse
+    attributes:
+      label: "自分の開発で使えそうなもの／使わない理由"
+      description: "コード・Recipe・テスト観点など具体的に。何も使わない場合も理由が参考になります"
+      placeholder: |
+        例：権限制御の設計メモだけ使いたい。自社アーキテクチャとCloudflare Workersが合わず丸ごと採用はしない
+    validations:
+      required: false
+  - type: textarea
+    id: friction
+    attributes:
+      label: "改善するなら、どこを変えたいですか？"
+      description: "迷った点、誤解した部分、不足機能、過剰設計だと思ったところ"
+      placeholder: "例：トップでどこまで実装済みか分かりにくい"
+    validations:
+      required: false
+  - type: dropdown
+    id: next_action
+    attributes:
+      label: "現時点での結論（任意）"
+      options:
+        - "一部のRecipe・コード・テストを参考にしたい"
+        - "実際に再利用した（対象は本文へ記載）"
+        - "興味はあるが、まだ判断できない"
+        - "自分の用途には合わない"
+    validations:
+      required: false
