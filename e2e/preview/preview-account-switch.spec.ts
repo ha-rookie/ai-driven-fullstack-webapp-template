@@ -7,6 +7,9 @@ import { expect, test, type Page } from "@playwright/test";
  */
 const previewOrigin = "https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev";
 
+// Authenticated session evidence must not upload screenshots, traces or video.
+test.use({ trace: "off", screenshot: "off", video: "off" });
+
 const choosePersonaAndLogin = async (page: Page, personaName: string, headingName: RegExp) => {
   await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
   const dialog = page.getByRole("dialog", { name: "デモユーザを選ぶ" });
