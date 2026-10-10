@@ -43,6 +43,18 @@ test("overview summarizes bounded authorized signals without claiming complete h
         updatedAt: "2026-10-10T00:00:00.000Z", failureCode: "other" }],
     }),
   }));
+  await page.route("**/api/admin/integrations/outbox/safe-1?**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+      outbox: { outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
+        availableAt: "2026-10-09T00:00:00.000Z", lastAttemptAt: "2026-10-09T00:00:00.000Z",
+        deliveredAt: null, deadLetteredAt: "2026-10-10T00:00:00.000Z",
+        updatedAt: "2026-10-10T00:00:00.000Z", version: 3, failureCode: "other" },
+      decision: { nextAction: "reconcile_external_first", providerOutcome: "unverified",
+        manualRetryAllowed: false },
+    }),
+  }));
   await page.route("**/api/admin/audit?**", (route) => {
     const query = new URL(route.request().url()).searchParams;
     const items = query.get("outcome") === "failure"
@@ -85,6 +97,13 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(card(page, "外部連携Outbox").locator("strong")).toHaveText("要確認 3 / 再試行待ち 10 件（環境内の現在状態）");
   await expect(card(page, "外部連携Outbox")).toHaveAttribute("data-coverage", "environment_current");
   await expect(page.locator("#admin-integration-outbox")).toContainText("safe-1");
+  await page.locator("#admin-integration-outbox").getByRole("button", { name: "状態と対応方針を確認" }).click();
+  const detail = page.getByTestId("outbox-detail");
+  await expect(detail).toContainText("外部サービス側の配送結果を照合してください");
+  await expect(detail).toContainText("Version: 3");
+  await expect(detail).toContainText("外部配送結果：未照合");
+  await expect(page.locator("#admin-integration-outbox").getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+
   await expect(page.locator("#admin-integration-outbox")).not.toContainText("sensitive-provider-credential");
   await expect(card(page, "Metrics / Alert").locator("strong")).toHaveText("未接続");
   await expect(summary.getByTestId("operations-overview-environment")).toContainText("Server Environment: local");
