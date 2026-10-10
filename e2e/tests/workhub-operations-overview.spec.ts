@@ -153,10 +153,17 @@ test("overview refuses to combine a job count from a different environment", asy
     status: 200, contentType: "application/json",
     body: JSON.stringify({ items: [], nextCursor: null }),
   }));
-  await page.route("**/api/admin/master-data?**", (route) => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ environment: "local", asOf: "2026-10-10T00:00:00.000Z", items: [] }),
-  }));
+  await page.route("**/api/admin/master-data?**", (route) => {
+    const itemId = new URL(route.request().url()).searchParams.get("itemId");
+    const body = itemId ? {
+      item: { id: itemId, code: "DEMO", version: 2, retiredAt: null },
+      revisions: [{ id: itemId + "-r1", revision: 1, label: "Demo",
+        enabled: true, effectiveFrom: "2026-01-01T00:00:00.000Z", effectiveTo: null,
+        displayOrder: 10, parentItemId: null, lifecycle: "current" }],
+      allowedOperations: [], hasMore: false, asOf: "2026-10-10T00:00:00.000Z",
+    } : { environment: "local", asOf: "2026-10-10T00:00:00.000Z", items: [], hasMore: false };
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
   await page.goto("/admin");
   await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("環境情報が不一致");
   await expect(card(page, "失敗・Dead Letterジョブ")).toHaveAttribute("data-source-state", "unknown");
