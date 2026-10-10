@@ -36,6 +36,23 @@ interface MasterDetailResponse {
   readonly hasMore: boolean;
   readonly asOf: string;
 }
+type RevisionFilter = "all" | "active" | "future" | "history";
+type RevisionLifecycle = MasterRevision["lifecycle"];
+
+const lifecycleLabel: Record<RevisionLifecycle, string> = {
+  current: "現在有効",
+  disabled: "現在無効",
+  future: "将来予定",
+  expired: "期間終了",
+  retired: "廃止済み",
+};
+
+const matchesRevisionFilter = (lifecycle: RevisionLifecycle, filter: RevisionFilter): boolean =>
+  filter === "all"
+  || (filter === "active" && (lifecycle === "current" || lifecycle === "disabled"))
+  || (filter === "future" && lifecycle === "future")
+  || (filter === "history" && (lifecycle === "expired" || lifecycle === "retired"));
+
 type LoadState<T> =
   | { readonly kind: "loading" }
   | { readonly kind: "ready"; readonly data: T }
@@ -55,6 +72,7 @@ export default function MasterDataViewer({
   const [list, setList] = useState<LoadState<MasterListResponse>>({ kind: "loading" });
   const [detail, setDetail] = useState<LoadState<MasterDetailResponse>>({ kind: "loading" });
   const [selectedId, setSelectedId] = useState("");
+  const [revisionFilter, setRevisionFilter] = useState<RevisionFilter>("all");
   const currentItemId = useRef("");
   const detailRequest = useRef(0);
   const listRequest = useRef(0);
@@ -64,6 +82,7 @@ export default function MasterDataViewer({
     currentItemId.current = itemId;
     onSelectionChange?.(itemId);
     setSelectedId(itemId);
+    setRevisionFilter("all"); // A filter on the previous item must not hide this item's revisions.
     setDetail({ kind: "loading" });
     try {
       const response = await fetch(listUrl + "&itemId=" + encodeURIComponent(itemId), {
@@ -128,6 +147,15 @@ export default function MasterDataViewer({
   // never overrides Worker scope, role, target allowlist or Production gating.
   const canShowOperation = selectedOperation !== undefined && detail.kind === "ready"
     && detail.data.allowedOperations?.includes(selectedOperation.requiredCapability) === true;
+  const revisions = detail.kind === "ready" ? detail.data.revisions : [];
+  const visibleRevisions = revisions.filter((revision) =>
+    matchesRevisionFilter(revision.lifecycle, revisionFilter));
+  const activeCount = revisions.filter((revision) =>
+    matchesRevisionFilter(revision.lifecycle, "active")).length;
+  const futureCount = revisions.filter((revision) =>
+    matchesRevisionFilter(revision.lifecycle, "future")).length;
+  const historyCount = revisions.filter((revision) =>
+    matchesRevisionFilter(revision.lifecycle, "history")).length;
 
   return <section className="admin-audit-panel" id="admin-master-data" aria-labelledby="admin-master-title">
     <div className="admin-audit-heading">
@@ -182,11 +210,17 @@ export default function MasterDataViewer({
         <span>{detail.requestId ? "Request ID: " + detail.requestId : "再選択してください"}</span>
       </div>}
       {detail.kind === "ready" && <>
-        <p className="admin-audit-note">Code: <strong>{detail.data.item.code}</strong> / Item version: {detail.data.item.version} / Retired: {detail.data.item.retiredAt ? dateTime(detail.data.item.retiredAt) : "NO"}</p>
+        <p className="admin-audit-note">Code: <strong>{detail.data.item.code}</strong> / Item version: {detail.data.item.version} / 廃止状態: <strong data-testid="master-retirement-status">{detail.data.item.retiredAt === null
+          ? "未廃止"
+          : detail.data.item.retiredAt <= detail.data.asOf ? "廃止済み" : "廃止予定"}</strong>
+          {detail.data.item.retiredAt !== null ? " (" + dateTime(detail.data.item.retiredAt) + ")" : ""}
+        </p>
         <nav className="admin-master-actions" aria-label="選択したマスタの操作導線">
           <strong>この項目の操作導線</strong>
           {detail.data.item.retiredAt !== null
-            ? <p>廃止済みのため新たな操作は案内しません。履歴は参照できます。</p>
+            ? <p>{detail.data.item.retiredAt <= detail.data.asOf
+              ? "廃止済みのため新たな操作は案内しません。履歴は参照できます。"
+              : "廃止予定のため操作は案内しません。予定日時と履歴を確認できます。"}</p>
             : canShowOperation && selectedOperation
               ? <a className="admin-section-link" href={selectedOperation.href}>
                   {selectedOperation.label} →
@@ -196,22 +230,41 @@ export default function MasterDataViewer({
                 : <p>この項目に設定された変更操作はありません。参照のみ可能です。</p>}
           <small>Project側の操作設定と、サーバーが返した対象・権限情報の両方が一致した場合のみ操作導線を表示します。下見・実行時も再認可され、Productionへの変更は許可されません。</small>
         </nav>
-        {detail.data.revisions.length === 0
+        <p className="admin-audit-note" data-testid="master-revision-summary">
+          取得したRevision：{revisions.length} 件 / 現在期間（有効・無効）：{activeCount} 件
+          / 将来予定：{futureCount} 件 / 過去・廃止：{historyCount} 件
+          （判定日時：{dateTime(detail.data.asOf)}）
+        </p>
+        {revisions.length > 0 && <div className="admin-audit-filters">
+          <label htmlFor="admin-master-revision-filter">Revisionの表示
+            <select id="admin-master-revision-filter" value={revisionFilter}
+              onChange={(event) => setRevisionFilter(event.target.value as RevisionFilter)}>
+              <option value="all">すべて（{revisions.length}件）</option>
+              <option value="active">現在期間・無効（{activeCount}件）</option>
+              <option value="future">将来予定（{futureCount}件）</option>
+              <option value="history">過去・廃止（{historyCount}件）</option>
+            </select>
+          </label>
+          <p className="admin-audit-note">この絞り込みは取得済みの最新{revisions.length}件にのみ適用されます。</p>
+        </div>}
+        {revisions.length === 0
           ? <div className="admin-audit-state">Revision履歴はありません</div>
-          : <div className="admin-audit-table-wrap">
-              <table className="admin-audit-table">
-                <thead><tr><th>Revision</th><th>表示名</th><th>状態</th><th>有効開始</th><th>有効終了（含まない）</th><th>表示順</th></tr></thead>
-                <tbody>{detail.data.revisions.map((revision) => <tr key={revision.id}>
-                  <td>{revision.revision}</td>
-                  <td><strong>{revision.label}</strong><small>{revision.id}</small></td>
-                  <td><strong>{revision.lifecycle}</strong><small>{revision.enabled ? "enabled" : "disabled"}</small></td>
-                  <td>{dateTime(revision.effectiveFrom)}</td>
-                  <td>{revision.effectiveTo ? dateTime(revision.effectiveTo) : "open-ended"}</td>
-                  <td>{revision.displayOrder}</td>
-                </tr>)}</tbody>
-              </table>
-            </div>}
-        {detail.data.hasMore && <p className="admin-audit-note">Revision履歴は最新50件のみ表示しています。</p>}
+          : visibleRevisions.length === 0
+            ? <div className="admin-audit-state" role="status">条件に一致するRevisionはありません（取得済み履歴の範囲）</div>
+            : <div className="admin-audit-table-wrap">
+                <table className="admin-audit-table">
+                  <thead><tr><th>Revision</th><th>表示名</th><th>状態</th><th>有効開始</th><th>有効終了（含まない）</th><th>表示順</th></tr></thead>
+                  <tbody>{visibleRevisions.map((revision) => <tr key={revision.id}>
+                    <td>{revision.revision}</td>
+                    <td><strong>{revision.label}</strong><small>{revision.id}</small></td>
+                    <td><strong>{lifecycleLabel[revision.lifecycle]}</strong><small>{revision.enabled ? "enabled" : "disabled"}</small></td>
+                    <td>{dateTime(revision.effectiveFrom)}</td>
+                    <td>{revision.effectiveTo ? dateTime(revision.effectiveTo) : "open-ended"}</td>
+                    <td>{revision.displayOrder}</td>
+                  </tr>)}</tbody>
+                </table>
+              </div>}
+        {detail.data.hasMore && <p className="admin-audit-note">Revision履歴は最新50件のみ表示しています。表示件数・絞り込み件数は全履歴の件数ではありません。</p>}
       </>}
     </>}
   </section>;
