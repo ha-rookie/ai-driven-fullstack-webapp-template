@@ -257,7 +257,9 @@ test("two competing cutovers on the same D1-style store leave exactly one revisi
   const savedRevisions = sqlite.prepare(
     "SELECT id, label FROM master_revisions WHERE id IN ('cutover-a', 'cutover-b')",
   ).all() as { id: string; label: string }[];
-  assert.deepEqual(savedRevisions, [{ id: winner.revision.id, label: winner.revision.label }]);
+  assert.equal(savedRevisions.length, 1);
+  assert.equal(savedRevisions[0].id, winner.revision.id);
+  assert.equal(savedRevisions[0].label, winner.revision.label);
   assert.equal(sqlite.prepare("SELECT id FROM master_revisions WHERE id = ?")
     .get(loser.revision.id), undefined);
 
