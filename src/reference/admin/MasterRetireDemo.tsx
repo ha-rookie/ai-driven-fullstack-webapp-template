@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import type { MasterTarget } from "./master-admin-operation-config";
+import { classifyMasterPreviewReadiness, masterPreviewReadinessMessage } from "./master-preview-readiness";
 
 const base = "/api/admin/master-operations/retire";
 interface RetireProjection {
@@ -20,7 +21,7 @@ interface RetirePreview {
 type ViewState =
   | { readonly kind: "loading" }
   | { readonly kind: "ready"; readonly preview: RetirePreview }
-  | { readonly kind: "error"; readonly requestId: string | null };
+  | { readonly kind: "error"; readonly requestId: string | null; readonly httpStatus: number | null };
 
 export default function MasterRetireDemo({ target }: { readonly target: MasterTarget }) {
   const params = new URLSearchParams({ scopeId: target.scopeId, itemId: target.itemId });
@@ -38,23 +39,25 @@ export default function MasterRetireDemo({ target }: { readonly target: MasterTa
       });
       const detailResponse = await fetch("/api/admin/master-data?" + detailParams.toString());
       if (!detailResponse.ok) {
-        setState({ kind: "error", requestId: detailResponse.headers.get("x-request-id") });
+        setState({ kind: "error", requestId: detailResponse.headers.get("x-request-id"), httpStatus: detailResponse.status });
         return;
       }
       const detail = await detailResponse.json() as { readonly item: RetireProjection };
       const response = await fetch(base + "/preview?" + params + "&expectedVersion=" + detail.item.version);
       if (!response.ok) {
-        setState({ kind: "error", requestId: response.headers.get("x-request-id") });
+        setState({ kind: "error", requestId: response.headers.get("x-request-id"), httpStatus: response.status });
         return;
       }
       setState({ kind: "ready", preview: await response.json() as RetirePreview });
     } catch {
-      setState({ kind: "error", requestId: null });
+      setState({ kind: "error", requestId: null, httpStatus: null });
     }
   };
 
   const execute = async () => {
-    if (state.kind !== "ready" || !state.preview.available || !reason.trim() || !confirmed || busy) return;
+    if (state.kind !== "ready"
+      || classifyMasterPreviewReadiness(200, state.preview) !== "reviewable"
+      || !reason.trim() || !confirmed || busy) return;
     setBusy(true);
     setStatus("");
     try {
@@ -112,7 +115,7 @@ export default function MasterRetireDemo({ target }: { readonly target: MasterTa
     {state.kind === "loading" && <div className="admin-audit-state" role="status">廃止対象を確認しています…</div>}
     {state.kind === "error" && <div className="admin-audit-state is-error" role="alert">
       <strong>廃止操作は利用できません</strong>
-      <span>Previewデモ専用です。{state.requestId ? "Request ID: " + state.requestId : ""}</span>
+      <span>{masterPreviewReadinessMessage(classifyMasterPreviewReadiness(state.httpStatus))} {state.requestId ? "Request ID: " + state.requestId : ""}</span>
     </div>}
     {state.kind === "ready" && <div className="admin-retry-panel">
       <div>
@@ -120,8 +123,11 @@ export default function MasterRetireDemo({ target }: { readonly target: MasterTa
         <p>対象: <strong>{state.preview.item.code}</strong> / Version: <strong>{state.preview.item.version}</strong></p>
         <p>Risk: <strong>{state.preview.preview.risk}</strong> / Policy: <strong>{state.preview.preview.policyDecision}</strong></p>
         <p data-testid="master-retired-state">Retired: <strong>{state.preview.item.retiredAt ? "YES" : "NO"}</strong></p>
+        <p role="status" data-testid="master-retire-readiness">
+          {masterPreviewReadinessMessage(classifyMasterPreviewReadiness(200, state.preview))}
+        </p>
       </div>
-      {state.preview.available && state.preview.preview.policyDecision === "REQUIRE_REASON"
+      {classifyMasterPreviewReadiness(200, state.preview) === "reviewable"
         ? <form onSubmit={(event) => { event.preventDefault(); void execute(); }}>
             <MasterOperationConfirmationFields
               reason={reason} onReasonChange={setReason} reasonLabel="廃止理由"

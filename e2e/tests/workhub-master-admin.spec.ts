@@ -148,3 +148,30 @@ test("Project schedule and order links navigate to their exact target panels", a
     await expect(page.locator(`[id="${panelId}"]`)).toBeVisible();
   }
 });
+
+
+test("server Preview rejection or outage never enables a Master mutation", async ({ page }) => {
+  const panel = await logInAndMockReadOnlyMasterData(page);
+  let httpStatus = 403;
+  let posts = 0;
+  await page.route("**/api/admin/master-operations/schedule/preview?**", async (route) => {
+    await route.fulfill({ status: httpStatus, contentType: "application/json",
+      body: JSON.stringify({ error: { code: "preview_not_available" } }) });
+  });
+  await page.route("**/api/admin/master-operations/schedule/execute?**", async (route) => {
+    posts += 1;
+    await route.abort();
+  });
+  for (const [status, expected] of [
+    [403, "サーバーが操作を許可しませんでした"],
+    [404, "サーバーで対象操作を確認できません"],
+    [503, "サーバーの操作可否を確認できません"],
+  ] as const) {
+    httpStatus = status;
+    await panel.getByRole("button", { name: "状態変更を下見" }).click();
+    await expect(panel.getByTestId("master-availability-readiness")).toContainText(expected);
+    await expect(panel.getByRole("button", { name: "状態変更を予約" })).toHaveCount(0);
+    await expect(panel.getByTestId("master-availability-preview")).toHaveCount(0);
+  }
+  expect(posts).toBe(0);
+});

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { classifyMasterOperationOutcome, masterOperationRecoveryMessage, type MasterOperationReceipt } from "./master-operation-outcome";
 import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import type { MasterAvailabilityTarget } from "./master-admin-operation-config";
+import { classifyMasterPreviewReadiness, masterPreviewReadinessMessage, type MasterPreviewReadiness } from "./master-preview-readiness";
 const BASE = "/api/admin/master-operations/schedule";
 const CUTOFF = "2027-04-01T00:00:00.000Z";
 
@@ -30,6 +31,7 @@ export default function MasterAvailabilityDemo({ requestedItemId, targets }: {
   const [itemId, setItemId] = useState<string>(targets[0].itemId);
   const [detail, setDetail] = useState<MasterDetail | null>(null);
   const [preview, setPreview] = useState<MasterPreview | null>(null);
+  const [previewReadiness, setPreviewReadiness] = useState<MasterPreviewReadiness | null>(null);
   const [cutover, setCutover] = useState(CUTOFF);
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -41,6 +43,7 @@ export default function MasterAvailabilityDemo({ requestedItemId, targets }: {
   const invalidatePreview = () => {
     ++previewGeneration.current;
     setPreview(null);
+    setPreviewReadiness(null);
     setConfirmed(false);
   };
   const target = targets.find((candidate) => candidate.itemId === itemId) ?? targets[0];
@@ -93,19 +96,28 @@ export default function MasterAvailabilityDemo({ requestedItemId, targets }: {
       q.set("enabled", String(target.enabled));
       q.set("effectiveFrom", cutover);
       const response = await fetch(BASE + "/preview?" + q);
-      if (!response.ok) throw new Error("preview_failed");
+      if (!response.ok) {
+        if (generation === previewGeneration.current) {
+          setPreviewReadiness(classifyMasterPreviewReadiness(response.status));
+        }
+        return;
+      }
       const result = await response.json() as MasterPreview;
-      if (generation === previewGeneration.current) setPreview(result);
+      if (generation === previewGeneration.current) {
+        setPreview(result);
+        setPreviewReadiness(classifyMasterPreviewReadiness(response.status, result));
+      }
     } catch {
       if (generation === previewGeneration.current) {
-        setMessage("下見に失敗しました。日時と権限を確認してください");
+        setPreviewReadiness(classifyMasterPreviewReadiness(null));
       }
     } finally {
       setBusy(false);
     }
   };
   const execute = async () => {
-    if (!detail || detail.item.id !== itemId || !current || !preview?.available || !preview.priorRevisionId
+    if (!detail || detail.item.id !== itemId || !current || previewReadiness !== "reviewable"
+      || !preview?.available || !preview.priorRevisionId
       || preview.enabled !== target.enabled || !confirmed || !reason.trim() || busy) return;
     setBusy(true);
     setMessage("");
@@ -186,12 +198,15 @@ export default function MasterAvailabilityDemo({ requestedItemId, targets }: {
         <MasterFutureDateField label="切替開始日時（ISO UTC）" value={cutover}
           placeholder={CUTOFF} onChange={(value) => { setCutover(value); invalidatePreview(); }} />
         <button type="button" onClick={() => { void inspect(); }} disabled={busy || !current}>状態変更を下見</button>
+        {previewReadiness && <p role="status" data-testid="master-availability-readiness">
+          {masterPreviewReadinessMessage(previewReadiness)}
+        </p>}
         {preview && <div className="admin-retry-panel">
           <p data-testid="master-availability-preview">
             {String(preview.currentEnabled)} → {String(preview.enabled)} ／
             Risk: {preview.preview.risk} ／ Policy: {preview.preview.policyDecision}
           </p>
-          {preview.available && preview.preview.policyDecision === "REQUIRE_REASON"
+          {previewReadiness === "reviewable" && preview.available && preview.preview.policyDecision === "REQUIRE_REASON"
             ? <form onSubmit={(event) => { event.preventDefault(); void execute(); }}>
                 <MasterOperationConfirmationFields
                   reason={reason} onReasonChange={setReason} reasonLabel="状態変更の理由"
