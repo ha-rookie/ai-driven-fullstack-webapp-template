@@ -1,9 +1,9 @@
 import {
   WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID,
   WORKHUB_ORDER_DEMO_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID,
-  WORKHUB_AVAILABILITY_ENABLE_ITEM_ID,
+  WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, WORKHUB_OFFICE_MASTER_KEY,
 } from "../workhub/travel-request";
-import { buildMasterOperationLinks, type MasterProjectOperationConfig } from "./master-admin-operation-config";
+import { buildMasterOperationLinks, type MasterProjectOperationConfig, type MasterViewDefinition } from "./master-admin-operation-config";
 
 /**
  * WORKHUB is a reference Project: its declared targets and labels are
@@ -11,7 +11,7 @@ import { buildMasterOperationLinks, type MasterProjectOperationConfig } from "./
  * The server enforces an independent, strict, project-approved allowlist.
  */
 const scopeId = "workhub-company";
-const masterKey = "workhub.office";
+const masterKey = WORKHUB_OFFICE_MASTER_KEY;
 const target = (itemId: string) => ({ scopeId, masterKey, itemId });
 const projectOperations: MasterProjectOperationConfig = {
   scopeId, masterKey,
@@ -28,8 +28,17 @@ const projectOperations: MasterProjectOperationConfig = {
   ],
 };
 
-/** The same Project declaration configures navigation AND the bounded forms. */
+/** Only the server-approved WORKHUB office Definition is exposed for now.
+ * Adding a UI definition alone never extends the Worker's masterKeys allowlist.
+ */
+const definitions: readonly [MasterViewDefinition, ...MasterViewDefinition[]] = [{
+  masterKey,
+  label: "拠点マスタ（WORKHUB）",
+  operations: buildMasterOperationLinks(projectOperations),
+}];
+
+/** The same Project declaration configures read-only navigation AND bounded forms. */
 export const WORKHUB_MASTER_ADMIN_CONFIG = {
   ...projectOperations,
-  operations: buildMasterOperationLinks(projectOperations),
+  definitions,
 };
