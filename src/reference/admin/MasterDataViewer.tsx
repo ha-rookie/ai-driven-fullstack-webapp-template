@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { MasterOperationLink } from "./master-admin-operation-config";
+import type { MasterViewDefinition } from "./master-admin-operation-config";
 interface MasterDataViewerProps {
   readonly scopeId: string;
-  readonly masterKey: string;
-  readonly operations: Readonly<Record<string, MasterOperationLink>>;
+  readonly definitions: readonly [MasterViewDefinition, ...MasterViewDefinition[]];
   readonly onSelectionChange?: (itemId: string | null) => void;
 }
 
@@ -44,8 +43,11 @@ type LoadState<T> =
 const dateTime = (value: string): string => new Date(value).toLocaleString("ja-JP");
 
 export default function MasterDataViewer({
-  scopeId, masterKey, operations, onSelectionChange,
+  scopeId, definitions, onSelectionChange,
 }: MasterDataViewerProps) {
+  const [requestedMasterKey, setRequestedMasterKey] = useState(definitions[0].masterKey);
+  const definition = definitions.find((entry) => entry.masterKey === requestedMasterKey) ?? definitions[0];
+  const masterKey = definition.masterKey;
   const listUrl = "/api/admin/master-data?" + new URLSearchParams({
     scopeId, masterKey,
   }).toString();
@@ -54,6 +56,7 @@ export default function MasterDataViewer({
   const [selectedId, setSelectedId] = useState("");
   const currentItemId = useRef("");
   const detailRequest = useRef(0);
+  const listRequest = useRef(0);
 
   const loadDetail = async (itemId: string) => {
     const request = ++detailRequest.current;
@@ -78,16 +81,19 @@ export default function MasterDataViewer({
   };
 
   const loadList = async () => {
+    const request = ++listRequest.current;
     ++detailRequest.current; // invalidate an older detail response before refreshing
     setList({ kind: "loading" });
     setDetail({ kind: "loading" });
     try {
       const response = await fetch(listUrl, { headers: { accept: "application/json" } });
+      if (request !== listRequest.current) return;
       if (!response.ok) {
         setList({ kind: "error", requestId: response.headers.get("x-request-id") });
         return;
       }
       const data = await response.json() as MasterListResponse;
+      if (request !== listRequest.current) return;
       setList({ kind: "ready", data });
       if (data.items.length > 0) {
         const selected = data.items.find((item) => item.id === currentItemId.current);
@@ -98,7 +104,7 @@ export default function MasterDataViewer({
         setSelectedId("");
       }
     } catch {
-      setList({ kind: "error", requestId: null });
+      if (request === listRequest.current) setList({ kind: "error", requestId: null });
     }
   };
 
@@ -106,7 +112,17 @@ export default function MasterDataViewer({
     currentItemId.current = "";
     onSelectionChange?.(null);
     void loadList();
+    return () => {
+      ++listRequest.current;
+      ++detailRequest.current;
+    };
   }, [listUrl]);
+
+  // A rendered item is linked only when this Definition explicitly declares it.
+  const selectedOperation = detail.kind === "ready"
+    && Object.prototype.hasOwnProperty.call(definition.operations, detail.data.item.id)
+    ? definition.operations[detail.data.item.id]
+    : undefined;
 
   return <section className="admin-audit-panel" id="admin-master-data" aria-labelledby="admin-master-title">
     <div className="admin-audit-heading">
@@ -120,6 +136,18 @@ export default function MasterDataViewer({
         <strong>{scopeId}</strong>
         <strong>{masterKey}</strong>
       </div>
+    </div>
+    <div className="admin-audit-filters">
+      <label htmlFor="admin-master-definition-select">マスタ定義
+        <select id="admin-master-definition-select" value={masterKey}
+          disabled={definitions.length === 1}
+          onChange={(event) => setRequestedMasterKey(event.target.value)}>
+          {definitions.map((entry) => <option key={entry.masterKey} value={entry.masterKey}>
+            {entry.label}
+          </option>)}
+        </select>
+      </label>
+      <p className="admin-audit-note">Projectに設定された参照定義のみ表示します。参照可否・変更権限はAPI側で判定されます。</p>
     </div>
     <div className="admin-retry-actions">
       <button type="button" disabled={list.kind === "loading"} onClick={() => { void loadList(); }}>
@@ -154,9 +182,9 @@ export default function MasterDataViewer({
           <strong>この項目の操作導線</strong>
           {detail.data.item.retiredAt !== null
             ? <p>廃止済みのため新たな操作は案内しません。履歴は参照できます。</p>
-            : operations[detail.data.item.id]
-              ? <a className="admin-section-link" href={operations[detail.data.item.id].href}>
-                  {operations[detail.data.item.id].label} →
+            : selectedOperation
+              ? <a className="admin-section-link" href={selectedOperation.href}>
+                  {selectedOperation.label} →
                 </a>
               : <p>この項目に設定された変更操作はありません。参照のみ可能です。</p>}
           <small>表示している操作導線はProject側の構成情報です。実行可否はサーバー側で再認可され、Productionへの変更は許可されません。</small>
