@@ -46,6 +46,17 @@ test("public WORKHUB Showcase opens at pinned Preview origin on desktop and mobi
     .toHaveAttribute("href", /\/src\/reference\/workhub\/travel-request\/service\.ts$/u);
   await expect(detail.getByRole("link", { name: /検証を見る/u }))
     .toHaveAttribute("href", /\/e2e\/tests\/workhub-travel-request\.spec\.ts$/u);
+  // #475 / PR #576: verify the deployed alternate-domain evidence path,
+  // without opening GitHub or issuing any external request.
+  const reuseEvidence = detail.getByRole("link", { name: /別業務での再利用例/u });
+  await expect(reuseEvidence).toBeVisible();
+  await expect(reuseEvidence).toHaveAttribute(
+    "href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/docs/evaluation/VAL-INTERNAL-005_PURCHASE_REUSE.md",
+  );
+  await expect(reuseEvidence).toContainText("内部検証と未実装の境界");
+  await expect(reuseEvidence).toHaveAttribute("target", "_blank");
+  await expect(reuseEvidence).toHaveAttribute("rel", "noopener noreferrer");
+
 
   await picker.getByRole("button", { name: /権限制御を組み込む/u }).click();
   await expect(picker.getByRole("button", { name: /権限制御を組み込む/u }))
@@ -64,6 +75,19 @@ test("public WORKHUB Showcase opens at pinned Preview origin on desktop and mobi
     .toHaveAttribute("href", /\/docs\/recipes\/INTEGRATION_EVENT_OUTBOX_RECIPE\.md$/u);
   await expect(detail.getByRole("link", { name: /関連E2Eを見る/u }))
     .toHaveAttribute("href", /\/e2e\/tests\/workhub-operations-overview\.spec\.ts$/u);
+
+
+  // #475 / PR #575: only inspect the opt-in public Issue Form link.
+  // Do not navigate to external hosts or submit feedback.
+  const feedback = page.getByRole("link", { name: "気づいたことを報告する ↗" });
+  await expect(feedback).toBeVisible();
+  await expect(feedback).toHaveAttribute(
+    "href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/new?template=showcase-feedback.yml",
+  );
+  await expect(feedback).toHaveAttribute("target", "_blank");
+  await expect(feedback).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.locator("#showcase-feedback")).toContainText("公開Issue");
+  await expect(page.locator("#showcase-feedback")).toContainText("機密情報や個人情報は入力しないでください");
 
   const overflow = await page.evaluate(() => ({
     content: document.documentElement.scrollWidth,
