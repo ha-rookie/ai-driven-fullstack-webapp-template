@@ -19,6 +19,8 @@ React + TypeScript + Vite + Cloudflare Workers + D1 を基盤に、業務Webア�
 
 > **評価環境の範囲**：Previewは架空データによる技術評価用です。Productionの動作保証や完成した業務製品を意味しません。Showcaseは読むだけで業務データを変更しません。WORKHUBへの実ログイン・申請操作ではPreviewのセッション・デモ業務データが変わることがあります。実データや秘密情報は入力しないでください。
 
+**利用者からの改善点を募集中:** [Showcaseについて具体的に報告する（GitHub Issue）](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/new?template=showcase-feedback.yml)。見つけにくかった箇所、使わない理由、再利用したいRecipe・テストなどを共有できます。GitHubへのログインが必要で、投稿は公開されます。個人情報・企業や案件の機密は入力しないでください。
+
 
 - [WORKHUB Showcase / 3分ガイド](#workhub-showcase--evaluation-journey)
 - [Quick Start / Local development](#local-development)
