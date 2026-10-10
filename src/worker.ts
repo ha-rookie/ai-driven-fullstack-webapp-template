@@ -15,7 +15,12 @@ import {
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
 import { createWorkhubJobRecoveryRegistry } from "./reference/workhub/job-recovery";
-import { handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi, handleMasterDataViewerApi, handleMasterRetireApi, handleMasterScheduleApi } from "./worker/administration";
+import {
+  handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi,
+  handleMasterDataViewerApi, handleMasterRetireApi, handleMasterScheduleApi,
+  MASTER_SCHEDULE_ACTION, MASTER_SCHEDULE_DEFAULT_POLICY,
+  MASTER_RETIRE_ACTION, MASTER_RETIRE_DEFAULT_POLICY,
+} from "./worker/administration";
 import { WORKHUB_OFFICE_MASTER_DEFINITION, WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_AUDIT_RETIRE_ITEM_ID, WORKHUB_AUDIT_SCHEDULE_ITEM_ID, WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID } from "./reference/workhub/travel-request";
 import { handleLiveness, handleReadiness } from "./worker/health";
 import {
@@ -45,6 +50,45 @@ interface Env {
   /** Set explicitly to local/test/preview/production for trustworthy metric environment labels. */
   RUNTIME_ENVIRONMENT?: string;
 }
+
+// Server-owned source of truth for mutation allowlists and disclosure.
+// Presentation configuration in AdminPortal MUST NOT grant any operation.
+const workhubMasterScheduleOptions = {
+  scopeId: "workhub-company",
+  definition: WORKHUB_OFFICE_MASTER_DEFINITION,
+  allowedItemIds: [
+    WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_AUDIT_SCHEDULE_ITEM_ID,
+    WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID,
+  ],
+  orderChangeItemIds: [WORKHUB_ORDER_DEMO_ITEM_ID],
+  availabilityTransitions: {
+    [WORKHUB_AVAILABILITY_DISABLE_ITEM_ID]: false,
+    [WORKHUB_AVAILABILITY_ENABLE_ITEM_ID]: true,
+  },
+  authorizationPolicy: MASTER_SCHEDULE_DEFAULT_POLICY,
+};
+const workhubMasterRetireOptions = {
+  scopeId: "workhub-company",
+  definition: WORKHUB_OFFICE_MASTER_DEFINITION,
+  allowedItemIds: [WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_AUDIT_RETIRE_ITEM_ID],
+  authorizationPolicy: MASTER_RETIRE_DEFAULT_POLICY,
+};
+const workhubMasterViewerOptions = {
+  scopeId: "workhub-company",
+  masterKeys: [WORKHUB_OFFICE_MASTER_DEFINITION.key],
+  operations: [
+    {
+      kind: "schedule" as const, masterKey: workhubMasterScheduleOptions.definition.key,
+      allowedItemIds: workhubMasterScheduleOptions.allowedItemIds,
+      action: MASTER_SCHEDULE_ACTION, authorizationPolicy: workhubMasterScheduleOptions.authorizationPolicy,
+    },
+    {
+      kind: "retire" as const, masterKey: workhubMasterRetireOptions.definition.key,
+      allowedItemIds: workhubMasterRetireOptions.allowedItemIds,
+      action: MASTER_RETIRE_ACTION, authorizationPolicy: workhubMasterRetireOptions.authorizationPolicy,
+    },
+  ],
+};
 
 type RequestAuditFields = Omit<AuditEvent, "requestId" | "method" | "path">;
 
@@ -215,19 +259,7 @@ export default {
       request,
       env,
       requestContext.requestId,
-      {
-        scopeId: "workhub-company",
-        definition: WORKHUB_OFFICE_MASTER_DEFINITION,
-        allowedItemIds: [
-          WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_AUDIT_SCHEDULE_ITEM_ID,
-          WORKHUB_AVAILABILITY_DISABLE_ITEM_ID, WORKHUB_AVAILABILITY_ENABLE_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID,
-        ],
-        orderChangeItemIds: [WORKHUB_ORDER_DEMO_ITEM_ID],
-        availabilityTransitions: {
-          [WORKHUB_AVAILABILITY_DISABLE_ITEM_ID]: false,
-          [WORKHUB_AVAILABILITY_ENABLE_ITEM_ID]: true,
-        },
-      },
+      workhubMasterScheduleOptions,
     );
     if (masterScheduleResponse) return api(masterScheduleResponse);
 
@@ -235,11 +267,7 @@ export default {
       request,
       env,
       requestContext.requestId,
-      {
-        scopeId: "workhub-company",
-        definition: WORKHUB_OFFICE_MASTER_DEFINITION,
-        allowedItemIds: [WORKHUB_RETIRE_DEMO_ITEM_ID, WORKHUB_AUDIT_RETIRE_ITEM_ID],
-      },
+      workhubMasterRetireOptions,
     );
     if (masterRetireResponse) return api(masterRetireResponse);
 
@@ -247,7 +275,7 @@ export default {
       request,
       env,
       requestContext.requestId,
-      { scopeId: "workhub-company", masterKeys: [WORKHUB_OFFICE_MASTER_DEFINITION.key] },
+      workhubMasterViewerOptions,
     );
     if (masterDataResponse) return api(masterDataResponse);
 
