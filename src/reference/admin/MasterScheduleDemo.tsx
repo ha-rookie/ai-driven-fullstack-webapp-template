@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MasterFutureDateField, MasterOperationConfirmationFields } from "./MasterOperationFormFields";
 import { WORKHUB_SCHEDULE_DEMO_ITEM_ID, WORKHUB_ORDER_DEMO_ITEM_ID } from "../workhub/travel-request";
 
 const path = "/api/admin/master-operations/schedule";
@@ -161,10 +162,9 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
         </table>
       </div>
       <form onSubmit={(event) => { event.preventDefault(); void inspect(); }}>
-        <label>改訂開始日時（ISO 8601 / UTC）
-          <input value={effectiveFrom} onChange={(event) => { setEffectiveFrom(event.target.value); setPreview(null); }}
-            placeholder="2027-04-01T00:00:00.000Z" required />
-        </label>
+        <MasterFutureDateField label="改訂開始日時（ISO 8601 / UTC）"
+          value={effectiveFrom} placeholder="2027-04-01T00:00:00.000Z"
+          onChange={(value) => { setEffectiveFrom(value); setPreview(null); }} />
         <label>新しい拠点表示名
           <input value={label} readOnly={orderVariant} onChange={(event) => { setLabel(event.target.value); setPreview(null); }}
             maxLength={256} required />
@@ -186,16 +186,11 @@ export default function MasterScheduleDemo({ variant = "revision" }: { readonly 
         <p>Risk: {preview.preview.risk} / Policy: {preview.preview.policyDecision}</p>
         {preview.available && preview.preview.policyDecision === "REQUIRE_REASON"
           ? <form onSubmit={(event) => { event.preventDefault(); void schedule(); }}>
-              <label>変更理由
-                <textarea value={reason} onChange={(event) => setReason(event.target.value)}
-                  maxLength={200} required />
-              </label>
-              <label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-                現行期間の終了・将来改訂の開始日時・過去履歴の保持を確認しました
-              </label>
-              <div className="admin-retry-actions">
-                <button type="submit" disabled={busy || !confirmed || !reason.trim()}>将来改訂を予約</button>
-              </div>
+              <MasterOperationConfirmationFields
+                reason={reason} onReasonChange={setReason} reasonLabel="変更理由"
+                confirmed={confirmed} onConfirmChange={setConfirmed}
+                confirmationLabel="現行期間の終了・将来改訂の開始日時・過去履歴の保持を確認しました"
+                busy={busy} submitLabel="将来改訂を予約" />
             </form>
           : <p>予約できません：{preview.reasonCode ?? "有効期間がすでに変更されています"}</p>}
       </div>}
