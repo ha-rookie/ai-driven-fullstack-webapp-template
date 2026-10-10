@@ -165,7 +165,7 @@ jobs:
 
       - name: Upload preflight evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: production-migration-preflight-${{ github.run_id }}
           path: .release-evidence/
@@ -283,7 +283,7 @@ jobs:
 
       - name: Upload migration evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: production-migration-result-${{ github.run_id }}
           path: .release-evidence/
