@@ -63,8 +63,8 @@ const begin = async (source = env()) => {
   assert.equal(start?.status, 302);
   const state = new URL(start?.headers.get("location") || "").searchParams.get("state");
   const cookie = start?.headers.get("set-cookie")?.split(";")[0];
-  assert.ok(state);
-  assert.ok(cookie?.startsWith("__Host-workhub_oidc_transaction="));
+  if (!state || !cookie) throw new Error("mock_auth_start_missing_state_or_cookie");
+  assert.ok(cookie.startsWith("__Host-workhub_oidc_transaction="));
   assert.ok(start?.headers.get("set-cookie")?.includes("HttpOnly; Secure; SameSite=Lax"));
   return { state, cookie };
 };
