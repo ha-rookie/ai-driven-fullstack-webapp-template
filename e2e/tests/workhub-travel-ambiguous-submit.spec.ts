@@ -29,7 +29,12 @@ test("Stage 2 travel retry checks the existing submission instead of creating a 
   await page.getByLabel("目的", { exact: true }).fill(purpose);
   const submit = page.getByRole("button", { name: "出張申請を提出" });
 
-  await submit.click();
+  // Two click events in one JS task happen before React can disable the button.
+  // The synchronous in-flight guard must allow only one create/submit chain.
+  await submit.evaluate(button => {
+    (button as HTMLButtonElement).click();
+    (button as HTMLButtonElement).click();
+  });
   await expect(page.getByRole("status").filter({ hasText: "Request failed (503)" })).toBeVisible();
   expect(draftsCreated).toBe(1);
   expect(submissions).toBe(1);
