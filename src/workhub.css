@@ -1242,3 +1242,85 @@ input:disabled {
     overflow-wrap: anywhere;
   }
 }
+
+/* WORKHUB Stage 1: Basic App Launcher (#352) */
+.workhub-app-launcher {
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid #dce6e9;
+  border-radius: 18px;
+  background: #fff;
+}
+.workhub-app-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 20px 0;
+}
+.workhub-app-filters label {
+  display: flex;
+  flex: 1 1 210px;
+  flex-direction: column;
+  gap: 6px;
+  color: #314958;
+  font-size: 13px;
+  font-weight: 650;
+}
+.workhub-app-filters input,
+.workhub-app-filters select {
+  min-width: 0;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #bdcfd5;
+  border-radius: 10px;
+  background: #fff;
+  color: #162331;
+  font-size: 15px;
+}
+.workhub-app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
+}
+.workhub-app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #dae5e8;
+  border-radius: 12px;
+  background: #f8fafb;
+}
+.workhub-app-card h3,
+.workhub-app-card p {
+  margin: 0;
+}
+.workhub-app-card h3 {
+  color: #173b51;
+  font-size: 16px;
+}
+.workhub-app-card p,
+.workhub-app-card small {
+  color: #58707e;
+  line-height: 1.5;
+}
+.workhub-app-open,
+.workhub-app-unavailable {
+  display: inline-block;
+  align-self: flex-start;
+  margin-top: auto;
+  padding: 5px 0;
+  font-weight: 700;
+}
+.workhub-app-open { color: #176e72; }
+.workhub-app-unavailable { color: #667986; }
+.workhub-header-actions a.workhub-header-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+@media (max-width: 600px) {
+  .workhub-app-launcher { padding: 16px; }
+  .workhub-app-grid { grid-template-columns: minmax(0, 1fr); }
+}

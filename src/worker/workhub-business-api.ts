@@ -18,6 +18,8 @@ import { D1WorkhubExpenseStore, WorkhubExpenseError } from "../reference/workhub
 import { WORKHUB_EXPENSE_EMPLOYEE_ID } from "../reference/workhub/expenses";
 import { projectWorkhubMyRequests } from "../reference/workhub/my-requests";
 import { resolveApplicationSession } from "./auth";
+import { findScopeMembership } from "./authorization";
+import { listWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
 import {
   BusinessActivityProjector,
   BusinessActivityTimelineService,
@@ -298,6 +300,15 @@ export const handleWorkhubBusinessApi = async (
   const pathname = url.pathname;
 
   try {
+    if (pathname === "/api/workhub/apps") {
+      if (request.method !== "GET") return error(405, "method_not_allowed", "Only GET is available");
+      // The caller's current DB membership, never a client-provided role/scope,
+      // decides which Reference applications may even be discovered.
+      const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
+      if (!membership) return error(403, "apps_forbidden", "Access denied");
+      return json({ items: listWorkhubApps(membership.role) });
+    }
+
     if (pathname === "/api/workhub/my-requests" && request.method === "GET") {
       // Reference MVP: Aoi owns both request types. Check this before accessing
       // sources; Accounting can review expenses but must not see others' MY REQUESTS.

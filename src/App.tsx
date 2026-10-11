@@ -3,6 +3,7 @@ import { useAuth } from "./frontend/auth";
 import AdminPortal from "./reference/admin/AdminPortal";
 import AccountSwitchButton from "./reference/workhub/AccountSwitchButton";
 import ExpenseWorkspace from "./reference/workhub/ExpenseWorkspace";
+import WorkhubAppLauncher from "./reference/workhub/WorkhubAppLauncher";
 import "./workhub.css";
 
 interface DemoPersona { readonly key: string; readonly userId: string; readonly displayName: string; readonly roleLabel: string; readonly homeHint: string; }
@@ -200,7 +201,7 @@ function TravelWorkspace() {
       <div className="workhub-header-actions" aria-label="グローバル操作">
         <button className="workhub-header-action" type="button" aria-label="Ask CECIL">Ask CECIL</button>
         <button className="workhub-header-action workhub-header-icon" type="button" aria-label={`通知 未読${unreadCount}件`}>🔔<span className="workhub-notification-badge">{unreadCount}</span></button>
-        <button className="workhub-header-action workhub-header-icon" type="button" aria-label="アプリ一覧">▦</button>
+        <a className="workhub-header-action workhub-header-icon" href="#workhub-apps" aria-label="アプリ一覧">▦</a>
         <div className="workhub-user-chip"><span className="workhub-user-dot" aria-hidden="true" /><span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span></div>
         <AccountSwitchButton />
       </div>
@@ -212,7 +213,7 @@ function TravelWorkspace() {
         <a href="#workhub-requests"><span aria-hidden="true">▤</span>申請・手続き</a>
         {isAoi && <a href="#workhub-my-requests"><span aria-hidden="true">☷</span>自分の申請一覧</a>}
         {(isAoi || user?.id === "workhub-demo-mei") && <a href="#workhub-expenses"><span aria-hidden="true">¥</span>交通費・経費精算</a>}
-        <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">▦</span>アプリ</span>
+        <a href="#workhub-apps"><span aria-hidden="true">▦</span>アプリ</a>
         <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">♙</span>組織・人</span>
         <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">▱</span>ナレッジ</span>
         <a href="#workhub-announcements"><span aria-hidden="true">◌</span>社内お知らせ</a>
@@ -250,6 +251,7 @@ function TravelWorkspace() {
             <button type="button" disabled><span aria-hidden="true">▣</span><strong>PCを交換したい</strong><small>Showcase準備中</small></button>
           </div>
         </section>
+        <WorkhubAppLauncher />
         {isAoi && <section className="workhub-my-requests" id="workhub-my-requests" aria-labelledby="workhub-my-requests-title">
           <div className="workhub-section-heading">
             <div><span className="workhub-card-label">MY REQUESTS</span><h2 id="workhub-my-requests-title">自分の申請一覧</h2></div>
