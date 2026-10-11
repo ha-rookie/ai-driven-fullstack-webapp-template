@@ -28,3 +28,21 @@
   .workhub-secondary-journeys { padding: 16px; }
   .workhub-secondary-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Prevent focus loss after a Workflow step disappears or is assigned elsewhere. */
+.workhub-secondary-item:focus,
+.workhub-secondary-journeys:focus {
+  outline: 3px solid #176e72;
+  outline-offset: 3px;
+}
+.workhub-secondary-actions button,
+.workhub-secondary-item button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.workhub-secondary-item,
+.workhub-secondary-journeys {
+  min-width: 0;
+}

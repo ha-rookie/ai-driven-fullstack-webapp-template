@@ -13,6 +13,7 @@ const changeIdentity = async (page: Page, user: "aoi" | "sora" | "ren") => {
 };
 
 test("moving simulation persists partial step completion across reload", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
   await login(page, "aoi");
   const section = page.locator("#workhub-secondary-journeys");
   await expect(section.getByRole("heading", { name: "手続きの進捗デモ" })).toBeVisible();
@@ -21,6 +22,11 @@ test("moving simulation persists partial step completion across reload", async (
   await expect(moving).toContainText("0/3ステップ");
   await moving.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" }).click();
   await expect(moving).toContainText("1/3ステップ");
+  await expect(moving).toBeFocused();
+  const geometry = await moving.evaluate(node => ({
+    scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
+  }));
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
   await expect(moving).toContainText("住所変更の確認（デモ）");
   await page.reload();
   await expect(section.locator(".workhub-secondary-item").filter({ hasText: "引っ越した" }).first())
@@ -71,6 +77,7 @@ test("PC exchange mock transfers assigned work to Corporate and back without adm
   await expect(pc).toContainText("2/4ステップ");
   await pc.getByRole("button", { name: "現在のデモステップを完了する" }).click();
   await expect(pc).toHaveCount(0); // Corporate no longer assigned; employee receives final task.
+  await expect(section).toBeFocused(); // The removed action does not strand keyboard focus.
 
   await changeIdentity(page, "aoi");
   section = page.locator("#workhub-secondary-journeys");
@@ -79,6 +86,7 @@ test("PC exchange mock transfers assigned work to Corporate and back without adm
   await pc.getByRole("button", { name: "現在のデモステップを完了する" }).click();
   await expect(pc).toContainText("デモ完了");
   await expect(pc).toContainText("4/4ステップ");
+  await expect(pc).toBeFocused();
 });
 
 test("lost secondary start response can be explicitly retried with the same key, without a duplicate", async ({ page }) => {
