@@ -122,8 +122,13 @@ test("moving mock adapters keep independently completed steps after one adapter 
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, "aoi");
   const section = page.locator("#workhub-secondary-journeys");
+  const created = page.waitForResponse(response =>
+    response.url().endsWith("/api/workhub/secondary-journeys")
+    && response.request().method() === "POST" && response.status() === 201);
   await section.getByRole("button", { name: "引っ越し手続きをデモ開始" }).click();
-  const moving = section.locator(".workhub-secondary-item").filter({ hasText: "引っ越した" }).last();
+  const createdId = (await created).json().then((data: { item: { id: string } }) => data.item.id);
+  const journeyId = await createdId;
+  const moving = section.locator(`[data-journey-id="${journeyId}"]`);
   await expect(moving).toContainText("0/3ステップ");
   const complete = (label: string) =>
     moving.getByRole("button", { name: `${label}をデモ完了する` });
@@ -146,8 +151,7 @@ test("moving mock adapters keep independently completed steps after one adapter 
   await expect(moving).toContainText("2/3ステップ");
   await expect(complete("住所変更の確認（デモ）")).toBeVisible();
   await page.reload();
-  const restored = page.locator("#workhub-secondary-journeys .workhub-secondary-item")
-    .filter({ hasText: "引っ越した" }).last();
+  const restored = page.locator(`#workhub-secondary-journeys [data-journey-id="${journeyId}"]`);
   await expect(restored).toContainText("2/3ステップ");
   await expect(restored.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" })).toBeVisible();
 
