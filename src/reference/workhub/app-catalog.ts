@@ -113,11 +113,17 @@ export const searchWorkhubApps = (
  * as the launcher. These are fixed-order demo links, not actual usage statistics
  * or #292 personal favorites/recent history.
  */
+export type WorkhubLaunchableApp = WorkhubAppEntry & {
+  readonly availability: "available";
+  readonly launchTarget: string;
+};
+
+const isWorkhubLaunchableApp = (app: WorkhubAppEntry): app is WorkhubLaunchableApp =>
+  app.availability === "available"
+  && app.launchTarget !== null
+  && /^\/(?:#workhub-[a-z-]+|admin)$/u.test(app.launchTarget);
+
 export const selectWorkhubHomeShortcuts = (
   authorizedApps: readonly WorkhubAppEntry[],
-): readonly WorkhubAppEntry[] =>
-  authorizedApps
-    .filter(app => app.availability === "available"
-      && app.launchTarget !== null
-      && /^\/(?:#workhub-[a-z-]+|admin)$/u.test(app.launchTarget))
-    .slice(0, 4);
+): readonly WorkhubLaunchableApp[] =>
+  authorizedApps.filter(isWorkhubLaunchableApp).slice(0, 4);
