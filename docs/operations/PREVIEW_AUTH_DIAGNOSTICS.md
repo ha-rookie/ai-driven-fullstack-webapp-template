@@ -106,3 +106,9 @@ Official documentation:
 - https://developers.cloudflare.com/workers/platform/limits/
 - https://developers.cloudflare.com/workers/runtime-apis/web-crypto/
 - https://developers.cloudflare.com/workers/configuration/cloudflare-access/
+
+### UI authentication-mode discovery failure policy (#521)
+
+WORKHUB's login page must treat `GET /api/workhub/demo-config` as the authoritative authentication-mode discovery response. While it is pending, when it fails (network, non-2xx, invalid JSON), or when it reports an unsupported/malformed mode, **do not render either credential entry form or Google sign-in action**. Display a non-sensitive configuration-availability message instead; the public Showcase link stays available. A valid default/local mode may show the pre-existing password form; only an explicit `google_oidc` mode can show Google sign-in, and only when `oidcEnabled === true`. This UI protection is additional to the Worker-side 409 no-fallback guard; it does not replace server-side enforcement, weaken credentials or activate Preview OAuth.
+
+Local E2E should cover a delayed response, HTTP 503, malformed mode/JSON, valid OIDC enabled/disabled, and unchanged normal legacy login. These are mocked browser checks, **not** evidence of live Google OAuth or Preview CPU recovery.
