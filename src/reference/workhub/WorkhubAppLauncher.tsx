@@ -63,7 +63,7 @@ export default function WorkhubAppLauncher() {
           </a>)}
         </div>)}
     </section>
-    <section className="workhub-app-launcher" id="workhub-apps" aria-labelledby="workhub-apps-title">
+    <section className="workhub-app-launcher" id="workhub-apps" tabIndex={-1} aria-labelledby="workhub-apps-title">
     <div className="workhub-section-heading">
       <div><span className="workhub-card-label">APPS / APP LAUNCHER</span><h2 id="workhub-apps-title">アプリを探す</h2></div>
     </div>
@@ -73,9 +73,11 @@ export default function WorkhubAppLauncher() {
     {state === "unavailable" && <div role="alert"><p>アプリ一覧を取得できませんでした。アプリが0件とは限りません。</p><button type="button" className="workhub-secondary-button" onClick={() => setRefresh(value => value + 1)}>再読み込み</button></div>}
     {state === "ready" && <>
       <div className="workhub-app-filters">
-        <label>アプリを検索<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="アプリ名・業務から探す" /></label>
-        <label>カテゴリ<select value={category} onChange={event => setCategory(event.target.value)}><option value="all">すべて</option>{categories.map(item => <option key={item} value={item}>{item}</option>)}</select></label>
+        <label>アプリを検索<input type="search" aria-controls="workhub-app-results" value={query} onChange={event => setQuery(event.target.value)} placeholder="アプリ名・業務から探す" /></label>
+        <label>カテゴリ<select aria-controls="workhub-app-results" value={category} onChange={event => setCategory(event.target.value)}><option value="all">すべて</option>{categories.map(item => <option key={item} value={item}>{item}</option>)}</select></label>
       </div>
+      <p className="workhub-app-result-count" role="status" aria-live="polite" aria-atomic="true">{visibleApps.length}件のアプリが見つかりました。</p>
+      <div id="workhub-app-results" role="region" aria-label="アプリ検索結果">
       {visibleApps.length === 0 ? <p className="workhub-empty-state">{apps.length === 0 ? "現在表示できるアプリはありません。" : "条件に一致するアプリはありません。"}</p> :
         <div className="workhub-app-grid">
           {visibleApps.map(app => <article className="workhub-app-card" key={app.key}>
@@ -88,6 +90,7 @@ export default function WorkhubAppLauncher() {
               : <span className="workhub-app-unavailable" aria-label={`${app.displayName}は接続準備中`}>接続準備中</span>}
           </article>)}
         </div>}
+      </div>
     </>}
     </section>
   </>;
