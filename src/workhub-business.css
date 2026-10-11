@@ -286,3 +286,74 @@
   font: inherit;
   font-size: 13px;
 }
+
+/* WORKHUB announcements: company-wide official posts, not personal notifications. */
+.workhub-announcements {
+  margin: 26px 0;
+  padding: 20px;
+  border: 1px solid #d7e4e6;
+  border-radius: 14px;
+  background: white;
+}
+
+.workhub-announcements .workhub-section-heading {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.workhub-announcements-intro {
+  color: #526b77;
+  font-size: 13px;
+}
+
+.workhub-announcement-compose {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 17px;
+  border-radius: 10px;
+  background: #f2f8f8;
+}
+
+.workhub-announcement-compose h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.workhub-announcement-compose label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workhub-announcement-compose input,
+.workhub-announcement-compose textarea {
+  width: 100%;
+  border: 1px solid #cbd7dc;
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: #173243;
+  background: white;
+  font: inherit;
+}
+
+.workhub-announcement-compose textarea { resize: vertical; }
+.workhub-announcement-compose button { justify-self: start; }
+
+.workhub-announcement-list {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.workhub-announcement-item {
+  padding: 15px;
+  border: 1px solid #dae6e8;
+  border-radius: 10px;
+  background: #fbfdfd;
+}
+
+.workhub-announcement-item h3 { margin: 0 0 7px; font-size: 16px; }
+.workhub-announcement-item p { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workhub-announcement-item small { color: #526b77; }
