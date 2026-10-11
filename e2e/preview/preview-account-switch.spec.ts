@@ -4,6 +4,9 @@ import { expect, test, type Page } from "@playwright/test";
  * Remote Preview authentication acceptance: only session login/logout is mutable.
  * Does NOT submit travel requests, retry jobs, restore data, seed fixtures, or
  * capture authenticated screenshots/traces with session credentials.
+ * This STRICT reliability path makes one real login attempt per persona, with
+ * no retry, and emits bounded, sanitized CF-Ray/request-stage/timing evidence.
+ * A passing run is not proof that historical intermittent 503 is fixed.
  */
 const previewOrigin = "https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev";
 
@@ -15,7 +18,41 @@ const choosePersonaAndLogin = async (page: Page, personaName: string, headingNam
   const dialog = page.getByRole("dialog", { name: "デモユーザを選ぶ" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: new RegExp(personaName, "u") }).click();
-  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  // This incident-reliability gate intentionally does not retry ANY failure.
+  // Record each fresh real login request, even when it returns an unattributed 503.
+  const startedAtMs = Date.now();
+  const occurredAtUtc = new Date(startedAtMs).toISOString();
+  const responsePromise = page.waitForResponse((response) =>
+    response.url().endsWith("/api/auth/login")
+    && response.request().method() === "POST", { timeout: 12_000 });
+  let loginResponse;
+  try {
+    await page.getByRole("button", { name: "ログイン", exact: true }).click();
+    loginResponse = await responsePromise;
+  } catch {
+    // Never log Playwright errors containing URLs, headers, cookies or form values.
+    console.log("Preview strict login evidence", {
+      persona: personaName, occurredAtUtc, elapsedMs: Date.now() - startedAtMs,
+      attempt: 1, retries: 0, responseObserved: false,
+    });
+    throw new Error("Preview login response missing or UI login failed without retry");
+  }
+  const headers = loginResponse.headers();
+  const safeHeader = (name: string): string | null => {
+    const value = headers[name];
+    return value && /^[A-Za-z0-9:._-]{1,128}$/u.test(value) ? value : null;
+  };
+  const status = loginResponse.status();
+  const requestId = safeHeader("x-request-id");
+  const dependencyStage = safeHeader("x-auth-dependency-stage");
+  console.log("Preview strict login evidence", {
+    persona: personaName, occurredAtUtc, elapsedMs: Date.now() - startedAtMs,
+    attempt: 1, retries: 0, status, responseObserved: true,
+    cfRay: safeHeader("cf-ray"), requestId, dependencyStage,
+    dependencyDetail: safeHeader("x-auth-dependency-detail"),
+    unattributed503: status === 503 && !requestId && !dependencyStage,
+  });
+  expect(status, "Any Preview login HTTP error fails this reliability gate without retries").toBe(200);
   await expect(page.getByRole("heading", { name: headingName })).toBeVisible();
   await expect.poll(async () => await page.evaluate(async () =>
     (await fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })).status,
