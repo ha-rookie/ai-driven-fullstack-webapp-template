@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { listWorkhubApps } from "../src/reference/workhub/app-catalog";
+import { listWorkhubApps, searchWorkhubApps } from "../src/reference/workhub/app-catalog";
 
 const keys = (role: string) => listWorkhubApps(role).map(app => app.key);
 
@@ -32,4 +32,32 @@ test("unconnected reference apps have no launch path; live paths are internal-on
       assert.ok(!("allowedRoles" in app), "authorization policy must not be in the public API projection");
     }
   }
+});
+
+test("global Apps search reuses the current authorized catalog and routes only connected apps", () => {
+  const aoi = searchWorkhubApps("employee", "出張");
+  assert.deepEqual(aoi.map(result => result.resourceId), ["travel-request"]);
+  assert.deepEqual(aoi[0], {
+    resourceType: "workhub_app",
+    resourceId: "travel-request",
+    category: "apps",
+    title: "出張申請",
+    snippet: "出張を申請する",
+    actionTarget: "/#workhub-requests",
+  });
+  assert.deepEqual(searchWorkhubApps("employee", "管理ポータル"), []);
+  assert.deepEqual(searchWorkhubApps("system_admin", "管理ポータル").map(result => result.actionTarget), ["/admin"]);
+  assert.deepEqual(searchWorkhubApps("manager", "承認").map(result => result.resourceId), ["approval-tasks"]);
+});
+
+test("global Apps search reveals neither unauthorized nor unconnected app launch targets", () => {
+  for (const role of ["", "unexpected", "employee", "manager", "accounting", "system_admin"]) {
+    assert.deepEqual(searchWorkhubApps(role, "社員・組織"), [], "unconnected apps are not executable search hits");
+    assert.deepEqual(searchWorkhubApps(role, "　"), [], "empty terms must not enumerate applications");
+    for (const result of searchWorkhubApps(role, "社内")) {
+      assert.match(result.actionTarget, /^\/(?:#workhub-[a-z-]+|admin)$/u);
+    }
+  }
+  assert.deepEqual(searchWorkhubApps("unexpected", "管理ポータル"), []);
+  assert.deepEqual(searchWorkhubApps("employee", "セキュリティ"), []);
 });
