@@ -122,12 +122,14 @@ test("moving mock adapters keep independently completed steps after one adapter 
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, "aoi");
   const section = page.locator("#workhub-secondary-journeys");
-  const created = page.waitForResponse(response =>
-    response.url().endsWith("/api/workhub/secondary-journeys")
-    && response.request().method() === "POST" && response.status() === 201);
+  let journeyId = "";
+  page.on("request", request => {
+    if (request.url().endsWith("/api/workhub/secondary-journeys") && request.method() === "POST") {
+      journeyId = (request.postDataJSON() as { key: string }).key;
+    }
+  });
   await section.getByRole("button", { name: "引っ越し手続きをデモ開始" }).click();
-  const createdId = (await created).json().then((data: { item: { id: string } }) => data.item.id);
-  const journeyId = await createdId;
+  await expect.poll(() => journeyId).not.toBe("");
   const moving = section.locator(`[data-journey-id="${journeyId}"]`);
   await expect(moving).toContainText("0/3ステップ");
   const complete = (label: string) =>
