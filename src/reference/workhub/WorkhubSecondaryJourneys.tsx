@@ -43,7 +43,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
   const inFlight = useRef(false);
   const pendingStart = useRef<{ readonly key: string; readonly intent: SecondaryIntent } | null>(null);
 
-  const refresh = useCallback(() => setReload(value => value + 1), []);
+  const refresh = useCallback(() => { setState("loading"); setReload(value => value + 1); }, []);
   useEffect(() => {
     let alive = true;
     setState("loading");
@@ -59,15 +59,20 @@ export default function WorkhubSecondaryJourneys({ role }: {
   }, [reload]);
 
   const perform = async (action: () => Promise<void>) => {
-    if (inFlight.current) return;
+    if (inFlight.current || state !== "ready") return;
     inFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
       await action();
       refresh();
-    } catch {
-      setMessage("処理結果を確認できません。再送信せず「最新状態を確認」で確認してください。");
+    } catch (caught) {
+      const status = caught instanceof Error ? caught.message : "";
+      setMessage(status === "HTTP 409"
+        ? "手続きの状態が変更されています。再送信せず「最新状態を確認」で状態を確認してください。"
+        : status === "HTTP 403" || status === "HTTP 404"
+          ? "現在の担当権限では操作できません。最新状態を確認してください。"
+          : "処理結果を確認できません。再送信せず「最新状態を確認」で確認してください。");
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -105,7 +110,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
     });
   };
 
-  return <section className="workhub-secondary-journeys" id="workhub-secondary-journeys"
+  return <section className="workhub-secondary-journeys" id="workhub-secondary-journeys" tabIndex={-1}
     aria-labelledby="workhub-secondary-journeys-title">
     <div className="workhub-section-heading">
       <div><span className="workhub-card-label">SECONDARY JOURNEY / MOCK WORKFLOW</span>
@@ -120,12 +125,12 @@ export default function WorkhubSecondaryJourneys({ role }: {
     </p>
     {role === "employee" && <div className="workhub-secondary-actions">
       <button type="button" className="workhub-secondary-button" onClick={() => begin("moving")}
-        disabled={busy || !!pendingStart.current}>引っ越し手続きをデモ開始</button>
+        disabled={busy || state !== "ready" || !!pendingStart.current}>引っ越し手続きをデモ開始</button>
       <button type="button" className="workhub-secondary-button" onClick={() => begin("pc-replacement")}
-        disabled={busy || !!pendingStart.current}>PC交換をデモ依頼</button>
+        disabled={busy || state !== "ready" || !!pendingStart.current}>PC交換をデモ依頼</button>
     </div>}
     {message && <p role="alert" className="workhub-secondary-feedback">{message}</p>}
-    {pendingStart.current && message && <button className="workhub-secondary-button" type="button" disabled={busy} onClick={retryPendingStart}>同じ依頼を安全に再確認・再試行</button>}
+    {pendingStart.current && message && <button className="workhub-secondary-button" type="button" disabled={busy || state !== "ready"} onClick={retryPendingStart}>同じ依頼を安全に再確認・再試行</button>}
     {state === "loading" && <p role="status">デモの進捗を確認中…</p>}
     {state === "error" && <p role="alert">進捗を取得できませんでした。未着手とは限りません。</p>}
     {state === "ready" && (items.length === 0
@@ -135,15 +140,15 @@ export default function WorkhubSecondaryJourneys({ role }: {
           const current = item.steps.find(step => step.status === "current");
           return <article key={item.id} className="workhub-secondary-item">
             <h3>{item.title}</h3>
-            <p>{item.state === "completed" ? "デモ完了" : "デモ進行中"}
+            <p aria-live="polite">{item.state === "completed" ? "デモ完了" : "デモ進行中"}
               {" · "}{item.steps.filter(step => step.status === "done").length}/{item.steps.length}ステップ</p>
-            <ol>{item.steps.map(step => <li key={step.key}>
+            <ol aria-label={`${item.title}の手続き進捗`}>{item.steps.map(step => <li key={step.key}>
               <span>{step.status === "done" ? "完了" : step.status === "current" ? "対応中" : "未着手"}</span>
               {" "}{step.label}
             </li>)}</ol>
             {current && <p>次の確認：{current.label}</p>}
             {item.assignedToMe && item.state !== "completed" && <button
-              type="button" className="workhub-secondary-button" disabled={busy}
+              type="button" className="workhub-secondary-button" disabled={busy || state !== "ready"}
               onClick={() => advance(item)}>現在のデモステップを完了する</button>}
             {!item.assignedToMe && item.state !== "completed" && <p>現在の担当者による確認待ち</p>}
           </article>;
