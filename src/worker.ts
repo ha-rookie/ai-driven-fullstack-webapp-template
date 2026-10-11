@@ -39,6 +39,7 @@ import {
   handleWorkhubDemoConfig,
   handleWorkhubLogin,
 } from "./worker/workhub-login";
+import { handleWorkhubFreeOidc } from "./worker/workhub-oidc-login";
 
 interface Env {
   DB: D1Database;
@@ -47,6 +48,10 @@ interface Env {
   SESSION_IDLE_TIMEOUT_SECONDS?: string;
   SESSION_TOUCH_INTERVAL_SECONDS?: string;
   WORKHUB_DEMO_MODE?: string;
+  WORKHUB_FREE_AUTH_MODE?: string;
+  GOOGLE_OIDC_CLIENT_ID?: string;
+  GOOGLE_OIDC_CLIENT_SECRET?: string;
+  WORKHUB_OIDC_TRANSACTION_KEY?: string;
   /** Set explicitly to local/test/preview/production for trustworthy metric environment labels. */
   RUNTIME_ENVIRONMENT?: string;
 }
@@ -111,6 +116,7 @@ const metricRouteFor = (method: string, pathname: string): string => {
     return "health_ready";
   }
   if (method === "POST" && pathname === "/api/auth/login") return "auth_login";
+  if (method === "GET" && pathname.startsWith("/api/auth/oidc/")) return "auth_external";
   if (method === "GET" && pathname === "/api/auth/me") return "auth_me";
   if (method === "GET" && pathname === "/api/auth/csrf") return "auth_csrf";
   if (method === "POST" && pathname === "/api/auth/logout") return "auth_logout";
@@ -226,6 +232,11 @@ export default {
       requestContext.requestId,
     );
     if (demoConfigResponse) return api(demoConfigResponse);
+
+    const freeOidcResponse = await handleWorkhubFreeOidc(
+      request, env, requestContext.requestId,
+    );
+    if (freeOidcResponse) return api(freeOidcResponse);
 
     const loginResponse = await handleWorkhubLogin(
       request,
