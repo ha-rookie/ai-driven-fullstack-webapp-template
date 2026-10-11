@@ -108,6 +108,17 @@ export default function WorkhubSecondaryJourneys({ role }: {
     });
   };
 
+  const pcDecision = (item: SecondaryJourneyView, action: "return" | "reject" | "resubmit") => {
+    if (action !== "resubmit" && item.workItemVersion == null) return;
+    void perform(async () => {
+      await mutate(`/api/workhub/secondary-journeys/${encodeURIComponent(item.id)}/decision`, {
+        action,
+        expectedVersion: item.version,
+        ...(action !== "resubmit" ? { expectedWorkItemVersion: item.workItemVersion } : {}),
+      });
+    });
+  };
+
   return <section className="workhub-secondary-journeys" id="workhub-secondary-journeys"
     aria-labelledby="workhub-secondary-journeys-title">
     <div className="workhub-section-heading">
@@ -138,13 +149,23 @@ export default function WorkhubSecondaryJourneys({ role }: {
           const current = item.steps.find(step => step.status === "current");
           return <article key={item.id} data-journey-id={item.id} className="workhub-secondary-item">
             <h3>{item.title}</h3>
-            <p>{item.state === "completed" ? "デモ完了" : "デモ進行中"}
+            <p role="status">{item.state === "completed" ? "デモ完了"
+              : item.state === "needs_information" ? "追加情報の確認待ち（デモ）"
+              : item.state === "rejected" ? "デモ在庫なし・処理終了"
+              : "デモ進行中"}
               {" · "}{item.steps.filter(step => step.status === "done").length}/{item.steps.length}ステップ</p>
             <ol>{item.steps.map(step => <li key={step.key}>
               <span>{step.status === "done" ? "完了" : step.status === "current" ? "対応中" : "未着手"}</span>
               {" "}{step.label}
             </li>)}</ol>
-            {current && <p>次の確認：{current.label}</p>}
+            {current && item.state === "in_progress" && <p>次の確認：{current.label}</p>}
+            {item.intent === "pc-replacement" && item.state === "needs_information"
+              && role === "employee" && <button type="button" className="workhub-secondary-button"
+                disabled={busy} onClick={() => pcDecision(item, "resubmit")}>
+                追加情報を確認したものとしてデモ再提出
+              </button>}
+            {item.intent === "pc-replacement" && item.state === "rejected"
+              && <p>実際の端末在庫を確認した結果ではありません。新たなデモ依頼を開始できます。</p>}
             {item.intent === "moving" && item.steps.some(step => step.version != null)
               ? <div className="workhub-secondary-actions" aria-label="独立した手続き">
                 {item.steps.filter(step => step.status === "current" && step.assignedToMe).map(step =>
@@ -156,7 +177,21 @@ export default function WorkhubSecondaryJourneys({ role }: {
                 {item.assignedToMe && item.state !== "completed" && <button
                   type="button" className="workhub-secondary-button" disabled={busy}
                   onClick={() => advance(item)}>現在のデモステップを完了する</button>}
-                {!item.assignedToMe && item.state !== "completed" && <p>現在の担当者による確認待ち</p>}
+                {!item.assignedToMe && item.state === "in_progress" && <p>現在の担当者による確認待ち</p>}
+                {item.intent === "pc-replacement" && role === "corporate"
+                  && item.assignedToMe && item.state === "in_progress" &&
+                  <div className="workhub-secondary-actions" aria-label="PC交換デモの例外処理">
+                    {current?.key === "intake" &&
+                      <button type="button" className="workhub-secondary-button"
+                        disabled={busy} onClick={() => pcDecision(item, "return")}>
+                        追加情報を要求する（デモ）
+                      </button>}
+                    {current?.key === "processing" &&
+                      <button type="button" className="workhub-secondary-button"
+                        disabled={busy} onClick={() => pcDecision(item, "reject")}>
+                        デモ在庫なしとして終了
+                      </button>}
+                  </div>}
               </>}
           </article>;
         })}
