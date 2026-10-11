@@ -2,12 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 
 const demoPassword = "Workhub-Demo-2026!";
 
-const loginAs = async (page: Page, userId: "aoi" | "ren") => {
+const loginAs = async (page: Page, userId: "aoi" | "ren" | "mei") => {
   await page.goto("/");
   await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill(userId);
   await page.getByLabel("パスワード", { exact: true }).fill(demoPassword);
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await expect(page.getByRole("heading", { name: new RegExp(userId === "aoi" ? "Aoi Employee" : "Ren Manager", "u") })).toBeVisible();
+  await expect(page.getByRole("heading", { name: new RegExp(userId === "aoi" ? "Aoi Employee" : userId === "ren" ? "Ren Manager" : "Mei", "u") })).toBeVisible();
 };
 
 const switchPersona = async (page: Page, userId: "aoi" | "ren") => {
@@ -98,6 +98,39 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(page.getByText("差し戻されました", { exact: true })).toBeVisible();
   await expect(page.getByText("再申請しました", { exact: true })).toBeVisible();
   await expect(page.getByText("承認されました", { exact: true })).toBeVisible();
+
+  // A linked expense advances the same trip's journey, without changing the
+  // source travel workflow or inferring anything about payment execution.
+  const tripCard = page.locator("#workhub-my-requests .workhub-my-request-item")
+    .filter({ hasText: correctedPurpose });
+  await expect(tripCard).toContainText("① 出張申請：承認済み");
+  await expect(tripCard).toContainText("② 紐づく経費精算：紐づいた精算は未登録");
+  await page.getByRole("button", { name: "この出張の経費精算を始める" }).click();
+  const expenseArea = page.locator("#workhub-expenses");
+  await expect(expenseArea.getByLabel("紐づける出張申請")).toHaveValue(
+    await expenseArea.getByLabel("紐づける出張申請").locator("option", { hasText: correctedPurpose }).getAttribute("value") ?? "",
+  );
+  const expensePurpose = `承認済み出張の精算 E2E ${suffix}`;
+  await expenseArea.getByLabel("精算の目的").fill(expensePurpose);
+  await expenseArea.getByLabel("明細1の利用日").fill("2026-10-21");
+  await expenseArea.getByLabel("明細1の内容").fill("電車代");
+  await expenseArea.getByLabel("明細1の金額").fill("1200");
+  await expenseArea.getByRole("button", { name: "経費精算を提出", exact: true }).click();
+  await expect(expenseArea.getByText("経費精算を提出しました。")).toBeVisible();
+  await expect(tripCard).toContainText("② 紐づく経費精算：経理確認中（1件）");
+
+  await switchPersona(page, "mei");
+  const accountingItem = page.locator("#workhub-expenses .workhub-expense-item")
+    .filter({ hasText: expensePurpose });
+  await expect(accountingItem).toContainText("経理確認待ち");
+  await accountingItem.getByRole("button", { name: "経費を承認する" }).click();
+  await expect(page.getByText("経費精算を承認しました。")).toBeVisible();
+
+  await switchPersona(page, "aoi");
+  await expect(page.locator("#workhub-my-requests .workhub-my-request-item")
+    .filter({ hasText: correctedPurpose })).toContainText(
+    "② 紐づく経費精算：経理承認済み（1件）",
+  );
 });
 
 

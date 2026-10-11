@@ -127,6 +127,26 @@ const fromRow = (row: ExpenseRow): ExpenseClaim => ({
   updatedAt: row.updated_at,
 });
 
+/**
+ * Server-side owner-scoped counts for the journey view. No expense rows or
+ * requester identities are disclosed by this read model.
+ */
+export interface TravelExpenseSummary {
+  readonly travelRequestId: string;
+  readonly claimCount: number;
+  readonly submittedCount: number;
+  readonly returnedCount: number;
+  readonly approvedCount: number;
+}
+
+interface TravelExpenseSummaryRow {
+  travel_request_id: string;
+  claim_count: number;
+  submitted_count: number;
+  returned_count: number;
+  approved_count: number;
+}
+
 export class D1WorkhubExpenseStore {
   constructor(private readonly db: D1Database, private readonly environment: string) {}
 
@@ -134,6 +154,38 @@ export class D1WorkhubExpenseStore {
     if (principalId !== WORKHUB_EXPENSE_EMPLOYEE_ID && principalId !== WORKHUB_EXPENSE_ACCOUNTANT_ID) {
       throw new WorkhubExpenseError("forbidden", "expense access is not granted");
     }
+  }
+
+  async listLinkedSummaries(
+    principalId: string,
+    ownedTravelRequestIds: readonly string[],
+  ): Promise<readonly TravelExpenseSummary[]> {
+    // The caller first reads only this user's travel IDs. Recheck principal
+    // here and constrain every aggregate to this user and environment.
+    if (principalId !== WORKHUB_EXPENSE_EMPLOYEE_ID) {
+      throw new WorkhubExpenseError("forbidden", "expense journey access is not granted");
+    }
+    const ids = [...new Set(ownedTravelRequestIds)].slice(0, 20);
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = await this.db.prepare(`
+      SELECT travel_request_id,
+             COUNT(*) AS claim_count,
+             SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) AS submitted_count,
+             SUM(CASE WHEN status = 'returned' THEN 1 ELSE 0 END) AS returned_count,
+             SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved_count
+      FROM workhub_expense_claims
+      WHERE environment = ? AND requester_id = ?
+        AND travel_request_id IN (${placeholders})
+      GROUP BY travel_request_id
+    `).bind(this.environment, principalId, ...ids).all<TravelExpenseSummaryRow>();
+    return (rows.results ?? []).map(row => ({
+      travelRequestId: row.travel_request_id,
+      claimCount: row.claim_count,
+      submittedCount: row.submitted_count,
+      returnedCount: row.returned_count,
+      approvedCount: row.approved_count,
+    }));
   }
 
   async list(principalId: string): Promise<readonly ExpenseClaim[]> {

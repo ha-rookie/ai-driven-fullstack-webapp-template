@@ -4,7 +4,7 @@
  * Callers MUST first obtain owner-scoped rows from the authoritative services.
  */
 import type { TravelRequestListItem } from "./travel-request/types";
-import type { ExpenseClaim } from "./expenses";
+import type { ExpenseClaim, TravelExpenseSummary } from "./expenses";
 
 export type UnifiedRequestStatus =
   | "draft"
@@ -14,6 +14,13 @@ export type UnifiedRequestStatus =
   | "rejected"
   | "withdrawn"
   | "unknown";
+
+export interface TravelJourneyProgress {
+  readonly travelStage: string;
+  /** Counted ONLY from expense claims explicitly linked to this owned trip. */
+  readonly settlementStage: string;
+  readonly linkedClaimCount: number;
+}
 
 export interface WorkhubMyRequest {
   readonly kind: "travel" | "expense";
@@ -25,6 +32,7 @@ export interface WorkhubMyRequest {
   readonly returnReason: string | null;
   readonly amountYen: number | null;
   readonly updatedAt: string;
+  readonly journey: TravelJourneyProgress | null;
 }
 
 export type TravelProjectionInput = Pick<
@@ -62,6 +70,29 @@ const expenseStatus = (
   }
 };
 
+const travelJourney = (
+  travel: TravelProjectionInput,
+  summary: TravelExpenseSummary | undefined,
+): TravelJourneyProgress => {
+  const state = travelStatus(travel);
+  const count = summary?.claimCount ?? 0;
+  let settlementStage: string;
+  if (count === 0) {
+    settlementStage = state.status === "completed"
+      ? "紐づいた精算は未登録"
+      : "出張承認後に申請可能";
+  } else if ((summary?.returnedCount ?? 0) > 0) {
+    settlementStage = `差戻しあり（${count}件）`;
+  } else if ((summary?.submittedCount ?? 0) > 0) {
+    settlementStage = `経理確認中（${count}件）`;
+  } else if ((summary?.approvedCount ?? 0) === count) {
+    settlementStage = `経理承認済み（${count}件）`;
+  } else {
+    settlementStage = "精算状況を確認できません";
+  }
+  return { travelStage: state.statusLabel, settlementStage, linkedClaimCount: count };
+};
+
 /**
  * Fetching is bounded per-source (20 each), merging remains in-memory only,
  * and the final list is bounded to 20 most recently updated requests.
@@ -71,7 +102,9 @@ export const projectWorkhubMyRequests = (
   travels: readonly TravelProjectionInput[],
   expenses: readonly ExpenseProjectionInput[],
   limit = 20,
+  summaries: readonly TravelExpenseSummary[] = [],
 ): readonly WorkhubMyRequest[] => {
+  const byTravelId = new Map(summaries.map(row => [row.travelRequestId, row]));
   const travelRows: WorkhubMyRequest[] = travels.map(record => ({
     kind: "travel",
     id: record.id,
@@ -81,6 +114,7 @@ export const projectWorkhubMyRequests = (
     returnReason: record.workflowState === "awaiting_resubmission" ? record.returnComment : null,
     amountYen: null,
     updatedAt: record.updatedAt,
+    journey: travelJourney(record, byTravelId.get(record.id)),
   }));
   const expenseRows: WorkhubMyRequest[] = expenses.map(record => ({
     kind: "expense",
@@ -91,6 +125,7 @@ export const projectWorkhubMyRequests = (
     returnReason: record.status === "returned" ? record.returnReason : null,
     amountYen: record.totalYen,
     updatedAt: record.updatedAt,
+    journey: null,
   }));
   return [...travelRows, ...expenseRows]
     .sort((left, right) =>

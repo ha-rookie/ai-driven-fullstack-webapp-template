@@ -307,11 +307,17 @@ export const handleWorkhubBusinessApi = async (
       // Each authoritative source filters by session principal AND environment
       // in D1; never materialize cross-employee lists before projecting.
       // Fail the entire view if one source fails: a partial list looks like 0 items.
+      const expenseStore = new D1WorkhubExpenseStore(env.DB, environment);
       const [travels, expenses] = await Promise.all([
         services.travel.listMine(principalId),
-        new D1WorkhubExpenseStore(env.DB, environment).list(principalId),
+        expenseStore.list(principalId),
       ]);
-      return json({ items: projectWorkhubMyRequests(travels, expenses) });
+      // Aggregate ALL linked settlements for up to 20 owner-scoped trips in
+      // one D1 query. The latest-20 expense feed alone is not exhaustive.
+      const linkedSummaries = await expenseStore.listLinkedSummaries(
+        principalId, travels.map(travel => travel.id),
+      );
+      return json({ items: projectWorkhubMyRequests(travels, expenses, 20, linkedSummaries) });
     }
 
     if (pathname === "/api/workhub/expenses" && request.method === "GET") {

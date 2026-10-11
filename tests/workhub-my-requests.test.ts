@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { projectWorkhubMyRequests, type TravelProjectionInput, type ExpenseProjectionInput } from "../src/reference/workhub/my-requests";
+import type { TravelExpenseSummary } from "../src/reference/workhub/expenses";
 
 const travel = (overrides: Partial<TravelProjectionInput> = {}): TravelProjectionInput => ({
   id: "trip-1",
@@ -73,4 +74,48 @@ test("projection is bounded and deterministic across equal timestamps", () => {
   );
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.kind, "travel");
+});
+
+const summary = (overrides: Partial<TravelExpenseSummary>): TravelExpenseSummary => ({
+  travelRequestId: "trip-1",
+  claimCount: 1,
+  submittedCount: 1,
+  returnedCount: 0,
+  approvedCount: 0,
+  ...overrides,
+});
+
+test("journey does not mistake unlinked expenses for this trip's settlement", () => {
+  const item = projectWorkhubMyRequests(
+    [travel({ workflowState: "completed" })],
+    [expense({ status: "approved" })],
+  ).find(row => row.kind === "travel");
+  assert.equal(item?.journey?.travelStage, "承認済み");
+  assert.equal(item?.journey?.settlementStage, "紐づいた精算は未登録");
+  assert.equal(item?.journey?.linkedClaimCount, 0);
+  const pending = projectWorkhubMyRequests([travel()], [], 20)[0];
+  assert.equal(pending?.journey?.settlementStage, "出張承認後に申請可能");
+});
+
+test("journey uses linked ALL-claims counts, never the truncated expense feed", () => {
+  const rows = [travel({ workflowState: "completed" })];
+  const cases = [
+    [summary({ claimCount: 3, returnedCount: 1, approvedCount: 2, submittedCount: 0 }), "差戻しあり（3件）"],
+    [summary({ claimCount: 3, returnedCount: 0, approvedCount: 2, submittedCount: 1 }), "経理確認中（3件）"],
+    [summary({ claimCount: 3, returnedCount: 0, approvedCount: 3, submittedCount: 0 }), "経理承認済み（3件）"],
+  ] as const;
+  for (const [linked, expected] of cases) {
+    const item = projectWorkhubMyRequests(rows, [], 20, [linked])[0];
+    assert.equal(item?.journey?.settlementStage, expected);
+    assert.equal(item?.journey?.linkedClaimCount, 3);
+  }
+});
+
+test("journey ignores unrelated linked-claim summaries and never implies payment was made", () => {
+  const item = projectWorkhubMyRequests(
+    [travel({ workflowState: "completed" })], [], 20,
+    [summary({ travelRequestId: "someone-else-trip", approvedCount: 1, submittedCount: 0 })],
+  )[0];
+  assert.equal(item?.journey?.linkedClaimCount, 0);
+  assert.ok(!item?.journey?.settlementStage.includes("支払"));
 });
