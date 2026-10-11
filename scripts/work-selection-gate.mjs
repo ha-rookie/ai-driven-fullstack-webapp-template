@@ -202,10 +202,11 @@ const selfTest = () => {
   assert.equal(result(pr(record(), {
     user: { login: "dependabot[bot]", type: "Bot" },
   })).status, "bot", "verified Dependabot has existing route");
-  assert.equal(result(pr(record(), {
+  assert.throws(() => result(pr(record(), {
     user: { login: "dependabot[bot]", type: "User" },
     body: "",
-  })).status, "blocked", "spoofed author cannot bypass guard");
+  })), /one_work_selection_record_required/u,
+  "spoofed author cannot bypass guard");
   assert.equal(result(pr({
     ...record(), notionCheck: "not-accessible",
     notionReference: "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/132",
