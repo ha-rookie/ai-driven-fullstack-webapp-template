@@ -36,7 +36,7 @@ test("unconnected reference apps have no launch path; live paths are internal-on
 
 test("global Apps search reuses the current authorized catalog and routes only connected apps", () => {
   const aoi = searchWorkhubApps("employee", "出張");
-  assert.deepEqual(aoi.map(result => result.resourceId), ["travel-request"]);
+  assert.deepEqual(aoi.map(result => result.resourceId), ["travel-request", "expense-settlement"]);
   assert.deepEqual(aoi[0], {
     resourceType: "workhub_app",
     resourceId: "travel-request",
