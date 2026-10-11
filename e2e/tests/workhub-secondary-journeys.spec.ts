@@ -60,3 +60,56 @@ test("PC exchange mock transfers assigned work to Corporate and back without adm
   await expect(pc).toContainText("デモ完了");
   await expect(pc).toContainText("4/4ステップ");
 });
+
+test("390px journey prevents actions during partial read failure and recovers stale updates", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let rejectReads = true;
+  await page.route("**/api/workhub/secondary-journeys", async route => {
+    if (route.request().method() !== "GET" || !rejectReads) {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+  await login(page, "aoi");
+  const section = page.locator("#workhub-secondary-journeys");
+  await expect(section.getByRole("alert")).toContainText("進捗を取得できませんでした");
+  await expect(section.getByRole("button", { name: "引っ越し手続きをデモ開始" })).toBeDisabled();
+  await expect(section.getByRole("button", { name: "PC交換をデモ依頼" })).toBeDisabled();
+  await expect(section).toHaveAttribute("tabindex", "-1");
+
+  rejectReads = false;
+  await section.getByRole("button", { name: "最新状態を確認" }).click();
+  await expect(section.getByRole("button", { name: "引っ越し手続きをデモ開始" })).toBeEnabled();
+  await section.getByRole("button", { name: "引っ越し手続きをデモ開始" }).click();
+  const moving = section.locator(".workhub-secondary-item").filter({ hasText: "引っ越した" }).first();
+  await expect(moving).toContainText("0/3ステップ");
+  await expect(moving.getByRole("list", { name: "引っ越したの手続き進捗" })).toBeVisible();
+
+  // A separate client completes this work item before the old on-screen form
+  // submits. The UI must not replay an old approval or display success.
+  const externalStatus = await page.evaluate(async () => {
+    const current = await fetch("/api/workhub/secondary-journeys", { credentials: "same-origin" })
+      .then(response => response.json()) as {
+        items: { id: string; intent: string; version: number; workItemVersion: number | null }[]
+      };
+    const item = current.items.find(entry => entry.intent === "moving" && entry.workItemVersion !== null);
+    if (!item) throw new Error("moving item not found");
+    const csrf = await fetch("/api/auth/csrf", { credentials: "same-origin" })
+      .then(response => response.json()) as { csrfToken: string };
+    const reply = await fetch(`/api/workhub/secondary-journeys/${item.id}/advance`, {
+      method: "POST", credentials: "same-origin",
+      headers: { "content-type": "application/json", "x-csrf-token": csrf.csrfToken },
+      body: JSON.stringify({
+        expectedVersion: item.version, expectedWorkItemVersion: item.workItemVersion,
+      }),
+    });
+    return reply.status;
+  });
+  expect(externalStatus).toBe(200);
+  await moving.getByRole("button", { name: "現在のデモステップを完了する" }).click();
+  await expect(section.getByRole("alert")).toContainText("手続きの状態が変更されています");
+  await section.getByRole("button", { name: "最新状態を確認" }).click();
+  await expect(section.locator(".workhub-secondary-item").filter({ hasText: "引っ越した" }).first())
+    .toContainText("1/3ステップ");
+});
