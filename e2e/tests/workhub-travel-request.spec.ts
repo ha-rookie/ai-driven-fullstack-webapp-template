@@ -100,7 +100,8 @@ test("MY REQUESTS shows persisted personal requests and never exposes another em
 
   await switchPersona(page, "ren");
   await expect(page.getByRole("heading", { name: "自分の出張申請" })).toHaveCount(0);
-  const response = await page.request.get("/api/workhub/travel-requests");
+  // Query parameters supplied by another user must not override server-side session ownership.
+  const response = await page.request.get("/api/workhub/travel-requests?requesterId=workhub-demo-aoi");
   expect(response.status()).toBe(200);
   const result = await response.json() as { items: Array<{ id: string; purpose: string; requesterId: string }> };
   expect(result.items.find((item) => item.purpose === purpose)).toBeUndefined();
