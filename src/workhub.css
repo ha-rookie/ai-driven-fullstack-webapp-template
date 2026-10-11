@@ -1459,3 +1459,56 @@ input:disabled {
     min-height: 44px;
   }
 }
+
+/* WORKHUB Stage 2: intent-first discovery reuses server-authorized catalog. */
+.workhub-request-intents {
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid #dce6e9;
+  border-radius: 18px;
+  background: #fff;
+  scroll-margin-top: 16px;
+}
+.workhub-request-intent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.workhub-request-intent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #dce6e9;
+  border-radius: 12px;
+  padding: 16px;
+  background: #f8fbfa;
+}
+.workhub-request-intent-card h3,
+.workhub-request-intent-card p { margin: 0; }
+.workhub-request-intent-card h3 { color: #173b51; font-size: 16px; }
+.workhub-request-intent-card p { color: #526d7a; line-height: 1.5; }
+.workhub-request-intent-card ol { margin: 2px 0; padding-left: 22px; color: #526d7a; line-height: 1.7; }
+.workhub-request-intent-open {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: auto;
+  color: #176e72;
+  font-weight: 700;
+}
+.workhub-request-intent-open:focus-visible {
+  outline: 3px solid #176e72;
+  outline-offset: 3px;
+}
+.workhub-request-intent-guide {
+  margin-top: auto;
+  color: #63747e;
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .workhub-request-intents { padding: 16px; }
+  .workhub-request-intent-grid { grid-template-columns: minmax(0, 1fr); }
+}
