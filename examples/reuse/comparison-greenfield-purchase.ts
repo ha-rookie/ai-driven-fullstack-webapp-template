@@ -35,7 +35,7 @@ const reject = (message: string): never => { throw new Error(message); };
 
 function checkActor(actor: Actor, purchase: Purchase, action: "submit" | "approve"): void {
   const membership = actor.membership;
-  if (!membership || membership.userId !== actor.id) reject("actor_membership_mismatch");
+  if (!membership || membership.userId !== actor.id) throw new Error("actor_membership_mismatch");
   if (membership.scopeId !== purchase.scopeId) reject("membership_scope_mismatch");
   if (action === "submit" && membership.role !== "employee") reject("role_required");
   if (action === "approve" && membership.role !== "manager" && membership.role !== "finance") {
@@ -84,7 +84,7 @@ export function createPurchaseApprovalSpike(
     checkActor(actor, purchase, "approve");
     if (current.instance.resourceType !== "purchase_request"
       || current.instance.resourceId !== purchase.id) reject("purchase_workflow_mismatch");
-    if (!current.currentWorkItem) reject("no_open_work_item");
+    if (!current.currentWorkItem) throw new Error("no_open_work_item");
     const saved = instances.get(purchase.id);
     if (!saved || !saved.item || saved.instance.state !== "active") {
       throw new PurchaseError("conflict");
