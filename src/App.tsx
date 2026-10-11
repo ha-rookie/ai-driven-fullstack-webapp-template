@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./frontend/auth";
 import AdminPortal from "./reference/admin/AdminPortal";
 import AccountSwitchButton from "./reference/workhub/AccountSwitchButton";
@@ -116,6 +116,8 @@ function LoginScreen() {
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
   const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const mutationInFlight = useRef(false);
+  const pendingTravelDraft = useRef<TravelRequestRecord | null>(null);
   const loadNotifications = useCallback(async () => {
     setNotificationState("loading");
     try {
@@ -144,7 +146,16 @@ function TravelWorkspace() {
   const loadMyRequests = useCallback(async () => { if (!isAoi) return; setMyRequestsState("loading"); try { const result = await apiJson<{ items: UnifiedMyRequest[] }>("/api/workhub/my-requests"); setMyRequests(result.items); setMyRequestsState("ready"); } catch { setMyRequestsState("error"); } }, [isAoi]);
   const openRequest = useCallback(async (id: string) => { const detail = await apiJson<{ request: TravelRequestRecord; workflow: WorkflowRecord | null; returnComment: string | null }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}`); const history = await apiJson<{ items: TimelineActivity[] }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}/timeline`); setSelectedRequest(detail.request); setSelectedWorkflow(detail.workflow); setReturnComment(detail.workflow?.state === "awaiting_resubmission" ? detail.returnComment : null); setTimeline(history.items ?? []); setDestinationOfficeItemId(detail.request.destinationOfficeItemId); setStartDate(detail.request.startDate); setEndDate(detail.request.endDate); setPurpose(detail.request.purpose); return detail; }, []);
   useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements]);
-  const run = async (operation: () => Promise<void>) => { if (busy) return; setBusy(true); setMessage(null); try { await operation(); } catch (caught) { setMessage(caught instanceof Error ? caught.message : "処理に失敗しました。"); } finally { setBusy(false); } };
+  const run = async (operation: () => Promise<void>) => {
+    // A React state update does not synchronously block two rapid click events.
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    setBusy(true);
+    setMessage(null);
+    try { await operation(); }
+    catch (caught) { setMessage(caught instanceof Error ? caught.message : "処理に失敗しました。"); }
+    finally { mutationInFlight.current = false; setBusy(false); }
+  };
   const publishAnnouncement = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canPublishAnnouncements || !announcementTitle.trim() || !announcementBody.trim()) return;
@@ -159,7 +170,58 @@ function TravelWorkspace() {
       setMessage("社内お知らせを公開しました。");
     });
   };
-  const createAndSubmit = () => void run(async () => { const created = await apiJson<{ request: TravelRequestRecord }>("/api/workhub/travel-requests", { method: "POST", body: JSON.stringify({ destinationOfficeItemId, startDate, endDate, purpose }) }); const submitted = await apiJson<{ request: TravelRequestRecord }>(`/api/workhub/travel-requests/${created.request.id}/submit`, { method: "POST", body: JSON.stringify({ expectedVersion: created.request.version }) }); await openRequest(submitted.request.id); await Promise.all([loadNotifications(), loadMyRequests()]); setMessage("出張申請を提出しました。"); });
+  const createAndSubmit = () => void run(async () => {
+    // The create and submit calls are separate business mutations. If submit's
+    // response is lost, reuse the owner-authorized draft instead of creating
+    // another request. Never retry a mutation automatically.
+    let request = pendingTravelDraft.current;
+    if (request) {
+      const current = await apiJson<{ request: TravelRequestRecord }>(
+        `/api/workhub/travel-requests/${encodeURIComponent(request.id)}`,
+      );
+      request = current.request;
+      pendingTravelDraft.current = request;
+      if (request.status === "submitting") {
+        throw new Error("前回の提出処理を確認中です。時間をおいて状態を再確認してください。");
+      }
+    } else {
+      const created = await apiJson<{ request: TravelRequestRecord }>("/api/workhub/travel-requests", {
+        method: "POST",
+        body: JSON.stringify({ destinationOfficeItemId, startDate, endDate, purpose }),
+      });
+      request = created.request;
+      pendingTravelDraft.current = request;
+    }
+    if (request.status === "draft") {
+      if (request.destinationOfficeItemId !== destinationOfficeItemId
+        || request.startDate !== startDate || request.endDate !== endDate
+        || request.purpose !== purpose) {
+        const updated = await apiJson<{ request: TravelRequestRecord }>(
+          `/api/workhub/travel-requests/${encodeURIComponent(request.id)}`,
+          { method: "PUT", body: JSON.stringify({
+            expectedVersion: request.version, destinationOfficeItemId, startDate, endDate, purpose,
+          }) },
+        );
+        request = updated.request;
+        pendingTravelDraft.current = request;
+      }
+      await apiJson<{ request: TravelRequestRecord }>(
+        `/api/workhub/travel-requests/${encodeURIComponent(request.id)}/submit`,
+        { method: "POST", body: JSON.stringify({ expectedVersion: request.version }) },
+      );
+    } else if (request.status !== "submitted") {
+      throw new Error("申請状態を確認できませんでした。再送信せず、申請一覧で確認してください。");
+    }
+    // A successful write must not be undone or repeated when a read-side
+    // timeline/notification projection is temporarily unavailable.
+    const detail = await openRequest(request.id);
+    if (!detail.workflow) {
+      throw new Error("提出状況の確認が完了していません。再度状態を確認してください。");
+    }
+    await Promise.all([loadNotifications(), loadMyRequests()]);
+    pendingTravelDraft.current = null;
+    setMessage("出張申請を提出しました。");
+  });
   const updateAndResubmit = () => void run(async () => { if (!selectedRequest || !selectedWorkflow) return; const updated = await apiJson<{ request: TravelRequestRecord }>(`/api/workhub/travel-requests/${selectedRequest.id}`, { method: "PUT", body: JSON.stringify({ expectedVersion: selectedRequest.version, destinationOfficeItemId, startDate, endDate, purpose }) }); await apiJson(`/api/workhub/travel-requests/${selectedRequest.id}/resubmit`, { method: "POST", body: JSON.stringify({ expectedRequestVersion: updated.request.version, expectedWorkflowVersion: selectedWorkflow.version }) }); await openRequest(selectedRequest.id); await Promise.all([loadNotifications(), loadMyRequests()]); setMessage("出張申請を再申請しました。"); });
   const decide = (entry: MyWorkEntry, action: "approve" | "return") => { const comment = returnReasons[entry.workItem.id]?.trim() ?? ""; if (action === "return" && !comment) { setMessage("差戻し理由を入力してください。"); return; } void run(async () => { await apiJson(`/api/workhub/workflows/${entry.workflow.id}/${action}`, { method: "POST", body: JSON.stringify({ expectedInstanceVersion: entry.workflow.version, expectedWorkItemVersion: entry.workItem.version, ...(action === "return" ? { reasonCode: "correction_required", comment } : {}) }) }); await loadMyWork(); await loadNotifications(); setMessage(action === "approve" ? "承認しました。" : "差し戻しました。"); }); };
   const openNotification = (notification: NotificationRecord) => void run(async () => { if (!notification.readAt) await apiJson(`/api/workhub/notifications/${notification.id}/read`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version }) }); const target = notification.actionTarget?.match(/^resource:travel_request:(.+)$/u)?.[1]; if (target && isAoi) await openRequest(target); await loadNotifications(); });
