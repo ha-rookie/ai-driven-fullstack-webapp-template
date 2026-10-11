@@ -1410,3 +1410,52 @@ input:disabled {
   .workhub-home-apps { padding: 16px; }
   .workhub-home-apps-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Stage 1 #345/#352: keyboard visibility and touch targets for existing navigation. */
+.workhub-global-search:focus-within {
+  outline: 3px solid #176e72;
+  outline-offset: 2px;
+}
+.workhub-side-nav a:focus-visible,
+.workhub-home-apps-all:focus-visible,
+.workhub-app-open:focus-visible,
+.workhub-app-filters input:focus-visible,
+.workhub-app-filters select:focus-visible {
+  outline: 3px solid #176e72;
+  outline-offset: 3px;
+}
+.workhub-app-launcher:target {
+  outline: 3px solid #176e72;
+  outline-offset: 3px;
+}
+.workhub-app-launcher {
+  scroll-margin-top: 16px;
+}
+.workhub-app-result-count {
+  margin: 0 0 12px;
+  color: #496673;
+  font-size: 13px;
+}
+.workhub-app-filters input,
+.workhub-app-filters select {
+  min-height: 44px;
+}
+.workhub-app-open {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+}
+.workhub-home-apps-all {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+}
+@media (max-width: 820px) {
+  .workhub-side-nav {
+    scrollbar-width: thin;
+    scroll-padding-inline: 14px;
+  }
+  .workhub-side-nav a {
+    min-height: 44px;
+  }
+}
