@@ -124,3 +124,73 @@ test("failed logout keeps current identity and offers safe retry", async ({ page
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
   await expect.poll(async () => await page.evaluate(async () => (await fetch("/api/auth/me", { credentials: "same-origin" })).status)).toBe(200);
 });
+
+test("authentication mode discovery fails closed on HTTP 503 and recovers after reload", async ({ page }) => {
+  await page.route("**/api/workhub/demo-config", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: "{}" }));
+  await page.goto("/");
+  await expect(page.getByRole("status")).toContainText("認証設定を確認できません");
+  await expect(page.getByLabel("パスワード", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Googleでログイン" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /WORKHUB Showcaseを見る/u })).toBeVisible();
+  await page.unroute("**/api/workhub/demo-config");
+  await page.reload();
+  await expect(page.getByLabel("パスワード", { exact: true })).toBeVisible();
+});
+
+test("authentication mode discovery waits before exposing credentials", async ({ page }) => {
+  let allowResponse: () => void = () => { throw new Error("missing_mode_request"); };
+  const pending = new Promise<void>((resolve) => { allowResponse = resolve; });
+  await page.route("**/api/workhub/demo-config", async (route) => {
+    await pending;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ demoEnabled: false, personas: [] }),
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("status")).toContainText("認証方式を確認しています");
+  await expect(page.getByLabel("パスワード", { exact: true })).toHaveCount(0);
+  allowResponse();
+  await expect(page.getByLabel("パスワード", { exact: true })).toBeVisible();
+});
+
+test("OIDC mode discovery exposes Google only when explicitly configured", async ({ page }) => {
+  await page.route("**/api/workhub/demo-config", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authMode: "google_oidc", oidcEnabled: true, demoEnabled: false, personas: [] }),
+    }));
+  await page.goto("/");
+  const google = page.getByRole("link", { name: "Googleでログイン" });
+  await expect(google).toBeVisible();
+  await expect(google).toHaveAttribute("href", "/api/auth/oidc/start");
+  await expect(page.getByLabel("パスワード", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "デモユーザを選ぶ" })).toHaveCount(0);
+
+  await page.unroute("**/api/workhub/demo-config");
+  await page.route("**/api/workhub/demo-config", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authMode: "google_oidc", oidcEnabled: false, demoEnabled: false, personas: [] }),
+    }));
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText("外部認証の設定を確認しています");
+  await expect(page.getByRole("link", { name: "Googleでログイン" })).toHaveCount(0);
+  await expect(page.getByLabel("パスワード", { exact: true })).toHaveCount(0);
+});
+
+test("malformed or unknown authentication mode never enables local password entry", async ({ page }) => {
+  for (const body of ['{"authMode":"unsafe_legacy","demoEnabled":true,"personas":[]}', "{broken-json"]) {
+    await page.unroute("**/api/workhub/demo-config");
+    await page.route("**/api/workhub/demo-config", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body }));
+    await page.goto("/");
+    await expect(page.getByRole("status")).toContainText("認証設定を確認できません");
+    await expect(page.getByLabel("パスワード", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Googleでログイン" })).toHaveCount(0);
+  }
+});
