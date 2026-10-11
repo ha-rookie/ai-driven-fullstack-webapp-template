@@ -37,3 +37,46 @@ Cloudflare documents that Worker CPU/memory limits can lead to 503, while Cloudf
 - https://developers.cloudflare.com/workers/observability/metrics-and-analytics/
 - https://developers.cloudflare.com/analytics/graphql-api/tutorials/querying-workers-metrics/
 - https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-503/
+
+## Free Workers resolution path: Google OIDC / external ID verification (2026-10-11)
+
+**User decision: Workers Free only; no paid plan or weakened password hashing.**
+
+Free Workers allow 10 ms of CPU per HTTP request. The current scrypt verification (N=32768, r=8, p=3) uses well over that in local profiling. Simply reducing hash factors, switching to SHA-256, treating a public demo password as an authentication bypass, or retrying 503 responses is not permitted.
+
+This project already provides a security-tested Google OIDC adapter with authorization-code/PKCE, state/nonce, issuer/audience/JWKS signature validation and a D1 table for pre-linked external identities. The preview-only WORKHUB OIDC HTTP integration reuses these foundations.
+
+### Behavior without external configuration
+
+The default local WORKHUB mode is unchanged. Setting `WORKHUB_FREE_AUTH_MODE=google_oidc` only in the Preview environment:
+
+- Blocks `POST /api/auth/login` with a non-success response instead of executing scrypt
+- Shows a Google sign-in action instead of the password form
+- Exposes `GET /api/auth/oidc/start` and `GET /api/auth/oidc/callback` only on the exact Preview HTTPS origin
+- **Fails closed** if Google OIDC or the encrypted transaction key is missing
+- Issues the existing opaque `app_session` only after Google ID-token verification and lookup of a **pre-linked, active** `provider=google + subject` in `external_identities`
+- Never creates a new user automatically, maps identity by mutable email or permits unrestricted persona impersonation
+- Stores short-lived OIDC state, nonce and PKCE verifier encrypted in a 5-minute AES-GCM Secure/HttpOnly/SameSite=Lax transaction cookie
+- Leaves production and the original reference ID/password plus secure scrypt implementation intact
+
+### Remote activation requires a separate Human Gate
+
+This PR intentionally does **not** create or change Google Cloud OAuth clients, Cloudflare resources, D1 identity mappings, Secrets, Production settings or Preview environment variables.
+
+After explicit approval, activation needs:
+
+1. A Google OAuth Web Application client allowing exactly `https://ai-driven-fullstack-webapp-template-preview.ha-rookie.workers.dev/api/auth/oidc/callback` as a redirect URI; verify whether Google's client- and provider-side quotas/terms suit the free reference use case
+2. `GOOGLE_OIDC_CLIENT_ID` (Preview-only variable) and `GOOGLE_OIDC_CLIENT_SECRET` (Preview-only secret)
+3. `WORKHUB_OIDC_TRANSACTION_KEY` generated from 32 CSPRNG bytes, stored as a 43-character base64url **Preview-only secret**; rotate with explicit rollback plan
+4. `WORKHUB_FREE_AUTH_MODE=google_oidc` set only in Preview and an authorized deployment after (2)+(3)
+5. Explicit linking of the chosen Google OIDC `sub` to the approved existing WORKHUB `users.id` in Preview D1 through a separately approved user/identity operation; never auto-link on email and never assume the demo personas are trustworthy human identities
+6. Verify sign-in, `/api/auth/me`, authorization, logout/session revocation and missing/disabled/unlinked accounts; ensure CPU stays within Free limits and browser reliability tests run with zero scrypt credential-verification attempts
+
+The current Preview demo selector has multiple roles. A single linked Google account may not silently impersonate all of them. Multi-persona Preview testing requires explicit role-specific provider bindings or a **separately reviewed and auditable** Preview test-role mechanism. Existing account-switch test automation based on the public demo credential is **not** evidence for the new OIDC mode; update the acceptance process when the mode is activated.
+
+**Issue #521 remains open until remote setup, read-only capacity telemetry, strict Browser acceptance and incident mitigation evidence are complete.** The public Showcase must remain accessible if authentication routes or future Access policies are changed.
+
+Official documentation:
+- https://developers.cloudflare.com/workers/platform/limits/
+- https://developers.cloudflare.com/workers/runtime-apis/web-crypto/
+- https://developers.cloudflare.com/workers/configuration/cloudflare-access/
