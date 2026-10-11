@@ -357,3 +357,22 @@
 .workhub-announcement-item h3 { margin: 0 0 7px; font-size: 16px; }
 .workhub-announcement-item p { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .workhub-announcement-item small { color: #526b77; }
+
+/* Cross-domain MY REQUESTS read model. Each domain stays authoritative. */
+.workhub-my-request-item .workhub-request-kind {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #e5f1f1;
+  color: #175f68;
+  font-size: 11px;
+  font-weight: 800;
+}
+.workhub-my-request-item .workhub-request-next-action {
+  color: #175f68;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.workhub-my-request-item.is-returned .workhub-request-next-action { color: #87500e; }

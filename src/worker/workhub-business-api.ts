@@ -15,6 +15,8 @@ import {
 } from "../reference/workhub/travel-request/integration";
 import { D1WorkhubAnnouncementStore, WorkhubAnnouncementError } from "../reference/workhub/announcements";
 import { D1WorkhubExpenseStore, WorkhubExpenseError } from "../reference/workhub/expenses";
+import { WORKHUB_EXPENSE_EMPLOYEE_ID } from "../reference/workhub/expenses";
+import { projectWorkhubMyRequests } from "../reference/workhub/my-requests";
 import { resolveApplicationSession } from "./auth";
 import {
   BusinessActivityProjector,
@@ -296,6 +298,22 @@ export const handleWorkhubBusinessApi = async (
   const pathname = url.pathname;
 
   try {
+    if (pathname === "/api/workhub/my-requests" && request.method === "GET") {
+      // Reference MVP: Aoi owns both request types. Check this before accessing
+      // sources; Accounting can review expenses but must not see others' MY REQUESTS.
+      if (principalId !== WORKHUB_EXPENSE_EMPLOYEE_ID) {
+        return error(403, "my_requests_forbidden", "Personal requests are unavailable");
+      }
+      // Each authoritative source filters by session principal AND environment
+      // in D1; never materialize cross-employee lists before projecting.
+      // Fail the entire view if one source fails: a partial list looks like 0 items.
+      const [travels, expenses] = await Promise.all([
+        services.travel.listMine(principalId),
+        new D1WorkhubExpenseStore(env.DB, environment).list(principalId),
+      ]);
+      return json({ items: projectWorkhubMyRequests(travels, expenses) });
+    }
+
     if (pathname === "/api/workhub/expenses" && request.method === "GET") {
       const expenses = new D1WorkhubExpenseStore(env.DB, environment);
       return json({ items: await expenses.list(principalId) });
