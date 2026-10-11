@@ -13,6 +13,7 @@ import {
   WORKHUB_TRAVEL_NOTIFICATION_RECIPIENTS,
   WorkhubWorkflowProjectionFanOut,
 } from "../reference/workhub/travel-request/integration";
+import { D1WorkhubAnnouncementStore, WorkhubAnnouncementError } from "../reference/workhub/announcements";
 import { resolveApplicationSession } from "./auth";
 import {
   BusinessActivityProjector,
@@ -294,6 +295,19 @@ export const handleWorkhubBusinessApi = async (
   const pathname = url.pathname;
 
   try {
+    if (pathname === "/api/workhub/announcements" && request.method === "GET") {
+      const announcements = new D1WorkhubAnnouncementStore(env.DB, environment);
+      return json({ items: await announcements.list() });
+    }
+
+    if (pathname === "/api/workhub/announcements" && request.method === "POST") {
+      const body = await bodyRecord(request);
+      if (body instanceof Response) return body;
+      const announcements = new D1WorkhubAnnouncementStore(env.DB, environment);
+      const item = await announcements.publish(principalId, body.title, body.body);
+      return json({ item }, 201);
+    }
+
     if (request.method === "GET" && pathname === "/api/workhub/search") {
       const text = url.searchParams.get("q") ?? "";
       const cursor = url.searchParams.get("cursor") ?? undefined;
@@ -482,6 +496,10 @@ export const handleWorkhubBusinessApi = async (
 
     return error(404, "not_found", "WORKHUB API route was not found");
   } catch (caught) {
+    if (caught instanceof WorkhubAnnouncementError) {
+      const status = caught.code === "forbidden" ? 403 : caught.code === "invalid_input" ? 400 : 503;
+      return error(status, `announcement_${caught.code}`, caught.message);
+    }
     if (caught instanceof SearchRequestError) {
       return error(400, `search_${caught.code}`, "Search request is invalid");
     }
