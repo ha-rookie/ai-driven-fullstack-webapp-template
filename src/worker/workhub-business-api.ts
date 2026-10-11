@@ -337,6 +337,7 @@ export const handleWorkhubBusinessApi = async (
         const result = await journey.advance(
           principalId, membership.role, decodeURIComponent(actionMatch[1]),
           intField(body, "expectedVersion"), intField(body, "expectedWorkItemVersion"),
+          stringField(body, "stepKey") || undefined,
         );
         return json({ item: result });
       }
