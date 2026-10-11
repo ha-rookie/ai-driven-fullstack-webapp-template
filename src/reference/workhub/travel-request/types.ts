@@ -28,6 +28,8 @@ export interface TravelRequestCompareAndSetOptions {
 export interface TravelRequestStore {
   create(record: TravelRequestRecord): Promise<boolean>;
   get(id: string, environment: string): Promise<TravelRequestRecord | null>;
+  // Bounded, server-filtered list; never load every employee's requests then filter in UI.
+  listOwned(environment: string, requesterId: string, limit: number): Promise<readonly TravelRequestRecord[]>;
   compareAndSet(
     record: TravelRequestRecord,
     options: TravelRequestCompareAndSetOptions,
