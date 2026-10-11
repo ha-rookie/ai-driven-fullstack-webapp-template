@@ -90,16 +90,20 @@ export const searchWorkhubApps = (
   const term = searchText.trim().toLocaleLowerCase("ja-JP");
   if (!term) return [];
 
-  return listWorkhubApps(currentRole)
-    .filter(app => app.availability === "available" && app.launchTarget !== null)
-    .filter(app => [app.displayName, app.description, app.category]
-      .some(value => value.toLocaleLowerCase("ja-JP").includes(term)))
-    .map(app => ({
+  const matches: WorkhubAppSearchResult[] = [];
+  for (const app of listWorkhubApps(currentRole)) {
+    if (app.availability !== "available" || !app.launchTarget) continue;
+    if (![app.displayName, app.description, app.category]
+      .some(value => value.toLocaleLowerCase("ja-JP").includes(term))) continue;
+
+    matches.push({
       resourceType: "workhub_app",
       resourceId: app.key,
       category: "apps",
       title: app.displayName,
       snippet: app.description,
-      actionTarget: app.launchTarget!,
-    }));
+      actionTarget: app.launchTarget,
+    });
+  }
+  return matches;
 };
