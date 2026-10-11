@@ -238,7 +238,7 @@ function TravelWorkspace() {
             {searchResults.map(result => {
               const key = `${result.resourceType}:${result.resourceId}`;
               const internalAppTarget = result.resourceType === "workhub_app"
-                && /^\\/(?:#workhub-[a-z-]+|admin)$/u.test(result.actionTarget ?? "")
+                && /^\/(?:#workhub-[a-z-]+|admin)$/u.test(result.actionTarget ?? "")
                   ? result.actionTarget : null;
               const content = <><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category === "apps" ? "アプリ" : result.category}</small></>;
               return internalAppTarget
