@@ -85,6 +85,59 @@ try {
   run("runtime business and boundary acceptance",
     [join(isolatedRoot, "examples/reuse/isolated-consumer-runner.cjs")], isolatedRoot, 20_000);
 
+  // Apply the same frozen business acceptance to A and a small isolated
+  // greenfield B. B was authored by the already-informed assistant, not an
+  // independent AI agent; this intentionally cannot measure AI productivity.
+  const acceptance = "examples/reuse/comparison-purchase-acceptance.cjs";
+  await mkdir(dirname(join(isolatedRoot, acceptance)), { recursive: true });
+  await copyFile(join(repository, acceptance), join(isolatedRoot, acceptance));
+  run("A shared purchase acceptance",
+    [join(isolatedRoot, acceptance), "dist/examples/reuse/purchase-approval.js"],
+    isolatedRoot, 20_000);
+
+  const baselineRoot = join(isolatedRoot, "greenfield-b");
+  const baselineFile = "examples/reuse/comparison-greenfield-purchase.ts";
+  await mkdir(dirname(join(baselineRoot, baselineFile)), { recursive: true });
+  await copyFile(join(repository, baselineFile), join(baselineRoot, baselineFile));
+  await copyFile(join(repository, acceptance), join(baselineRoot, "comparison-acceptance.cjs"));
+  await writeFile(join(baselineRoot, "tsconfig.json"), JSON.stringify({
+    compilerOptions: {
+      target: "ES2023",
+      module: "CommonJS",
+      moduleResolution: "Node",
+      lib: ["ES2023", "DOM"],
+      types: [],
+      strict: true,
+      skipLibCheck: true,
+      rootDir: ".",
+      outDir: "dist",
+    },
+    files: [baselineFile],
+  }, null, 2) + "\n");
+  run("B greenfield no-dependency TypeScript compile",
+    [compiler, "--project", join(baselineRoot, "tsconfig.json")], baselineRoot, 90_000);
+  assert.deepEqual(await emittedJsFiles(join(baselineRoot, "dist")),
+    ["examples/reuse/comparison-greenfield-purchase.js"],
+    "greenfield B must not introduce transitive source dependencies");
+  run("B shared purchase acceptance",
+    [join(baselineRoot, "comparison-acceptance.cjs"), "dist/examples/reuse/comparison-greenfield-purchase.js"],
+    baselineRoot, 20_000);
+
+  // Descriptive only. These are not equivalent implementations in breadth:
+  // A has generic Workflow capabilities beyond the 12 fixed purchase cases.
+  const { readFile } = await import("node:fs/promises");
+  const countNonblank = async (root, files) =>
+    (await Promise.all(files.map((file) => readFile(join(root, file), "utf8"))))
+      .reduce((total, content) => total + content.split("\n").filter((line) => line.trim()).length, 0);
+  console.log("PURCHASE_COMPARISON_SCOPE " + JSON.stringify({
+    evidence: "INTERNAL_NON_BLIND",
+    commonAcceptanceCases: 12,
+    aSourceFiles: portableFiles.length,
+    aNonblankSourceLines: await countNonblank(repository, portableFiles),
+    bSourceFiles: 1,
+    bNonblankSourceLines: await countNonblank(repository, [baselineFile]),
+    limitations: "in-memory-only; no external AI comparison, durable store, audit, or measured engineer time",
+  }));
   console.log(`[isolated-reuse] PASS: copied ${portableFiles.length} TS files into an independent temporary project`);
 } finally {
   await rm(isolatedRoot, { recursive: true, force: true });

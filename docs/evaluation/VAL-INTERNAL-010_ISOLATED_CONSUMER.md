@@ -57,3 +57,5 @@ node scripts/reuse-isolated-smoke.mjs
 ## CIコスト
 
 既存の影響ファイルを判定するportable Workflow/AuthZ CIステップでのみ `node scripts/reuse-isolated-smoke.mjs` を実行。ユニットテストを丸ごと再発明せず、既存のUnit Testと小さな隔離環境のAcceptanceで評価を分ける。デプロイ・ブラウザ・Remote D1テストはこの検証のために実行しない。
+
+次の評価: [VAL-INTERNAL-011 — 既存部品Aと限定新規実装Bの同一12件Acceptance比較](VAL-INTERNAL-011_PURCHASE_AB_COMPARISON.md)。この評価は同じChatGPTが既存Aのコードを知ったうえでBを作成した非盲検の内部比較であり、独立AIによる性能評価や工数短縮の証拠には数えません。
