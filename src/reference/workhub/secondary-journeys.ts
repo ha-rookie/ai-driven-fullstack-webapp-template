@@ -36,7 +36,7 @@ export type SecondaryIntent = "moving" | "pc-replacement";
 export interface SecondaryStep {
   readonly key: string;
   readonly label: string;
-  readonly status: "done" | "current" | "pending";
+  readonly status: "done" | "current" | "pending" | "stopped";
   readonly version?: number | null;
   readonly workItemVersion?: number | null;
   readonly assignedToMe?: boolean;
@@ -81,11 +81,12 @@ export const projectSecondaryJourney = (
   instance: WorkflowInstanceRecord,
   item: WorkflowWorkItemRecord | null,
   principalId: string,
+  rejectedStepKey: string | null = null,
 ): SecondaryJourneyView => {
   const intent: SecondaryIntent = instance.definitionKey === CONFIG.moving.definitionKey
     ? "moving" : "pc-replacement";
   const spec = CONFIG[intent];
-  const current = spec.steps.findIndex(([key]) => key === (instance.currentStepKey ?? instance.returnedStepKey));
+  const current = spec.steps.findIndex(([key]) => key === (instance.currentStepKey ?? instance.returnedStepKey ?? rejectedStepKey));
   return {
     id: instance.id,
     intent,
@@ -101,7 +102,9 @@ export const projectSecondaryJourney = (
     steps: spec.steps.map(([key, label], index) => ({
       key, label,
       status: instance.state === "completed" || (current >= 0 && index < current)
-        ? "done" : index === current ? "current" : "pending",
+        ? "done"
+        : instance.state === "rejected" && index === current ? "stopped"
+        : index === current ? "current" : "pending",
     })),
   };
 };
@@ -146,6 +149,25 @@ export class WorkhubSecondaryJourneyService {
     return records;
   }
 
+  /**
+   * Workflow terminal rejection clears currentStepKey. The persisted
+   * reject transition records which step stopped. Read only for rejections.
+   */
+  private async projectInstance(
+    instance: WorkflowInstanceRecord, item: WorkflowWorkItemRecord | null, principalId: string,
+  ): Promise<SecondaryJourneyView> {
+    let rejectedStepKey: string | null = null;
+    if (instance.state === "rejected") {
+      const transition = await this.db.prepare(`
+        SELECT from_step_key FROM workflow_transitions
+        WHERE environment = ? AND workflow_instance_id = ? AND transition = 'reject'
+        ORDER BY sequence DESC LIMIT 1
+      `).bind(this.environment, instance.id).first<{ from_step_key: string | null }>();
+      rejectedStepKey = transition?.from_step_key ?? null;
+    }
+    return projectSecondaryJourney(instance, item, principalId, rejectedStepKey);
+  }
+
   async list(principalId: string, role: string): Promise<readonly SecondaryJourneyView[]> {
     if (role !== "employee" && role !== "corporate") return [];
     const result = await this.db.prepare(`
@@ -174,7 +196,7 @@ export class WorkhubSecondaryJourneyService {
       const instance = await this.store.getInstance(row.id, this.environment);
       if (!instance || !SECONDARY_DEFINITIONS.some(d => d.key === instance.definitionKey)) continue;
       const item = await this.store.getOpenWorkItem(row.id, this.environment);
-      views.push(projectSecondaryJourney(instance, item, principalId));
+      views.push(await this.projectInstance(instance, item, principalId));
     }
     if (role === "employee") {
       for (const key of movingKeys) {
@@ -204,7 +226,7 @@ export class WorkhubSecondaryJourneyService {
       throw new WorkflowError("conflict", "This reference request key belongs to another journey");
     }
     const item = await this.store.getOpenWorkItem(instance.id, this.environment);
-    return projectSecondaryJourney(instance, item, principalId);
+    return this.projectInstance(instance, item, principalId);
   }
 
   async start(principalId: string, role: string, intent: string, key: string): Promise<SecondaryJourneyView> {
@@ -251,7 +273,7 @@ export class WorkhubSecondaryJourneyService {
         requesterId: principalId,
         submissionKey: `workhub-secondary:${principalId}:${key}`,
       });
-      return projectSecondaryJourney(result.instance, result.currentWorkItem, principalId);
+      return this.projectInstance(result.instance, result.currentWorkItem, principalId);
     } catch (caught) {
       if (caught instanceof WorkflowError && caught.code === "conflict") {
         const concurrentlyCreated = await this.currentOwnedStart(principalId, key, intent);
@@ -283,7 +305,7 @@ export class WorkhubSecondaryJourneyService {
       const result = await this.workflow.resubmit({
         instanceId: id, actorId: principalId, expectedInstanceVersion: version,
       });
-      return projectSecondaryJourney(result.instance, result.currentWorkItem, principalId);
+      return this.projectInstance(result.instance, result.currentWorkItem, principalId);
     }
     const workItem = await this.store.getOpenWorkItem(id, this.environment);
     if (role !== "corporate" || principalId !== "workhub-demo-sora"
@@ -308,7 +330,7 @@ export class WorkhubSecondaryJourneyService {
     const result = action === "return"
       ? await this.workflow.returnForCorrection(command)
       : await this.workflow.reject(command);
-    return projectSecondaryJourney(result.instance, result.currentWorkItem, principalId);
+    return this.projectInstance(result.instance, result.currentWorkItem, principalId);
   }
 
   async advance(
@@ -354,6 +376,6 @@ export class WorkhubSecondaryJourneyService {
       expectedInstanceVersion: version,
       expectedWorkItemVersion: workItemVersion,
     });
-    return projectSecondaryJourney(result.instance, result.currentWorkItem, principalId);
+    return this.projectInstance(result.instance, result.currentWorkItem, principalId);
   }
 }

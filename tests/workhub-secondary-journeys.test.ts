@@ -39,3 +39,21 @@ test("completed secondary workflow does not invent an open work item", () => {
   assert.equal(completed.workItemVersion, null);
   assert.equal(completed.assignedToMe, false);
 });
+
+test("rejected PC journey retains completed stages and identifies terminal step", () => {
+  const pc = {
+    ...instance,
+    definitionKey: SECONDARY_DEFINITIONS[1].key,
+    state: "rejected" as const,
+    currentStepKey: null,
+    returnedStepKey: null,
+    version: 4,
+  };
+  const projected = projectSecondaryJourney(pc, null, "workhub-demo-aoi", "processing");
+  assert.equal(projected.state, "rejected");
+  assert.deepEqual(projected.steps.map(x => x.status), ["done", "done", "stopped", "pending"]);
+  assert.equal(projected.assignedToMe, false);
+  assert.equal(projected.workItemVersion, null);
+  const withoutHistory = projectSecondaryJourney(pc, null, "workhub-demo-aoi");
+  assert.deepEqual(withoutHistory.steps.map(x => x.status), ["pending", "pending", "pending", "pending"]);
+});
