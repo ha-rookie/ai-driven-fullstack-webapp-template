@@ -136,7 +136,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
       : <div className="workhub-secondary-grid">
         {items.map(item => {
           const current = item.steps.find(step => step.status === "current");
-          return <article key={item.id} className="workhub-secondary-item">
+          return <article key={item.id} data-journey-id={item.id} className="workhub-secondary-item">
             <h3>{item.title}</h3>
             <p>{item.state === "completed" ? "デモ完了" : "デモ進行中"}
               {" · "}{item.steps.filter(step => step.status === "done").length}/{item.steps.length}ステップ</p>
