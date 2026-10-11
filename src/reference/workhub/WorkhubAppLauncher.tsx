@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { selectWorkhubHomeShortcuts, type WorkhubAppEntry } from "./app-catalog";
+import { listWorkhubRequestIntents } from "./request-intents";
 
 type LoadState = "loading" | "ready" | "unavailable" | "forbidden";
 
@@ -35,6 +36,7 @@ export default function WorkhubAppLauncher() {
   }, [refresh]);
 
   const homeShortcuts = useMemo(() => selectWorkhubHomeShortcuts(apps), [apps]);
+  const requestIntents = useMemo(() => listWorkhubRequestIntents(apps), [apps]);
   const categories = useMemo(() => Array.from(new Set(apps.map(app => app.category))), [apps]);
   const visibleApps = useMemo(() => apps.filter(app =>
     (category === "all" || app.category === category)
@@ -62,6 +64,25 @@ export default function WorkhubAppLauncher() {
             <span className="workhub-home-apps-open" aria-hidden="true">開く →</span>
           </a>)}
         </div>)}
+    </section>
+    <section className="workhub-request-intents" id="workhub-request-intents" aria-labelledby="workhub-request-intents-title">
+      <div className="workhub-section-heading">
+        <div><span className="workhub-card-label">REQUESTS / INTENT CATALOG</span><h2 id="workhub-request-intents-title">申請・手続きを探す</h2></div>
+      </div>
+      <p className="workhub-reference-note">システム名ではなく、やりたいことから選びます。実装済みの業務だけ起動できます。</p>
+      {state === "loading" && <p role="status">利用できる手続きを確認しています…</p>}
+      {state === "forbidden" && <p role="alert">所属・権限を確認できません。申請画面への導線は表示できません。</p>}
+      {state === "unavailable" && <div role="alert"><p>手続きを取得できませんでした。アプリ一覧から再読み込みしてください。</p><a href="#workhub-apps">アプリ一覧へ</a></div>}
+      {state === "ready" && <div className="workhub-request-intent-grid">
+        {requestIntents.map(intent => <article className="workhub-request-intent-card" key={intent.key}>
+          <h3>{intent.title}</h3>
+          <p>{intent.description}</p>
+          <ol>{intent.steps.map(step => <li key={step}>{step}</li>)}</ol>
+          {intent.availability === "connected" && intent.target
+            ? <a className="workhub-request-intent-open" href={intent.target}>手続きを開く →</a>
+            : <span className="workhub-request-intent-guide">手順の案内のみ・申請は未接続</span>}
+        </article>)}
+      </div>}
     </section>
     <section className="workhub-app-launcher" id="workhub-apps" tabIndex={-1} aria-labelledby="workhub-apps-title">
     <div className="workhub-section-heading">
