@@ -143,20 +143,55 @@ export class WorkhubSecondaryJourneyService {
     return views;
   }
 
+  /** Resource ID and requester are bound to the authenticated scope, not supplied by the browser. */
+  private async findOwnedStart(principalId: string, key: string): Promise<WorkflowInstanceRecord | null> {
+    const row = await this.db.prepare(`
+      SELECT id FROM workflow_instances
+      WHERE environment = ? AND resource_type = ? AND resource_id = ? AND requester_id = ?
+      LIMIT 1
+    `).bind(this.environment, SECONDARY_RESOURCE_TYPE, key, principalId).first<{ id: string }>();
+    return row ? this.store.getInstance(row.id, this.environment) : null;
+  }
+
+  private async currentOwnedStart(
+    principalId: string, key: string, intent: SecondaryIntent,
+  ): Promise<SecondaryJourneyView | null> {
+    const instance = await this.findOwnedStart(principalId, key);
+    if (!instance) return null;
+    if (instance.definitionKey !== CONFIG[intent].definitionKey) {
+      throw new WorkflowError("conflict", "This reference request key belongs to another journey");
+    }
+    const item = await this.store.getOpenWorkItem(instance.id, this.environment);
+    return projectSecondaryJourney(instance, item, principalId);
+  }
+
   async start(principalId: string, role: string, intent: string, key: string): Promise<SecondaryJourneyView> {
     if (role !== "employee") throw new WorkflowError("forbidden", "Only employees may start this demo journey");
     if (!isSecondaryIntent(intent) || !/^[0-9a-f-]{36}$/iu.test(key)) {
       throw new WorkflowError("invalid_input", "Invalid demo journey intent or request key");
     }
-    const result = await this.workflow.start({
-      resourceType: SECONDARY_RESOURCE_TYPE,
-      resourceId: key,
-      definitionKey: CONFIG[intent].definitionKey,
-      definitionVersion: 1,
-      requesterId: principalId,
-      submissionKey: `workhub-secondary:${principalId}:${key}`,
-    });
-    return projectSecondaryJourney(result.instance, result.currentWorkItem, principalId);
+    // A lost HTTP response must not create a second workflow on explicit retry.
+    // First read the original owner-scoped submission, then handle a concurrent
+    // unique-key conflict by reading the existing committed instance again.
+    const existing = await this.currentOwnedStart(principalId, key, intent);
+    if (existing) return existing;
+    try {
+      const result = await this.workflow.start({
+        resourceType: SECONDARY_RESOURCE_TYPE,
+        resourceId: key,
+        definitionKey: CONFIG[intent].definitionKey,
+        definitionVersion: 1,
+        requesterId: principalId,
+        submissionKey: `workhub-secondary:${principalId}:${key}`,
+      });
+      return projectSecondaryJourney(result.instance, result.currentWorkItem, principalId);
+    } catch (caught) {
+      if (caught instanceof WorkflowError && caught.code === "conflict") {
+        const concurrentlyCreated = await this.currentOwnedStart(principalId, key, intent);
+        if (concurrentlyCreated) return concurrentlyCreated;
+      }
+      throw caught;
+    }
   }
 
   async advance(
