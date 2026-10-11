@@ -58,7 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** The reference expense domain is separate from the travel workflow domain. */
-export default function ExpenseWorkspace({ principalId, onChanged }: { readonly principalId: string; readonly onChanged?: () => void }) {
+export default function ExpenseWorkspace({ principalId, selectedTravelRequestId, onChanged }: { readonly principalId: string; readonly selectedTravelRequestId?: string | null; readonly onChanged?: () => void }) {
   const isEmployee = principalId === "workhub-demo-aoi";
   const isAccountant = principalId === "workhub-demo-mei";
   const [claims, setClaims] = useState<ExpenseClaim[]>([]);
@@ -69,6 +69,11 @@ export default function ExpenseWorkspace({ principalId, onChanged }: { readonly 
   const [purpose, setPurpose] = useState("");
   const [lines, setLines] = useState<EditLine[]>([blankLine()]);
   const [travelRequestId, setTravelRequestId] = useState("");
+  useEffect(() => {
+    if (principalId === "workhub-demo-aoi" && selectedTravelRequestId) {
+      setTravelRequestId(selectedTravelRequestId);
+    }
+  }, [principalId, selectedTravelRequestId]);
   const [editing, setEditing] = useState<{ id: string; version: number } | null>(null);
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
 

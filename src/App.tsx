@@ -18,6 +18,7 @@ interface UnifiedMyRequest {
   readonly returnReason: string | null;
   readonly amountYen: number | null;
   readonly updatedAt: string;
+  readonly journey: { readonly travelStage: string; readonly settlementStage: string; readonly linkedClaimCount: number } | null;
 }
 interface TravelRequestRecord { readonly id: string; readonly destinationOfficeItemId: string; readonly startDate: string; readonly endDate: string; readonly purpose: string; readonly status: "draft" | "submitting" | "submitted"; readonly version: number; readonly workflowInstanceId: string | null; }
 interface WorkflowRecord { readonly id: string; readonly state: string; readonly version: number; }
@@ -65,7 +66,7 @@ function LoginScreen() {
 
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
-  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
   const loadNotifications = useCallback(async () => { const [list, count] = await Promise.all([apiJson<{ items: NotificationRecord[] }>("/api/workhub/notifications"), apiJson<{ unreadCount: number }>("/api/workhub/notifications/unread-count")]); setNotifications(list.items); setUnreadCount(count.unreadCount); }, []);
   const loadMyWork = useCallback(async () => { if (!isRen) return; const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work"); setMyWork(result.items); }, [isRen]);
   const loadAnnouncements = useCallback(async () => {
@@ -173,7 +174,13 @@ function TravelWorkspace() {
           </div>
         </section>
         {message && <div className="workhub-demo-note" role="status"><strong>WORKHUB</strong><span>{message}</span></div>}
-        {searchText.trim() && !searching && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">{searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">{searchResults.map((result) => <button key={`${result.resourceType}:${result.resourceId}`} type="button" className="workhub-search-result" onClick={() => openSearchResult(result)}><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category}</small></button>)}</div>}</section>}
+        {searchText.trim() && !searching && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">{searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">{searchResults.map((result) => <button key={`${result.resourceType}:${result.resourceId}`} type="button" className="workhub-search-result" onClick={() => openSearchResult(result)}><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category}</small></button>
+                  {request.kind === "travel" && request.status === "completed" && request.journey?.linkedClaimCount === 0 &&
+                    <button className="workhub-journey-expense-action" type="button" onClick={() => {
+                      setJourneyTravelId(request.id);
+                      requestAnimationFrame(() => document.getElementById("workhub-expenses")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+                    }}>この出張の経費精算を始める →</button>}
+                  </article>)}</div>}</section>}
         <section className="workhub-dashboard-row" id="workhub-my-work" aria-label="今日の仕事">
           <article className="workhub-dashboard-card workhub-my-work-summary">
             <div className="workhub-section-heading"><div><span className="workhub-card-label">MY WORK</span><h2>今日対応すること</h2></div><span className="workhub-summary-count">{isRen ? myWork.length : awaitingResubmission ? 1 : 0}</span></div>
@@ -204,18 +211,22 @@ function TravelWorkspace() {
             myRequestsState === "error" ? <div role="alert"><p>申請一覧を取得できませんでした。申請が0件とは限りません。</p><button type="button" className="workhub-secondary-button" onClick={() => void loadMyRequests()}>再読み込み</button></div> :
               myRequests.length === 0 ? <p className="workhub-empty-state">申請はまだありません。「出張したい」や「交通費・経費精算」から開始できます。</p> :
                 <div className="workhub-my-requests-list">{myRequests.map((request) =>
-                  <button key={`${request.kind}:${request.id}`}
-                    className={`workhub-my-request-item ${request.status === "action_required" ? "is-returned" : ""}`}
+                  <article className="workhub-journey-entry" key={`${request.kind}:${request.id}`}>
+                  <button className={`workhub-my-request-item ${request.status === "action_required" ? "is-returned" : ""}`}
                     type="button" disabled={busy} onClick={() => selectMyRequest(request)}>
                     <span className="workhub-request-kind">{request.kind === "travel" ? "出張申請" : "経費精算"}</span>
                     <strong>{request.title}</strong>
                     <span>{request.subtitle}</span>
                     {request.amountYen !== null && <span>合計 {request.amountYen.toLocaleString("ja-JP")}円</span>}
                     <small className="workhub-request-status">{request.statusLabel}</small>
+                    {request.kind === "travel" && request.journey && <span className="workhub-journey-progress" aria-label="出張から経費精算までの進捗">
+                      <span>① 出張申請：{request.journey.travelStage}</span>
+                      <span>② 紐づく経費精算：{request.journey.settlementStage}</span>
+                    </span>}
                     {request.status === "action_required" && <span className="workhub-request-return-comment"><span>差戻し理由：</span>{request.returnReason?.trim() || "理由の記載がありません。担当者に確認してください。"}</span>}
                     <span className="workhub-request-next-action">{request.kind === "travel" ? request.status === "action_required" ? "選択して修正・再申請する →" : "申請内容・履歴を確認する →" : request.status === "action_required" ? "精算の修正画面へ →" : "精算の明細を確認する →"}</span>
                   </button>)}</div>}
-          <small className="workhub-reference-note">自分の申請を最大20件表示。出張の状態はWorkflow、経費の状態は経理承認データが正本です。情報は一覧更新で再取得します。</small>
+          <small className="workhub-reference-note">自分の申請を最大20件表示。進捗はこの出張に明示的に紐づけた精算のみを集計し、支払完了は意味しません。状態は一覧更新で再取得します。</small>
         </section>}
         <section className="workhub-home-grid" id="workhub-requests" aria-label="出張申請 Reference Scenario">
           {isAoi && <article className="workhub-home-card workhub-home-card-primary" id="workhub-travel-form"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "出張申請"}</h2>{awaitingResubmission && <div className="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>{returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</p></div>}<div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => setDestinationOfficeItemId(event.target.value)}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><label>目的<textarea id="workhub-travel-purpose" aria-label="目的" value={purpose} onChange={(event) => setPurpose(event.target.value)} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy} onClick={updateAndResubmit}>修正して再申請</button> : <button className="workhub-primary-button" type="button" disabled={busy} onClick={createAndSubmit}>出張申請を提出</button>}</div></article>}
@@ -223,7 +234,7 @@ function TravelWorkspace() {
           {selectedRequest && <article className="workhub-home-card" id="workhub-request-detail"><span className="workhub-card-label">MY REQUEST DETAIL</span><h2>{selectedRequest.purpose}</h2><p>{selectedRequest.startDate} → {selectedRequest.endDate}</p><p>Workflow: <strong>{selectedWorkflow?.state ?? selectedRequest.status}</strong></p><div className="workhub-timeline" aria-label="申請履歴">{timeline.length === 0 ? <p>履歴はまだありません。</p> : timeline.map((activity) => <div key={activity.id} className="workhub-timeline-item"><strong>{TIMELINE_LABELS[activity.activityType] ?? activity.activityType}</strong><small>{new Date(activity.occurredAt).toLocaleString("ja-JP")}</small></div>)}</div></article>}
           {!isAoi && !isRen && <article className="workhub-home-card workhub-home-card-primary"><span className="workhub-card-label">あなたの優先エリア</span><h2>{reference?.hint ?? "MY WORK"}</h2><p>このReferenceではPersonaごとにHOMEの優先領域を変えます。</p></article>}
         </section>
-        <ExpenseWorkspace principalId={user?.id ?? ""} onChanged={() => void loadMyRequests()} />
+        <ExpenseWorkspace principalId={user?.id ?? ""} selectedTravelRequestId={journeyTravelId} onChanged={() => void loadMyRequests()} />
         <section className="workhub-announcements" id="workhub-announcements" aria-labelledby="workhub-announcements-title">
           <div className="workhub-section-heading">
             <div><span className="workhub-card-label">COMPANY ANNOUNCEMENTS</span><h2 id="workhub-announcements-title">社内お知らせ</h2></div>
