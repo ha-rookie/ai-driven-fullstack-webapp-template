@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectWorkhubMyRequests, type TravelProjectionInput, type ExpenseProjectionInput } from "../src/reference/workhub/my-requests";
+import { listActionRequiredMyRequests, projectWorkhubMyRequests, type TravelProjectionInput, type ExpenseProjectionInput } from "../src/reference/workhub/my-requests";
 import type { TravelExpenseSummary } from "../src/reference/workhub/expenses";
 
 const travel = (overrides: Partial<TravelProjectionInput> = {}): TravelProjectionInput => ({
@@ -118,4 +118,29 @@ test("journey ignores unrelated linked-claim summaries and never implies payment
   )[0];
   assert.equal(item?.journey?.linkedClaimCount, 0);
   assert.ok(!item?.journey?.settlementStage.includes("支払"));
+});
+
+test("HOME MY WORK derives actionable returned travel and expenses without selecting a request first", () => {
+  const rows = projectWorkhubMyRequests(
+    [
+      travel({ id: "returned", workflowState: "awaiting_resubmission", returnComment: "日程修正" }),
+      travel({ id: "approved", workflowState: "completed" }),
+    ],
+    [
+      expense({ id: "expense-returned", status: "returned", returnReason: "領収書の確認" }),
+      expense({ id: "expense-pending", status: "submitted" }),
+    ],
+  );
+  const actionable = listActionRequiredMyRequests(rows);
+  assert.deepEqual(actionable.map(row => row.id).sort(), ["expense-returned", "returned"]);
+  assert.equal(actionable.find(row => row.id === "returned")?.returnReason, "日程修正");
+  assert.equal(actionable.find(row => row.id === "expense-returned")?.kind, "expense");
+  assert.equal(rows.length, 4, "deriving the HOME summary does not mutate the owner-scoped source");
+});
+
+test("HOME MY WORK shows empty only for an actually resolved owner-scoped empty or non-actionable list", () => {
+  assert.deepEqual(listActionRequiredMyRequests([]), []);
+  assert.deepEqual(listActionRequiredMyRequests(projectWorkhubMyRequests(
+    [travel({ workflowState: "completed" })], [expense({ status: "approved" })],
+  )), []);
 });
