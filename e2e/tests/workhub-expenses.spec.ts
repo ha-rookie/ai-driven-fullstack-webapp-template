@@ -69,10 +69,23 @@ test("employee submits line-item expenses, Accounting returns them, employee cor
   const returnedCard = page.locator("#workhub-my-requests .workhub-my-request-item").filter({ hasText: purpose });
   await expect(returnedCard).toContainText("差戻し・要修正");
   await expect(returnedCard).toContainText("ホテルの料金を確認してください");
+  // A stale MY REQUESTS projection must never enable editing based only
+  // on its old "returned" status. Simulate a newer authoritative detail.
+  await page.route("**/api/workhub/expenses/*", async route => {
+    if (route.request().method() !== "GET") { await route.continue(); return; }
+    const response = await route.fetch();
+    const current = await response.json() as { item: Record<string, unknown> };
+    await route.fulfill({ response, json: { item: { ...current.item, status: "approved" } } });
+  });
   await returnedCard.click();
-  await expect(returned).toBeFocused();
+  await expect(section.getByText("申請状況が更新されています。現在は差戻し中ではないため修正できません。")).toBeVisible();
+  await expect(section.getByRole("button", { name: "経費精算を再提出" })).toHaveCount(0);
+  await page.unroute("**/api/workhub/expenses/*");
 
-  await returned.getByRole("button", { name: "この精算を修正" }).click();
+  // A repeated click is a new selection; the current server version must
+  // open the correction form without requiring a second list-level button.
+  await returnedCard.click();
+  await expect(page.getByRole("textbox", { name: "精算の目的" })).toBeFocused();
   await expect(page.getByRole("textbox", { name: "精算の目的" })).toHaveValue(purpose);
   await expect(page.getByLabel("明細2の金額")).toHaveValue("2300");
   await page.getByLabel("明細2の金額").fill("2500");

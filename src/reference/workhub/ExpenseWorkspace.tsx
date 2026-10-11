@@ -17,6 +17,11 @@ interface ExpenseClaim {
   readonly version: number;
   readonly travelRequestId: string | null;
 }
+interface ExpenseOpenSelection {
+  readonly id: string;
+  readonly edit: boolean;
+  readonly sequence: number;
+}
 interface TravelOption {
   readonly id: string;
   readonly purpose: string;
@@ -58,7 +63,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** The reference expense domain is separate from the travel workflow domain. */
-export default function ExpenseWorkspace({ principalId, selectedTravelRequestId, onChanged }: { readonly principalId: string; readonly selectedTravelRequestId?: string | null; readonly onChanged?: () => void }) {
+export default function ExpenseWorkspace({ principalId, selectedTravelRequestId, selectedExpense, onChanged }: { readonly principalId: string; readonly selectedTravelRequestId?: string | null; readonly selectedExpense?: ExpenseOpenSelection | null; readonly onChanged?: () => void }) {
   const isEmployee = principalId === "workhub-demo-aoi";
   const isAccountant = principalId === "workhub-demo-mei";
   const [claims, setClaims] = useState<ExpenseClaim[]>([]);
@@ -97,6 +102,51 @@ export default function ExpenseWorkspace({ principalId, selectedTravelRequestId,
         .catch(() => setTravels([]));
     }
   }, [isEmployee, isAccountant, refresh]);
+
+  // MY REQUESTS is a read-only projection and may be stale. On every selected
+  // row (including selecting the same row twice), re-read the expense domain's
+  // owner-authorized detail and current version before permitting correction.
+  const selectedExpenseId = selectedExpense?.id;
+  const selectedExpenseSequence = selectedExpense?.sequence;
+  const selectedExpenseEdit = selectedExpense?.edit;
+  useEffect(() => {
+    if (!isEmployee || !selectedExpenseId || selectedExpenseSequence === undefined) return;
+    let active = true;
+    void (async () => {
+      try {
+        const detail = await request<{ item: ExpenseClaim }>(
+          `/api/workhub/expenses/${encodeURIComponent(selectedExpenseId)}`,
+        );
+        if (!active) return;
+        const claim = detail.item;
+        setClaims(current => [claim, ...current.filter(row => row.id !== claim.id)].slice(0, 20));
+        const canEdit = selectedExpenseEdit && claim.status === "returned";
+        if (canEdit) {
+          setPurpose(claim.purpose);
+          setLines(claim.lines.map(line => ({ ...line, amountYen: String(line.amountYen) })));
+          setTravelRequestId(claim.travelRequestId ?? "");
+          setEditing({ id: claim.id, version: claim.version });
+          setMessage("");
+        } else if (selectedExpenseEdit) {
+          setMessage("申請状況が更新されています。現在は差戻し中ではないため修正できません。");
+        }
+        requestAnimationFrame(() => {
+          if (!active) return;
+          const target = document.getElementById(canEdit
+            ? "workhub-expense-purpose" : `workhub-expense-${claim.id}`);
+          target?.scrollIntoView({ behavior: "smooth", block: "center" });
+          target?.focus({ preventScroll: true });
+        });
+      } catch {
+        if (!active) return;
+        setMessage("経費明細の最新状態を確認できませんでした。もう一度選択してください。");
+        requestAnimationFrame(() => {
+          if (active) document.getElementById("workhub-expenses")?.scrollIntoView({ behavior: "smooth" });
+        });
+      }
+    })();
+    return () => { active = false; };
+  }, [isEmployee, selectedExpenseId, selectedExpenseSequence, selectedExpenseEdit]);
 
   if (!isEmployee && !isAccountant) return null;
 
