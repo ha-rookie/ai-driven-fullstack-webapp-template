@@ -307,7 +307,7 @@ export const handleWorkhubBusinessApi = async (
       // decides which Reference applications may even be discovered.
       const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
       if (!membership) return error(403, "apps_forbidden", "Access denied");
-      return json({ items: listWorkhubApps(membership.role) });
+      return json({ items: listWorkhubApps(membership.role), secondaryJourneyRole: ["employee", "corporate"].includes(membership.role) ? membership.role : null });
     }
 
     // Stage 2 Reference-only mock lifecycle: existing WorkflowStore owns
