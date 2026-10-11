@@ -174,13 +174,7 @@ function TravelWorkspace() {
           </div>
         </section>
         {message && <div className="workhub-demo-note" role="status"><strong>WORKHUB</strong><span>{message}</span></div>}
-        {searchText.trim() && !searching && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">{searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">{searchResults.map((result) => <button key={`${result.resourceType}:${result.resourceId}`} type="button" className="workhub-search-result" onClick={() => openSearchResult(result)}><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category}</small></button>
-                  {request.kind === "travel" && request.status === "completed" && request.journey?.linkedClaimCount === 0 &&
-                    <button className="workhub-journey-expense-action" type="button" onClick={() => {
-                      setJourneyTravelId(request.id);
-                      requestAnimationFrame(() => document.getElementById("workhub-expenses")?.scrollIntoView({ behavior: "smooth", block: "center" }));
-                    }}>この出張の経費精算を始める →</button>}
-                  </article>)}</div>}</section>}
+        {searchText.trim() && !searching && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">{searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">{searchResults.map((result) => <button key={`${result.resourceType}:${result.resourceId}`} type="button" className="workhub-search-result" onClick={() => openSearchResult(result)}><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category}</small></button>)}</div>}</section>}
         <section className="workhub-dashboard-row" id="workhub-my-work" aria-label="今日の仕事">
           <article className="workhub-dashboard-card workhub-my-work-summary">
             <div className="workhub-section-heading"><div><span className="workhub-card-label">MY WORK</span><h2>今日対応すること</h2></div><span className="workhub-summary-count">{isRen ? myWork.length : awaitingResubmission ? 1 : 0}</span></div>
@@ -225,7 +219,13 @@ function TravelWorkspace() {
                     </span>}
                     {request.status === "action_required" && <span className="workhub-request-return-comment"><span>差戻し理由：</span>{request.returnReason?.trim() || "理由の記載がありません。担当者に確認してください。"}</span>}
                     <span className="workhub-request-next-action">{request.kind === "travel" ? request.status === "action_required" ? "選択して修正・再申請する →" : "申請内容・履歴を確認する →" : request.status === "action_required" ? "精算の修正画面へ →" : "精算の明細を確認する →"}</span>
-                  </button>)}</div>}
+                  </button>
+                  {request.kind === "travel" && request.status === "completed" && request.journey?.linkedClaimCount === 0 &&
+                    <button className="workhub-journey-expense-action" type="button" onClick={() => {
+                      setJourneyTravelId(request.id);
+                      requestAnimationFrame(() => document.getElementById("workhub-expenses")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+                    }}>この出張の経費精算を始める →</button>}
+                  </article>)}</div>}
           <small className="workhub-reference-note">自分の申請を最大20件表示。進捗はこの出張に明示的に紐づけた精算のみを集計し、支払完了は意味しません。状態は一覧更新で再取得します。</small>
         </section>}
         <section className="workhub-home-grid" id="workhub-requests" aria-label="出張申請 Reference Scenario">
