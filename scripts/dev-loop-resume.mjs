@@ -126,7 +126,7 @@ export const deriveResume = ({ repository, issueNumber, issue, prNumber = null, 
   if (!pr) {
     decision = issue.state === "closed"
       ? plan("complete_unverified", "review_issue_closure", "no_pr_evidence")
-      : plan("issue_ready_for_review", "select_bounded_change_and_create_pr");
+      : plan("issue_ready_for_review", "inspect_issue_and_locate_existing_pr_before_branch");
   } else if (pr.base?.repo?.full_name !== repository
       || pr.head?.repo?.full_name !== repository
       || pr.base.ref !== "main" || !SHA.test(prSha || "")
@@ -186,7 +186,7 @@ const selfTest = () => {
   assert.equal(derive({ pr: { ...pr, title: "unrelated", body: "no issue reference" } }).currentStep, "blocked");
   assert.equal(derive({ previous: { repository: "example/project", issueNumber: 547,
     prNumber: 100, headSha: fakeSha("a") } }).previousHeadChanged, true);
-  assert.equal(derive({ pr: null, prNumber: null }).nextAction, "select_bounded_change_and_create_pr");
+  assert.equal(derive({ pr: null, prNumber: null }).nextAction, "inspect_issue_and_locate_existing_pr_before_branch");
   assert.throws(() => derive({ pr: { ...pr, number: 101 } }), /PR response identity mismatch/u);
   // A newer, unsuccessful run overrides a prior green one for the same SHA.
   assert.equal(derive({ runs: [...goodRuns, { ...goodRuns[0], id: 10, conclusion: "failure",
