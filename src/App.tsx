@@ -134,6 +134,14 @@ function TravelWorkspace() {
     });
   };
   const awaitingResubmission = selectedWorkflow?.state === "awaiting_resubmission";
+  // Print the authoritative current request, not unsaved form fields.
+  // This is a browser print/PDF-save view, NOT a historical approved artifact.
+  const printTravelRequest = () => void run(async () => {
+    if (!selectedRequest) return;
+    const detail = await openRequest(selectedRequest.id);
+    if (detail.request.status !== "submitted") throw new Error("提出済みの申請だけ印刷できます。");
+    requestAnimationFrame(() => window.print());
+  });
   return <div className="workhub-home-shell">
     <header className="workhub-home-header">
       <Brand />
@@ -231,7 +239,10 @@ function TravelWorkspace() {
         <section className="workhub-home-grid" id="workhub-requests" aria-label="出張申請 Reference Scenario">
           {isAoi && <article className="workhub-home-card workhub-home-card-primary" id="workhub-travel-form"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "出張申請"}</h2>{awaitingResubmission && <div className="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>{returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</p></div>}<div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => setDestinationOfficeItemId(event.target.value)}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><label>目的<textarea id="workhub-travel-purpose" aria-label="目的" value={purpose} onChange={(event) => setPurpose(event.target.value)} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy} onClick={updateAndResubmit}>修正して再申請</button> : <button className="workhub-primary-button" type="button" disabled={busy} onClick={createAndSubmit}>出張申請を提出</button>}</div></article>}
           <article className="workhub-home-card"><span className="workhub-card-label">NOTIFICATIONS</span><h2>通知 {unreadCount > 0 ? `(${unreadCount})` : ""}</h2>{notifications.length === 0 ? <p>通知はありません。</p> : <div className="workhub-notification-list">{notifications.slice(0, 4).map((notification) => <button key={notification.id} type="button" className={`workhub-notification-item ${notification.readAt ? "is-read" : ""}`} onClick={() => openNotification(notification)}><strong>{NOTIFICATION_LABELS[notification.notificationType] ?? notification.notificationType}</strong><small>{new Date(notification.createdAt).toLocaleString("ja-JP")}</small></button>)}</div>}</article>
-          {selectedRequest && <article className="workhub-home-card" id="workhub-request-detail"><span className="workhub-card-label">MY REQUEST DETAIL</span><h2>{selectedRequest.purpose}</h2><p>{selectedRequest.startDate} → {selectedRequest.endDate}</p><p>Workflow: <strong>{selectedWorkflow?.state ?? selectedRequest.status}</strong></p><div className="workhub-timeline" aria-label="申請履歴">{timeline.length === 0 ? <p>履歴はまだありません。</p> : timeline.map((activity) => <div key={activity.id} className="workhub-timeline-item"><strong>{TIMELINE_LABELS[activity.activityType] ?? activity.activityType}</strong><small>{new Date(activity.occurredAt).toLocaleString("ja-JP")}</small></div>)}</div></article>}
+          {selectedRequest && <article className="workhub-home-card" id="workhub-request-detail"><span className="workhub-card-label">MY REQUEST DETAIL</span><h2>{selectedRequest.purpose}</h2><p>{selectedRequest.startDate} → {selectedRequest.endDate}</p><p>Workflow: <strong>{selectedWorkflow?.state ?? selectedRequest.status}</strong></p>{isAoi && selectedRequest.status === "submitted" && <div className="workhub-travel-print-action">
+              <button className="workhub-secondary-button" type="button" disabled={busy} onClick={printTravelRequest}>申請内容を印刷・PDF保存</button>
+              <small>ブラウザの印刷画面からPDF保存できます。承認結果の履歴固定PDFではありません。</small>
+            </div>}<div className="workhub-timeline" aria-label="申請履歴">{timeline.length === 0 ? <p>履歴はまだありません。</p> : timeline.map((activity) => <div key={activity.id} className="workhub-timeline-item"><strong>{TIMELINE_LABELS[activity.activityType] ?? activity.activityType}</strong><small>{new Date(activity.occurredAt).toLocaleString("ja-JP")}</small></div>)}</div></article>}
           {!isAoi && !isRen && <article className="workhub-home-card workhub-home-card-primary"><span className="workhub-card-label">あなたの優先エリア</span><h2>{reference?.hint ?? "MY WORK"}</h2><p>このReferenceではPersonaごとにHOMEの優先領域を変えます。</p></article>}
         </section>
         <ExpenseWorkspace principalId={user?.id ?? ""} selectedTravelRequestId={journeyTravelId} onChanged={() => void loadMyRequests()} />
@@ -265,6 +276,19 @@ function TravelWorkspace() {
         </section>
       </main>
     </div>
+    {isAoi && selectedRequest?.status === "submitted" && <section className="workhub-travel-print-sheet" aria-label="出張申請内容（印刷用）">
+      <p className="workhub-print-eyebrow">WORKHUB / REFERENCE</p>
+      <h1>出張申請書（現在の申請内容）</h1>
+      <dl>
+        <div><dt>申請ID</dt><dd>{selectedRequest.id}</dd></div>
+        <div><dt>申請者</dt><dd>{user?.displayName ?? selectedRequest.id}</dd></div>
+        <div><dt>行先（現在のマスター表示）</dt><dd>{offices.find(office => office.itemId === selectedRequest.destinationOfficeItemId)?.label ?? selectedRequest.destinationOfficeItemId}</dd></div>
+        <div><dt>出張期間</dt><dd>{selectedRequest.startDate} ～ {selectedRequest.endDate}</dd></div>
+        <div><dt>出張目的</dt><dd>{selectedRequest.purpose}</dd></div>
+        <div><dt>現在の申請状態</dt><dd>{selectedWorkflow?.state === "completed" ? "承認済み" : selectedWorkflow?.state === "awaiting_resubmission" ? "差戻し・修正待ち" : "申請中"}</dd></div>
+      </dl>
+      <p className="workhub-print-disclaimer">この帳票は画面表示用の最新データから作成した参考資料です。提出時点の原本、正式な承認証跡、電子署名付きPDFではありません。行先の表示名は現在のマスターを参照しています。</p>
+    </section>}
   </div>;
 }
 

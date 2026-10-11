@@ -1193,3 +1193,52 @@ input:disabled {
     padding: 19px;
   }
 }
+
+
+/* WORKHUB request current-view print / browser PDF-save (not an archived artifact). */
+.workhub-travel-print-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 18px 0;
+}
+.workhub-travel-print-action small { color: #526673; line-height: 1.5; }
+.workhub-travel-print-sheet { display: none; }
+
+@media print {
+  @page { size: A4; margin: 16mm; }
+  html, body, #root { min-height: 0; margin: 0; background: #fff !important; }
+  .workhub-home-shell > .workhub-home-header,
+  .workhub-home-shell > .workhub-portal-layout { display: none !important; }
+  .workhub-travel-print-sheet {
+    display: block !important;
+    color: #17232d;
+    background: #fff;
+    font-family: system-ui, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+  }
+  .workhub-travel-print-sheet h1 { font-size: 19pt; margin: 0 0 20mm; }
+  .workhub-print-eyebrow { font-size: 9pt; letter-spacing: 0.08em; }
+  .workhub-travel-print-sheet dl { margin: 0; }
+  .workhub-travel-print-sheet dl > div {
+    display: grid;
+    grid-template-columns: 38% minmax(0, 1fr);
+    padding: 3mm 0;
+    border-bottom: 1px solid #cad2d6;
+    break-inside: avoid;
+  }
+  .workhub-travel-print-sheet dt { font-weight: 700; }
+  .workhub-travel-print-sheet dd {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .workhub-travel-print-sheet .workhub-print-disclaimer {
+    margin-top: 14mm;
+    font-size: 9pt;
+    color: #46535d;
+    overflow-wrap: anywhere;
+  }
+}
