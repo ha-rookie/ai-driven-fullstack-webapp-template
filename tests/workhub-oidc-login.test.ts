@@ -22,7 +22,7 @@ const env = (status: "active" | "disabled" | "missing" = "active"): FreeOidcEnvi
   WORKHUB_OIDC_TRANSACTION_KEY: SECRET,
   DB: {
     prepare: (sql: string) => ({
-      bind: (..._args: unknown[]) => ({
+      bind: () => ({
         first: async () => sql.includes("external_identities") && status !== "missing"
           ? {
             id: "workhub-demo-aoi", displayName: "Aoi Employee", status,
@@ -40,7 +40,7 @@ const env = (status: "active" | "disabled" | "missing" = "active"): FreeOidcEnvi
 });
 
 const fakeOidcProvider = (): NonNullable<FreeOidcHandlerOptions["provider"]> => ({
-  createAuthorizationRequest: async (_redirectUri: string) => {
+  createAuthorizationRequest: async () => {
     const transaction = await createOidcLoginTransaction();
     return {
       url: "https://accounts.example.test/auth?state=" + transaction.state,
