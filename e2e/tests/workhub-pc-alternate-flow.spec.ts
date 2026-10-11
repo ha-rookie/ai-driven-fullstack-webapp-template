@@ -99,6 +99,9 @@ test("PC alternative: Corporate records simulated no-stock rejection, never real
   await signIn(page, "aoi");
   card = page.locator(`[data-journey-id="${id}"]`);
   await expect(card.getByRole("status")).toContainText("デモ在庫なし・処理終了");
+  await expect(card).toContainText("2/4ステップ");
+  await expect(card.getByText("却下 処理中", { exact: false })).toHaveCount(0);
+  await expect(card.locator("li").filter({ hasText: "交換準備" })).toContainText("却下");
   await expect(card).toContainText("実際の端末在庫を確認した結果ではありません");
   await expect(card.getByRole("button", { name: /デモステップを完了する|デモ再提出/u })).toHaveCount(0);
 });
