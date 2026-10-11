@@ -229,3 +229,17 @@
   color: #175f68;
   font-weight: 700;
 }
+
+/* Returned requests have an explicit keyboard-accessible correction entry. */
+.workhub-my-request-item.is-returned {
+  border-color: #bb7c2a;
+  background: #fffaf1;
+}
+
+.workhub-request-next-action {
+  width: fit-content;
+  font-weight: 700;
+  color: #87500e;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

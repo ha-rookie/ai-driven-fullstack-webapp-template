@@ -55,8 +55,15 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(returnedNotification).toBeVisible();
   await expect(page.locator(".workhub-my-requests").getByRole("button",
     { name: new RegExp(initialPurpose, "u") })).toContainText("差戻し・要修正");
-  await returnedNotification.click();
+  // A returned request can be corrected directly from MY REQUESTS,
+  // without first opening the notification or navigating to details.
+  const returnedItem = page.locator(".workhub-my-requests").getByRole("button",
+    { name: new RegExp(initialPurpose, "u") });
+  await expect(returnedItem).toContainText("選択して修正・再申請する");
+  await returnedItem.click();
   await expect(page.getByRole("heading", { name: "出張申請を修正" })).toBeVisible();
+  await expect(page.getByLabel("目的")).toHaveValue(initialPurpose);
+  await expect(page.getByLabel("目的")).toBeFocused();
   await expect(page.getByText("差し戻されました", { exact: true })).toBeVisible();
   await page.getByLabel("目的").fill(correctedPurpose);
   await page.getByRole("button", { name: "修正して再申請" }).click();
