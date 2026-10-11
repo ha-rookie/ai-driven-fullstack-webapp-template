@@ -225,3 +225,7 @@
 .workhub-my-request-item small {
   color: #526b77;
 }
+.workhub-my-request-item .workhub-request-status {
+  color: #175f68;
+  font-weight: 700;
+}

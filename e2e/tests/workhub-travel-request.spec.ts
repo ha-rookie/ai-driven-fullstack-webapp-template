@@ -34,6 +34,8 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await page.getByRole("button", { name: "出張申請を提出" }).click();
   await expect(page.getByText("出張申請を提出しました。", { exact: true })).toBeVisible();
   await expect(page.getByText("申請しました", { exact: true })).toBeVisible();
+  await expect(page.locator(".workhub-my-requests").getByRole("button",
+    { name: new RegExp(initialPurpose, "u") })).toContainText("承認待ち");
   await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(initialPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
   await expect(page.locator(".workhub-global-search-results").getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
@@ -51,6 +53,8 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await switchPersona(page, "aoi");
   const returnedNotification = latestNotification(page, "出張申請が差し戻されました");
   await expect(returnedNotification).toBeVisible();
+  await expect(page.locator(".workhub-my-requests").getByRole("button",
+    { name: new RegExp(initialPurpose, "u") })).toContainText("差戻し・要修正");
   await returnedNotification.click();
   await expect(page.getByRole("heading", { name: "出張申請を修正" })).toBeVisible();
   await expect(page.getByText("差し戻されました", { exact: true })).toBeVisible();
@@ -58,6 +62,8 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await page.getByRole("button", { name: "修正して再申請" }).click();
   await expect(page.getByText("出張申請を再申請しました。", { exact: true })).toBeVisible();
   await expect(page.getByText("再申請しました", { exact: true })).toBeVisible();
+  await expect(page.locator(".workhub-my-requests").getByRole("button",
+    { name: new RegExp(correctedPurpose, "u") })).toContainText("承認待ち");
 
   await switchPersona(page, "ren");
   const secondTask = page.getByText(correctedPurpose, { exact: true }).locator("..");
@@ -71,6 +77,8 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await switchPersona(page, "aoi");
   const approvedNotification = latestNotification(page, "出張申請が承認されました");
   await expect(approvedNotification).toBeVisible();
+  await expect(page.locator(".workhub-my-requests").getByRole("button",
+    { name: new RegExp(correctedPurpose, "u") })).toContainText("承認済み");
   await approvedNotification.click();
   await expect(page.getByText("Workflow:", { exact: false })).toContainText("completed");
   await expect(page.getByText("申請しました", { exact: true })).toBeVisible();
@@ -91,6 +99,7 @@ test("MY REQUESTS shows persisted personal requests and never exposes another em
   const requestItem = page.getByRole("button", { name: new RegExp(purpose, "u") });
   await expect(requestItem).toBeVisible();
 
+  await expect(requestItem).toContainText("承認待ち");
   await page.reload();
   await expect(page.getByRole("heading", { name: "自分の出張申請" })).toBeVisible();
   await expect(page.getByRole("button", { name: new RegExp(purpose, "u") })).toBeVisible();

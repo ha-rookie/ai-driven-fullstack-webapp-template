@@ -1,3 +1,4 @@
+import { WORKHUB_TRAVEL_RESOURCE_TYPE } from "./fixtures";
 import type {
   TravelRequestCompareAndSetOptions,
   TravelRequestListItem,
@@ -107,13 +108,13 @@ export class D1TravelRequestStore implements TravelRequestStore {
       LEFT JOIN workflow_instances wi
         ON wi.id = tr.workflow_instance_id
        AND wi.environment = tr.environment
-       AND wi.resource_type = 'workhub.travel_request'
+       AND wi.resource_type = ?
        AND wi.resource_id = tr.id
        AND wi.requester_id = tr.requester_id
       WHERE tr.environment = ? AND tr.requester_id = ?
       ORDER BY tr.updated_at DESC, tr.id DESC
       LIMIT ?
-    `).bind(environment, requesterId, limit).all<TravelRequestRow & { workflow_state: TravelRequestListItem["workflowState"] }>();
+    `).bind(WORKHUB_TRAVEL_RESOURCE_TYPE, environment, requesterId, limit).all<TravelRequestRow & { workflow_state: TravelRequestListItem["workflowState"] }>();
     return (rows.results ?? []).map(row => ({ ...mapRow(row), workflowState: row.workflow_state }));
   }
 

@@ -12,6 +12,7 @@ import type {
   ResubmitTravelRequestResult,
   SubmitTravelRequestCommand,
   TravelRequestMutationGate,
+  TravelRequestListItem,
   TravelRequestRecord,
   TravelRequestStore,
   TravelRequestWorkflowStateReader,
@@ -128,7 +129,7 @@ export class TravelRequestService {
   }
 
   // This is a personal request history, not the manager's pending work queue.
-  async listMine(principalId: string, limit = 20): Promise<readonly TravelRequestRecord[]> {
+  async listMine(principalId: string, limit = 20): Promise<readonly TravelRequestListItem[]> {
     const requesterId = boundedId(principalId, "principalId");
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
       throw new TravelRequestError("invalid_input", "limit must be between 1 and 50");
