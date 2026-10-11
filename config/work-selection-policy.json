@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": 1,
+  "roadmapIssue": 132,
+  "enforceFromPrNumber": 598,
+  "focusIssues": [521],
+  "approvedExceptions": [
+    {
+      "issue": 597,
+      "reason": "User explicitly requested a guard against work-selection drift before resuming ordinary roadmap execution."
+    }
+  ],
+  "governanceChangeIssues": [597, 521],
+  "notes": "Read this policy from the PR base commit, not from the PR branch. The next focus transition must be justified against GitHub #132 and Notion, then committed as its own reviewed governance change."
+}
