@@ -107,3 +107,17 @@ export const searchWorkhubApps = (
   }
   return matches;
 };
+
+/**
+ * Stage 1 Reference HOME shortcuts use the same *already authorized* app list
+ * as the launcher. These are fixed-order demo links, not actual usage statistics
+ * or #292 personal favorites/recent history.
+ */
+export const selectWorkhubHomeShortcuts = (
+  authorizedApps: readonly WorkhubAppEntry[],
+): readonly WorkhubAppEntry[] =>
+  authorizedApps
+    .filter(app => app.availability === "available"
+      && app.launchTarget !== null
+      && /^\/(?:#workhub-[a-z-]+|admin)$/u.test(app.launchTarget))
+    .slice(0, 4);
