@@ -47,10 +47,11 @@ jobs:
             node scripts/ci-change-impact.mjs --full
           fi
 
-      # Runs on every PR; no API token, network or deployment required.
-      # If resume logic ever recommends an unsafe next action, fail CI.
-      - name: Verify read-only issue/PR/CI resume advisor
-        run: node scripts/dev-loop-resume.mjs --self-test
+      # Node-only offline tests on every PR; no token/network/DB/deploy.
+      - name: Verify read-only resume and local checkpoint safety
+        run: |
+          node scripts/dev-loop-resume.mjs --self-test
+          node scripts/dev-loop-state.mjs --self-test
 
       - name: Verify read-only Preview change planner
         if: steps.impact.outputs.tier == 'full'

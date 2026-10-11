@@ -194,23 +194,30 @@ const selfTest = () => {
   console.log("Dev-loop read-only resume self-test: 15 cases passed");
 };
 
+// Shared by the state checkpoint CLI: one current GitHub GET path, not a
+// second implementation that might disagree about required checks.
+export const fetchLiveResume = async ({ repository, issueNumber, prNumber = null, previous = null }) => {
+  const [issueValue, prValue] = await Promise.all([
+    boundedGet(repository, `issues/${issueNumber}`),
+    prNumber ? boundedGet(repository, `pulls/${prNumber}`) : Promise.resolve(null),
+  ]);
+  const runs = prValue?.head?.sha && SHA.test(prValue.head.sha)
+    ? (await boundedGet(repository,
+      `actions/runs?head_sha=${prValue.head.sha}&per_page=100`)).workflow_runs : [];
+  if (prValue && !Array.isArray(runs)) throw new Error("github_runs_not_array");
+  return deriveResume({ repository, issueNumber, issue: issueValue,
+    prNumber, pr: prValue, runs, previous });
+};
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.selfTest) { selfTest(); return; }
-  const [issueValue, prValue] = await Promise.all([
-    boundedGet(args.repo, `issues/${args.issue}`),
-    args.pr ? boundedGet(args.repo, `pulls/${args.pr}`) : Promise.resolve(null),
-  ]);
-  const runs = prValue?.head?.sha && SHA.test(prValue.head.sha)
-    ? (await boundedGet(args.repo,
-      `actions/runs?head_sha=${prValue.head.sha}&per_page=100`)).workflow_runs : [];
-  if (prValue && !Array.isArray(runs)) throw new Error("github_runs_not_array");
   let previous = null;
   if (args["--previous"]) {
     previous = JSON.parse(await readFile(args["--previous"], "utf8"));
   }
-  const result = deriveResume({ repository: args.repo, issueNumber: args.issue, issue: issueValue,
-    prNumber: args.pr, pr: prValue, runs, previous });
+  const result = await fetchLiveResume({ repository: args.repo,
+    issueNumber: args.issue, prNumber: args.pr, previous });
   // No raw issue or PR content, credentials, PII or comments are persisted.
   const serialized = JSON.stringify(result, null, 2) + "\n";
   if (args["--output"]) await writeFile(args["--output"], serialized, { mode: 0o600, flag: "wx" });
