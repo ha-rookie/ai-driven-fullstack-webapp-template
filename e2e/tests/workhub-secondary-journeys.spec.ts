@@ -19,7 +19,7 @@ test("moving simulation persists partial step completion across reload", async (
   await section.getByRole("button", { name: "引っ越し手続きをデモ開始" }).click();
   const moving = section.locator(".workhub-secondary-item").filter({ hasText: "引っ越した" }).last();
   await expect(moving).toContainText("0/3ステップ");
-  await moving.getByRole("button", { name: "現在のデモステップを完了する" }).click();
+  await moving.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" }).click();
   await expect(moving).toContainText("1/3ステップ");
   await expect(moving).toContainText("住所変更の確認（デモ）");
   await page.reload();
@@ -116,4 +116,49 @@ test("lost secondary start response can be explicitly retried with the same key,
     return response.status;
   }, keys[0]);
   expect(crossIntentStatus).toBe(409);
+});
+
+test("moving mock adapters keep independently completed steps after one adapter fails", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, "aoi");
+  const section = page.locator("#workhub-secondary-journeys");
+  let journeyId = "";
+  page.on("request", request => {
+    if (request.url().endsWith("/api/workhub/secondary-journeys") && request.method() === "POST") {
+      journeyId = (request.postDataJSON() as { key: string }).key;
+    }
+  });
+  await section.getByRole("button", { name: "引っ越し手続きをデモ開始" }).click();
+  await expect.poll(() => journeyId).not.toBe("");
+  const moving = section.locator(`[data-journey-id="${journeyId}"]`);
+  await expect(moving).toContainText("0/3ステップ");
+  const complete = (label: string) =>
+    moving.getByRole("button", { name: `${label}をデモ完了する` });
+
+  // The address adapter fails to respond; it must not block the two other
+  // independently stored mock workflow resources.
+  await page.route("**/api/workhub/secondary-journeys/*/advance", async route => {
+    const body = route.request().postDataJSON() as { stepKey?: string };
+    if (body.stepKey === "address") {
+      await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+      return;
+    }
+    await route.continue();
+  });
+  await complete("住所変更の確認（デモ）").click();
+  await expect(section.getByRole("alert")).toContainText("処理結果を確認できません");
+  await complete("通勤経路の確認（デモ）").click();
+  await expect(moving).toContainText("1/3ステップ");
+  await complete("緊急連絡先の確認（デモ）").click();
+  await expect(moving).toContainText("2/3ステップ");
+  await expect(complete("住所変更の確認（デモ）")).toBeVisible();
+  await page.reload();
+  const restored = page.locator(`#workhub-secondary-journeys [data-journey-id="${journeyId}"]`);
+  await expect(restored).toContainText("2/3ステップ");
+  await expect(restored.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" })).toBeVisible();
+
+  await page.unroute("**/api/workhub/secondary-journeys/*/advance");
+  await restored.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" }).click();
+  await expect(restored).toContainText("3/3ステップ");
+  await expect(restored).toContainText("デモ完了");
 });

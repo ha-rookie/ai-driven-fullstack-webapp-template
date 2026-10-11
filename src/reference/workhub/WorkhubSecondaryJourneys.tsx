@@ -95,12 +95,15 @@ export default function WorkhubSecondaryJourneys({ role }: {
     });
   };
 
-  const advance = (item: SecondaryJourneyView) => {
-    if (item.workItemVersion === null) return;
+  const advance = (item: SecondaryJourneyView, step?: SecondaryJourneyView["steps"][number]) => {
+    const version = step ? step.version : item.version;
+    const workItemVersion = step ? step.workItemVersion : item.workItemVersion;
+    if (version == null || workItemVersion == null) return;
     void perform(async () => {
       await mutate(`/api/workhub/secondary-journeys/${encodeURIComponent(item.id)}/advance`, {
-        expectedVersion: item.version,
-        expectedWorkItemVersion: item.workItemVersion,
+        expectedVersion: version,
+        expectedWorkItemVersion: workItemVersion,
+        ...(step ? { stepKey: step.key } : {}),
       });
     });
   };
@@ -133,7 +136,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
       : <div className="workhub-secondary-grid">
         {items.map(item => {
           const current = item.steps.find(step => step.status === "current");
-          return <article key={item.id} className="workhub-secondary-item">
+          return <article key={item.id} data-journey-id={item.id} className="workhub-secondary-item">
             <h3>{item.title}</h3>
             <p>{item.state === "completed" ? "デモ完了" : "デモ進行中"}
               {" · "}{item.steps.filter(step => step.status === "done").length}/{item.steps.length}ステップ</p>
@@ -142,10 +145,19 @@ export default function WorkhubSecondaryJourneys({ role }: {
               {" "}{step.label}
             </li>)}</ol>
             {current && <p>次の確認：{current.label}</p>}
-            {item.assignedToMe && item.state !== "completed" && <button
-              type="button" className="workhub-secondary-button" disabled={busy}
-              onClick={() => advance(item)}>現在のデモステップを完了する</button>}
-            {!item.assignedToMe && item.state !== "completed" && <p>現在の担当者による確認待ち</p>}
+            {item.intent === "moving" && item.steps.some(step => step.version != null)
+              ? <div className="workhub-secondary-actions" aria-label="独立した手続き">
+                {item.steps.filter(step => step.status === "current" && step.assignedToMe).map(step =>
+                  <button key={step.key} type="button" className="workhub-secondary-button" disabled={busy}
+                    onClick={() => advance(item, step)}>{step.label}をデモ完了する</button>
+                )}
+              </div>
+              : <>
+                {item.assignedToMe && item.state !== "completed" && <button
+                  type="button" className="workhub-secondary-button" disabled={busy}
+                  onClick={() => advance(item)}>現在のデモステップを完了する</button>}
+                {!item.assignedToMe && item.state !== "completed" && <p>現在の担当者による確認待ち</p>}
+              </>}
           </article>;
         })}
       </div>)}

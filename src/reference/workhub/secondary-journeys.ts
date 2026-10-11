@@ -3,6 +3,9 @@ import {
   WorkflowService,
   type WorkflowDefinition, type WorkflowInstanceRecord, type WorkflowWorkItemRecord,
 } from "../../worker/workflow";
+import { MOVING_MOCK_DEFINITIONS, MOVING_MOCK_RESOURCE_TYPE, MOVING_MOCK_STEPS, isMovingMockStepKey,
+  movingMockResourceId, movingMockSubmissionKey, projectMovingMockJourney, type MovingMockRecord,
+} from "./moving-mock-steps";
 
 /**
  * Two Reference-only journeys. Workflow tables are the persisted state for
@@ -34,6 +37,9 @@ export interface SecondaryStep {
   readonly key: string;
   readonly label: string;
   readonly status: "done" | "current" | "pending";
+  readonly version?: number | null;
+  readonly workItemVersion?: number | null;
+  readonly assignedToMe?: boolean;
 }
 export interface SecondaryJourneyView {
   readonly id: string;
@@ -109,7 +115,7 @@ export class WorkhubSecondaryJourneyService {
     this.workflow = new WorkflowService({
       environment,
       store: this.store,
-      definitions: new StaticWorkflowDefinitionRegistry(SECONDARY_DEFINITIONS),
+      definitions: new StaticWorkflowDefinitionRegistry([...SECONDARY_DEFINITIONS, ...MOVING_MOCK_DEFINITIONS]),
       assignees: {
         resolve: async (key, context) =>
           key === "requester" ? context.requesterId
@@ -118,29 +124,63 @@ export class WorkhubSecondaryJourneyService {
     });
   }
 
+  /** Each moving mock owns an independent persisted Workflow state. */
+  private async findMovingMocks(principalId: string, key: string): Promise<MovingMockRecord[]> {
+    const resourceIds = MOVING_MOCK_STEPS.map(step => movingMockResourceId(key, step.key));
+    const result = await this.db.prepare(`
+      SELECT id, resource_id FROM workflow_instances
+      WHERE environment = ? AND resource_type = ? AND requester_id = ?
+        AND resource_id IN (?, ?, ?)
+    `).bind(this.environment, MOVING_MOCK_RESOURCE_TYPE, principalId, ...resourceIds)
+      .all<{ id: string; resource_id: string }>();
+    const records: MovingMockRecord[] = [];
+    for (const row of result.results ?? []) {
+      const step = MOVING_MOCK_STEPS.find(candidate => row.resource_id === movingMockResourceId(key, candidate.key));
+      if (!step) continue;
+      const instance = await this.store.getInstance(row.id, this.environment);
+      if (!instance) continue;
+      records.push({ key: step.key, instance, item: await this.store.getOpenWorkItem(row.id, this.environment) });
+    }
+    return records;
+  }
+
   async list(principalId: string, role: string): Promise<readonly SecondaryJourneyView[]> {
     if (role !== "employee" && role !== "corporate") return [];
     const result = await this.db.prepare(`
-      SELECT i.id FROM workflow_instances i
-      WHERE i.environment = ? AND i.resource_type = ?
+      SELECT i.id, i.resource_type, i.resource_id FROM workflow_instances i
+      WHERE i.environment = ? AND i.resource_type IN (?, ?)
         AND (
           (i.requester_id = ? AND ? = 'employee')
-          OR (? = 'corporate' AND EXISTS (
+          OR (? = 'corporate' AND i.resource_type = ? AND EXISTS (
             SELECT 1 FROM workflow_work_items w
             WHERE w.workflow_instance_id = i.id AND w.environment = i.environment
               AND w.assignee_principal = ? AND w.status = 'open'
           ))
         )
-      ORDER BY i.created_at DESC, i.id DESC LIMIT 25
-    `).bind(this.environment, SECONDARY_RESOURCE_TYPE, principalId, role, role, principalId).all<{ id: string }>();
+      ORDER BY i.created_at DESC, i.id DESC LIMIT 75
+    `).bind(this.environment, SECONDARY_RESOURCE_TYPE, MOVING_MOCK_RESOURCE_TYPE,
+      principalId, role, role, SECONDARY_RESOURCE_TYPE, principalId)
+      .all<{ id: string; resource_type: string; resource_id: string }>();
     const views: SecondaryJourneyView[] = [];
-    for (const { id } of result.results ?? []) {
-      const instance = await this.store.getInstance(id, this.environment);
+    const movingKeys = new Set<string>();
+    for (const row of result.results ?? []) {
+      if (row.resource_type === MOVING_MOCK_RESOURCE_TYPE) {
+        const key = row.resource_id.split(":")[0];
+        if (/^[0-9a-f-]{36}$/iu.test(key)) movingKeys.add(key);
+        continue;
+      }
+      const instance = await this.store.getInstance(row.id, this.environment);
       if (!instance || !SECONDARY_DEFINITIONS.some(d => d.key === instance.definitionKey)) continue;
-      const item = await this.store.getOpenWorkItem(id, this.environment);
+      const item = await this.store.getOpenWorkItem(row.id, this.environment);
       views.push(projectSecondaryJourney(instance, item, principalId));
     }
-    return views;
+    if (role === "employee") {
+      for (const key of movingKeys) {
+        const records = await this.findMovingMocks(principalId, key);
+        if (records.length) views.push(projectMovingMockJourney(key, principalId, records));
+      }
+    }
+    return views.slice(0, 25);
   }
 
   /** Resource ID and requester are bound to the authenticated scope, not supplied by the browser. */
@@ -175,6 +215,31 @@ export class WorkhubSecondaryJourneyService {
     // unique-key conflict by reading the existing committed instance again.
     const existing = await this.currentOwnedStart(principalId, key, intent);
     if (existing) return existing;
+    const mocks = await this.findMovingMocks(principalId, key);
+    if (intent !== "moving" && mocks.length) {
+      throw new WorkflowError("conflict", "This request key belongs to a moving journey");
+    }
+    if (intent === "moving") {
+      // Each reference adapter gets its own transaction and version. A failure
+      // starting one mock cannot undo another; same-key retry fills missing ones.
+      for (const step of MOVING_MOCK_STEPS) {
+        if (mocks.some(row => row.key === step.key)) continue;
+        try {
+          await this.workflow.start({
+            resourceType: MOVING_MOCK_RESOURCE_TYPE,
+            resourceId: movingMockResourceId(key, step.key),
+            definitionKey: step.definitionKey,
+            definitionVersion: 1,
+            requesterId: principalId,
+            submissionKey: movingMockSubmissionKey(principalId, key, step.key),
+          });
+        } catch (caught) {
+          if (!(caught instanceof WorkflowError && caught.code === "conflict"
+            && (await this.findMovingMocks(principalId, key)).some(row => row.key === step.key))) throw caught;
+        }
+      }
+      return projectMovingMockJourney(key, principalId, await this.findMovingMocks(principalId, key));
+    }
     try {
       const result = await this.workflow.start({
         resourceType: SECONDARY_RESOURCE_TYPE,
@@ -196,10 +261,25 @@ export class WorkhubSecondaryJourneyService {
 
   async advance(
     principalId: string, role: string, id: string,
-    version: number, workItemVersion: number,
+    version: number, workItemVersion: number, stepKey?: string,
   ): Promise<SecondaryJourneyView> {
     if (role !== "employee" && role !== "corporate") {
       throw new WorkflowError("forbidden", "Demo workflow access denied");
+    }
+    if (stepKey) {
+      if (role !== "employee" || !isMovingMockStepKey(stepKey)) {
+        throw new WorkflowError("not_found", "Demo step is unavailable");
+      }
+      const records = await this.findMovingMocks(principalId, id);
+      const record = records.find(x => x.key === stepKey);
+      if (!record || record.item?.assigneePrincipal !== principalId) {
+        throw new WorkflowError("not_found", "Demo step is unavailable");
+      }
+      await this.workflow.approve({
+        instanceId: record.instance.id, actorId: principalId,
+        expectedInstanceVersion: version, expectedWorkItemVersion: workItemVersion,
+      });
+      return projectMovingMockJourney(id, principalId, await this.findMovingMocks(principalId, id));
     }
     const instance = await this.store.getInstance(id, this.environment);
     if (!instance || instance.resourceType !== SECONDARY_RESOURCE_TYPE
