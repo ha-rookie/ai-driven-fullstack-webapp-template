@@ -31,8 +31,28 @@ test("PC exchange mock transfers assigned work to Corporate and back without adm
   test.setTimeout(60_000);
   await login(page, "aoi");
   let section = page.locator("#workhub-secondary-journeys");
+  // Capture the newly created request key. Other tests may have left PC
+  // demo work items in the local DB; the first card is not necessarily ours.
+  let requestKey = "";
+  page.on("request", request => {
+    if (request.url().endsWith("/api/workhub/secondary-journeys") && request.method() === "POST") {
+      const data = request.postDataJSON() as { intent?: string; key?: string };
+      if (data.intent === "pc-replacement") requestKey = data.key ?? "";
+    }
+  });
   await section.getByRole("button", { name: "PC交換をデモ依頼" }).click();
-  let pc = section.locator(".workhub-secondary-item").filter({ hasText: "PCを交換したい" }).first();
+  await expect.poll(() => requestKey).not.toBe("");
+  let journeyId = "";
+  await expect.poll(async () => {
+    journeyId = await page.evaluate(async key => {
+      const response = await fetch("/api/workhub/secondary-journeys", { credentials: "same-origin" });
+      if (!response.ok) return "";
+      const data = await response.json() as { items: Array<{ id: string; submissionKey: string }> };
+      return data.items.find(item => item.submissionKey.endsWith(key))?.id ?? "";
+    }, requestKey);
+    return journeyId;
+  }).not.toBe("");
+  let pc = section.locator(`[data-journey-id="${journeyId}"]`);
   await expect(pc).toContainText("0/4ステップ");
   await pc.getByRole("button", { name: "現在のデモステップを完了する" }).click();
   await expect(pc).toContainText("1/4ステップ");
@@ -45,7 +65,7 @@ test("PC exchange mock transfers assigned work to Corporate and back without adm
 
   await changeIdentity(page, "sora");
   section = page.locator("#workhub-secondary-journeys");
-  pc = section.locator(".workhub-secondary-item").filter({ hasText: "PCを交換したい" }).first();
+  pc = section.locator(`[data-journey-id="${journeyId}"]`);
   await expect(pc).toContainText("1/4ステップ");
   await pc.getByRole("button", { name: "現在のデモステップを完了する" }).click();
   await expect(pc).toContainText("2/4ステップ");
@@ -54,7 +74,7 @@ test("PC exchange mock transfers assigned work to Corporate and back without adm
 
   await changeIdentity(page, "aoi");
   section = page.locator("#workhub-secondary-journeys");
-  pc = section.locator(".workhub-secondary-item").filter({ hasText: "PCを交換したい" }).first();
+  pc = section.locator(`[data-journey-id="${journeyId}"]`);
   await expect(pc).toContainText("3/4ステップ");
   await pc.getByRole("button", { name: "現在のデモステップを完了する" }).click();
   await expect(pc).toContainText("デモ完了");
