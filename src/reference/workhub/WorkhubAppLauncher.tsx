@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { WorkhubAppEntry } from "./app-catalog";
+import { selectWorkhubHomeShortcuts, type WorkhubAppEntry } from "./app-catalog";
 
 type LoadState = "loading" | "ready" | "unavailable" | "forbidden";
 
@@ -34,6 +34,7 @@ export default function WorkhubAppLauncher() {
     return () => abort.abort();
   }, [refresh]);
 
+  const homeShortcuts = useMemo(() => selectWorkhubHomeShortcuts(apps), [apps]);
   const categories = useMemo(() => Array.from(new Set(apps.map(app => app.category))), [apps]);
   const visibleApps = useMemo(() => apps.filter(app =>
     (category === "all" || app.category === category)
@@ -41,7 +42,28 @@ export default function WorkhubAppLauncher() {
       .some(value => value.toLocaleLowerCase("ja-JP").includes(query.trim().toLocaleLowerCase("ja-JP")))),
   ), [apps, category, query]);
 
-  return <section className="workhub-app-launcher" id="workhub-apps" aria-labelledby="workhub-apps-title">
+  return <>
+    <section className="workhub-home-apps" aria-labelledby="workhub-home-apps-title">
+      <div className="workhub-section-heading">
+        <div><span className="workhub-card-label">APP SHORTCUTS</span><h2 id="workhub-home-apps-title">よく使うアプリ</h2></div>
+        <a href="#workhub-apps" className="workhub-home-apps-all">アプリ一覧を見る →</a>
+      </div>
+      <p className="workhub-reference-note">デモ用の固定ショートカットです。利用履歴やお気に入り順ではありません。</p>
+      {state === "loading" && <p>利用できるアプリを読み込んでいます…</p>}
+      {state === "forbidden" && <p>現在の所属・権限ではアプリを表示できません。</p>}
+      {state === "unavailable" && <p>アプリ情報を取得できませんでした。下のアプリ一覧から再読み込みできます。</p>}
+      {state === "ready" && (homeShortcuts.length === 0
+        ? <p className="workhub-empty-state">現在起動できるアプリはありません。</p>
+        : <div className="workhub-home-apps-grid">
+          {homeShortcuts.map(app => <a key={app.key} className="workhub-home-apps-card" href={app.launchTarget}>
+            <span className="workhub-card-label">{app.category}</span>
+            <strong>{app.displayName}</strong>
+            <small>{app.description}</small>
+            <span className="workhub-home-apps-open" aria-hidden="true">開く →</span>
+          </a>)}
+        </div>)}
+    </section>
+    <section className="workhub-app-launcher" id="workhub-apps" aria-labelledby="workhub-apps-title">
     <div className="workhub-section-heading">
       <div><span className="workhub-card-label">APPS / APP LAUNCHER</span><h2 id="workhub-apps-title">アプリを探す</h2></div>
     </div>
@@ -67,5 +89,6 @@ export default function WorkhubAppLauncher() {
           </article>)}
         </div>}
     </>}
-  </section>;
+    </section>
+  </>;
 }

@@ -1358,3 +1358,55 @@ input:disabled {
   .workhub-app-launcher { padding: 16px; }
   .workhub-app-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* WORKHUB Stage 1: HOME fixed demo app shortcuts; share the existing server-filtered catalog. */
+.workhub-home-apps {
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid #dce6e9;
+  border-radius: 18px;
+  background: #fff;
+}
+.workhub-home-apps-all {
+  color: #176e72;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.workhub-home-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.workhub-home-apps-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid #dbe6e8;
+  border-radius: 12px;
+  background: #f8fbfa;
+  color: #183d4b;
+  text-decoration: none;
+}
+.workhub-home-apps-card:hover,
+.workhub-home-apps-card:focus-visible {
+  border-color: #176e72;
+  background: #eff7f6;
+  outline-offset: 3px;
+}
+.workhub-home-apps-card small {
+  color: #526d7a;
+  line-height: 1.5;
+}
+.workhub-home-apps-open {
+  margin-top: auto;
+  color: #176e72;
+  font-weight: 700;
+}
+@media (max-width: 600px) {
+  .workhub-home-apps { padding: 16px; }
+  .workhub-home-apps-grid { grid-template-columns: minmax(0, 1fr); }
+}
