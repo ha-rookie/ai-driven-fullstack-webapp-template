@@ -55,7 +55,7 @@ export default function WorkhubAppLauncher() {
       {state === "ready" && (homeShortcuts.length === 0
         ? <p className="workhub-empty-state">現在起動できるアプリはありません。</p>
         : <div className="workhub-home-apps-grid">
-          {homeShortcuts.map(app => <a key={app.key} className="workhub-home-apps-card" href={app.launchTarget!}>
+          {homeShortcuts.map(app => <a key={app.key} className="workhub-home-apps-card" href={app.launchTarget}>
             <span className="workhub-card-label">{app.category}</span>
             <strong>{app.displayName}</strong>
             <small>{app.description}</small>
