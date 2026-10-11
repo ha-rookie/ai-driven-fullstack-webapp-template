@@ -233,7 +233,20 @@ function TravelWorkspace() {
           </div>
         </section>
         {message && <div className="workhub-demo-note" role="status"><strong>WORKHUB</strong><span>{message}</span></div>}
-        {searchText.trim() && !searching && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">{searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">{searchResults.map((result) => <button key={`${result.resourceType}:${result.resourceId}`} type="button" className="workhub-search-result" onClick={() => openSearchResult(result)}><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category}</small></button>)}</div>}</section>}
+        {searchText.trim() && !searching && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">
+          {searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">
+            {searchResults.map(result => {
+              const key = `${result.resourceType}:${result.resourceId}`;
+              const internalAppTarget = result.resourceType === "workhub_app"
+                && /^\/(?:#workhub-[a-z-]+|admin)$/u.test(result.actionTarget ?? "")
+                  ? result.actionTarget : null;
+              const content = <><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category === "apps" ? "アプリ" : result.category}</small></>;
+              return internalAppTarget
+                ? <a key={key} className="workhub-search-result" href={internalAppTarget}>{content}</a>
+                : <button key={key} type="button" className="workhub-search-result" onClick={() => openSearchResult(result)} disabled={result.resourceType === "workhub_app"}>{content}</button>;
+            })}
+          </div>}
+        </section>}
         <section className="workhub-dashboard-row" id="workhub-my-work" aria-label="今日の仕事">
           <article className="workhub-dashboard-card workhub-my-work-summary">
             <div className="workhub-section-heading"><div><span className="workhub-card-label">MY WORK</span><h2>今日対応すること</h2></div><span className="workhub-summary-count">{homeWorkCount ?? "—"}</span></div>
