@@ -30,7 +30,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await page.getByLabel("行先").selectOption({ label: "Tokyo Office (TOKYO)" });
   await page.getByLabel("開始日").fill("2026-10-20");
   await page.getByLabel("終了日").fill("2026-10-21");
-  await page.getByLabel("目的").fill(initialPurpose);
+  await page.getByLabel("目的", { exact: true }).fill(initialPurpose);
   await page.getByRole("button", { name: "出張申請を提出" }).click();
   await expect(page.getByText("出張申請を提出しました。", { exact: true })).toBeVisible();
   await expect(page.getByText("申請しました", { exact: true })).toBeVisible();
@@ -66,10 +66,10 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await returnedItem.click();
   await expect(page.getByRole("heading", { name: "出張申請を修正" })).toBeVisible();
   await expect(page.getByRole("note").filter({ hasText: "差戻し理由" })).toContainText(correctionMessage);
-  await expect(page.getByLabel("目的")).toHaveValue(initialPurpose);
-  await expect(page.getByLabel("目的")).toBeFocused();
+  await expect(page.getByLabel("目的", { exact: true })).toHaveValue(initialPurpose);
+  await expect(page.getByLabel("目的", { exact: true })).toBeFocused();
   await expect(page.getByText("差し戻されました", { exact: true })).toBeVisible();
-  await page.getByLabel("目的").fill(correctedPurpose);
+  await page.getByLabel("目的", { exact: true }).fill(correctedPurpose);
   await page.getByRole("button", { name: "修正して再申請" }).click();
   await expect(page.getByText("出張申請を再申請しました。", { exact: true })).toBeVisible();
   await expect(page.locator(".workhub-return-reason")).toHaveCount(0);
@@ -106,7 +106,7 @@ test("MY REQUESTS shows persisted personal requests and never exposes another em
   await loginAs(page, "aoi");
   await expect(page.getByRole("heading", { name: "自分の出張申請" })).toBeVisible();
   await page.getByLabel("行先").selectOption({ label: "Tokyo Office (TOKYO)" });
-  await page.getByLabel("目的").fill(purpose);
+  await page.getByLabel("目的", { exact: true }).fill(purpose);
   await page.getByRole("button", { name: "出張申請を提出" }).click();
   await expect(page.getByText("出張申請を提出しました。", { exact: true })).toBeVisible();
   const requestItem = page.getByRole("button", { name: new RegExp(purpose, "u") });
