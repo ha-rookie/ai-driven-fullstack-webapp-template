@@ -152,7 +152,7 @@ const selfTest = () => {
     schemaVersion: 1, roadmapIssue: 132, enforceFromPrNumber: 598,
     focusIssues: [521], approvedExceptions: [{
       issue: 597, reason: "Approved user-requested governance exception for controlling future work.",
-    }], governanceChangeIssues: [597],
+    }], governanceChangeIssues: [597, 521],
   };
   const record = (issue = 521, basis = "focus") => ({
     issue, roadmap: 132, mainSha: base, priorityBasis: basis,
@@ -181,7 +181,10 @@ const selfTest = () => {
   assert.equal(result(pr(record(595, "focus")), ["config/work-selection-policy.json"]).status,
     "blocked", "editing branch policy does not authorize own PR");
   assert.equal(result(pr(record(521)), ["config/work-selection-policy.json"]).status,
-    "blocked", "normal focus PR cannot edit governance policy");
+    "passed", "closing focus Issue may promote the next roadmap focus");
+  assert.equal(result(pr(record(595, "focus")),
+    ["config/work-selection-policy.json"]).status, "blocked",
+    "unfocused Issue cannot alter policy to self-authorize");
   assert.equal(result(pr({ ...record(), mainSha: head })).status,
     "blocked", "stale main baseline fails");
   assert.equal(result(pr({ ...record(), notionCheck: "unread" })).status,
