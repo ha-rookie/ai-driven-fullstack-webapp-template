@@ -1,5 +1,7 @@
+import { WORKHUB_TRAVEL_RESOURCE_TYPE } from "./fixtures";
 import type {
   TravelRequestCompareAndSetOptions,
+  TravelRequestListItem,
   TravelRequestRecord,
   TravelRequestStore,
 } from "./types";
@@ -92,19 +94,28 @@ export class D1TravelRequestStore implements TravelRequestStore {
     return row ? mapRow(row) : null;
   }
 
-  async listOwned(environment: string, requesterId: string, limit: number): Promise<readonly TravelRequestRecord[]> {
-    // All identity filtering happens in D1 before results leave the Worker.
-    // The order is stable even for requests updated in the same millisecond.
+  async listOwned(environment: string, requesterId: string, limit: number): Promise<readonly TravelRequestListItem[]> {
+    // A single bounded read: owner/environment filtering stays in D1. Join
+    // only the matching workflow resource and owner, never another user's.
+    // A missing workflow is UNKNOWN, not implicitly "approval pending".
     const rows = await this.db.prepare(`
-      SELECT id, environment, requester_id, destination_office_item_id,
-             destination_office_revision_id, start_date, end_date, purpose, status,
-             submission_key, workflow_instance_id, submitted_at, version, created_at, updated_at
-      FROM reference_travel_requests
-      WHERE environment = ? AND requester_id = ?
-      ORDER BY updated_at DESC, id DESC
+      SELECT tr.id, tr.environment, tr.requester_id, tr.destination_office_item_id,
+             tr.destination_office_revision_id, tr.start_date, tr.end_date,
+             tr.purpose, tr.status, tr.submission_key, tr.workflow_instance_id,
+             tr.submitted_at, tr.version, tr.created_at, tr.updated_at,
+             wi.state AS workflow_state
+      FROM reference_travel_requests tr
+      LEFT JOIN workflow_instances wi
+        ON wi.id = tr.workflow_instance_id
+       AND wi.environment = tr.environment
+       AND wi.resource_type = ?
+       AND wi.resource_id = tr.id
+       AND wi.requester_id = tr.requester_id
+      WHERE tr.environment = ? AND tr.requester_id = ?
+      ORDER BY tr.updated_at DESC, tr.id DESC
       LIMIT ?
-    `).bind(environment, requesterId, limit).all<TravelRequestRow>();
-    return (rows.results ?? []).map(mapRow);
+    `).bind(WORKHUB_TRAVEL_RESOURCE_TYPE, environment, requesterId, limit).all<TravelRequestRow & { workflow_state: TravelRequestListItem["workflowState"] }>();
+    return (rows.results ?? []).map(row => ({ ...mapRow(row), workflowState: row.workflow_state }));
   }
 
   async compareAndSet(

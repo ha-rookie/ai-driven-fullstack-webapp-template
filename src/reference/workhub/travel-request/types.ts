@@ -1,4 +1,4 @@
-import type { WorkflowMutationResult, WorkflowStore } from "../../../worker/workflow";
+import type { WorkflowInstanceState, WorkflowMutationResult, WorkflowStore } from "../../../worker/workflow";
 
 export type TravelRequestStatus = "draft" | "submitting" | "submitted";
 
@@ -20,6 +20,11 @@ export interface TravelRequestRecord {
   readonly updatedAt: string;
 }
 
+/** Read model for MY REQUESTS. Workflow, not TravelRequest.status, owns approval status. */
+export interface TravelRequestListItem extends TravelRequestRecord {
+  readonly workflowState: WorkflowInstanceState | null;
+}
+
 export interface TravelRequestCompareAndSetOptions {
   readonly expectedVersion: number;
   readonly expectedStatus: TravelRequestStatus;
@@ -29,7 +34,7 @@ export interface TravelRequestStore {
   create(record: TravelRequestRecord): Promise<boolean>;
   get(id: string, environment: string): Promise<TravelRequestRecord | null>;
   // Bounded, server-filtered list; never load every employee's requests then filter in UI.
-  listOwned(environment: string, requesterId: string, limit: number): Promise<readonly TravelRequestRecord[]>;
+  listOwned(environment: string, requesterId: string, limit: number): Promise<readonly TravelRequestListItem[]>;
   compareAndSet(
     record: TravelRequestRecord,
     options: TravelRequestCompareAndSetOptions,
