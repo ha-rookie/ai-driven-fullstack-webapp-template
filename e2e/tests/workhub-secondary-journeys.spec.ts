@@ -17,7 +17,7 @@ test("moving simulation persists partial step completion across reload", async (
   const section = page.locator("#workhub-secondary-journeys");
   await expect(section.getByRole("heading", { name: "手続きの進捗デモ" })).toBeVisible();
   await section.getByRole("button", { name: "引っ越し手続きをデモ開始" }).click();
-  const moving = section.locator(".workhub-secondary-item").filter({ has: section.getByRole("heading", { name: "引っ越した" }) }).last();
+  const moving = section.locator(".workhub-secondary-item").filter({ hasText: "引っ越した" }).last();
   await expect(moving).toContainText("0/3ステップ");
   await moving.getByRole("button", { name: "現在のデモステップを完了する" }).click();
   await expect(moving).toContainText("1/3ステップ");
@@ -40,8 +40,8 @@ test("PC exchange mock transfers assigned work to Corporate and back without adm
 
   await changeIdentity(page, "ren");
   await expect(page.locator("#workhub-secondary-journeys")).toHaveCount(0);
-  const denied = await page.request.get("/api/workhub/secondary-journeys");
-  expect(denied.status()).toBe(403);
+  const deniedStatus = await page.evaluate(async () => (await fetch("/api/workhub/secondary-journeys", { credentials: "same-origin" })).status);
+  expect(deniedStatus).toBe(403);
 
   await changeIdentity(page, "sora");
   section = page.locator("#workhub-secondary-journeys");
