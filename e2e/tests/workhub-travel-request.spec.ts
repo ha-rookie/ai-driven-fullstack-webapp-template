@@ -104,7 +104,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
 test("MY REQUESTS shows persisted personal requests and never exposes another employee's list", async ({ page }, testInfo) => {
   const purpose = `MY REQUESTS E2E ${testInfo.project.name}`;
   await loginAs(page, "aoi");
-  await expect(page.getByRole("heading", { name: "自分の出張申請" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "自分の申請一覧" })).toBeVisible();
   await page.getByLabel("行先").selectOption({ label: "Tokyo Office (TOKYO)" });
   await page.getByLabel("目的", { exact: true }).fill(purpose);
   await page.getByRole("button", { name: "出張申請を提出" }).click();
@@ -114,14 +114,14 @@ test("MY REQUESTS shows persisted personal requests and never exposes another em
 
   await expect(requestItem).toContainText("承認待ち");
   await page.reload();
-  await expect(page.getByRole("heading", { name: "自分の出張申請" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "自分の申請一覧" })).toBeVisible();
   await expect(page.getByRole("button", { name: new RegExp(purpose, "u") })).toBeVisible();
   await page.getByRole("button", { name: new RegExp(purpose, "u") }).click();
   await expect(page.getByText("MY REQUEST DETAIL", { exact: true })).toBeVisible();
   await expect(page.getByText("申請しました", { exact: true })).toBeVisible();
 
   await switchPersona(page, "ren");
-  await expect(page.getByRole("heading", { name: "自分の出張申請" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "自分の申請一覧" })).toHaveCount(0);
   // Query parameters supplied by another user must not override server-side session ownership.
   const result = await page.evaluate(async () => {
     const response = await fetch("/api/workhub/travel-requests?requesterId=workhub-demo-aoi", {

@@ -34,6 +34,25 @@ test("employee submits line-item expenses, Accounting returns them, employee cor
   const mine = section.locator(".workhub-expense-item").filter({ hasText: purpose });
   await expect(mine).toContainText("経理確認待ち");
   await expect(mine).toContainText("合計 13,300円");
+  const unified = page.locator("#workhub-my-requests");
+  const expenseCard = unified.locator(".workhub-my-request-item").filter({ hasText: purpose });
+  await expect(expenseCard).toContainText("経費精算");
+  await expect(expenseCard).toContainText("経理確認待ち");
+  await expect(expenseCard).toContainText("合計 13,300円");
+
+  // Two separately owned business domains appear in the same personal list.
+  const tripPurpose = `東京出張申請 ${info.project.name} ${Date.now()}`;
+  await page.getByLabel("行先").selectOption({ label: "Tokyo Office (TOKYO)" });
+  await page.getByLabel("開始日").fill("2026-10-20");
+  await page.getByLabel("終了日").fill("2026-10-21");
+  await page.getByLabel("目的", { exact: true }).fill(tripPurpose);
+  await page.getByRole("button", { name: "出張申請を提出" }).click();
+  await expect(page.getByText("出張申請を提出しました。", { exact: true })).toBeVisible();
+  const travelCard = unified.locator(".workhub-my-request-item").filter({ hasText: tripPurpose });
+  await expect(travelCard).toContainText("出張申請");
+  await expect(travelCard).toContainText("承認待ち");
+  await expect(expenseCard).toContainText("経理確認待ち");
+
 
   await switchTo(page, "mei");
   const queue = page.locator("#workhub-expenses").locator(".workhub-expense-item").filter({ hasText: purpose });
@@ -47,6 +66,12 @@ test("employee submits line-item expenses, Accounting returns them, employee cor
   const returned = page.locator(".workhub-expense-item").filter({ hasText: purpose });
   await expect(returned).toContainText("差戻し・要修正");
   await expect(returned).toContainText("ホテルの料金を確認してください");
+  const returnedCard = page.locator("#workhub-my-requests .workhub-my-request-item").filter({ hasText: purpose });
+  await expect(returnedCard).toContainText("差戻し・要修正");
+  await expect(returnedCard).toContainText("ホテルの料金を確認してください");
+  await returnedCard.click();
+  await expect(returned).toBeFocused();
+
   await returned.getByRole("button", { name: "この精算を修正" }).click();
   await expect(page.getByRole("textbox", { name: "精算の目的" })).toHaveValue(purpose);
   await expect(page.getByLabel("明細2の金額")).toHaveValue("2300");
@@ -64,6 +89,8 @@ test("employee submits line-item expenses, Accounting returns them, employee cor
 
   await switchTo(page, "aoi");
   await expect(page.locator(".workhub-expense-item").filter({ hasText: purpose })).toContainText("経理承認済み");
+  await expect(page.locator("#workhub-my-requests .workhub-my-request-item").filter({ hasText: purpose }))
+    .toContainText("経理承認済み");
 
   await switchTo(page, "ren");
   await expect(page.locator("#workhub-expenses")).toHaveCount(0);
@@ -72,4 +99,9 @@ test("employee submits line-item expenses, Accounting returns them, employee cor
     return response.status;
   });
   expect(status).toBe(403);
+  const unifiedAccess = await page.evaluate(async () => {
+    const response = await fetch("/api/workhub/my-requests", { credentials: "same-origin" });
+    return response.status;
+  });
+  expect(unifiedAccess).toBe(403);
 });

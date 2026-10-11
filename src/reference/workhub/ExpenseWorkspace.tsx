@@ -58,7 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** The reference expense domain is separate from the travel workflow domain. */
-export default function ExpenseWorkspace({ principalId }: { readonly principalId: string }) {
+export default function ExpenseWorkspace({ principalId, onChanged }: { readonly principalId: string; readonly onChanged?: () => void }) {
   const isEmployee = principalId === "workhub-demo-aoi";
   const isAccountant = principalId === "workhub-demo-mei";
   const [claims, setClaims] = useState<ExpenseClaim[]>([]);
@@ -124,6 +124,7 @@ export default function ExpenseWorkspace({ principalId }: { readonly principalId
       setTravelRequestId("");
       setEditing(null);
       await refresh();
+      onChanged?.();
       setMessage(editing ? "経費精算を修正して再提出しました。" : "経費精算を提出しました。");
     });
   };
@@ -148,6 +149,7 @@ export default function ExpenseWorkspace({ principalId }: { readonly principalId
         body: JSON.stringify({ action, reason, expectedVersion: claim.version }),
       });
       await refresh();
+      onChanged?.();
       setMessage(action === "approve" ? "経費精算を承認しました。" : "経費精算を差し戻しました。");
     });
   };
@@ -186,7 +188,7 @@ export default function ExpenseWorkspace({ principalId }: { readonly principalId
       listState === "error" ? <div role="alert">精算一覧を取得できませんでした。<button type="button" className="workhub-secondary-button" onClick={() => void refresh()}>再読み込み</button></div> :
         claims.length === 0 ? <p className="workhub-empty-state">経費精算はまだありません。</p> :
           <div className="workhub-expense-list" aria-label={isAccountant ? "経理の精算確認一覧" : "自分の経費精算一覧"}>
-            {claims.map(claim => <article className="workhub-expense-item" key={claim.id}>
+            {claims.map(claim => <article className="workhub-expense-item" key={claim.id} id={`workhub-expense-${claim.id}`} tabIndex={-1}>
               <h3>{claim.purpose}</h3>
               <span className="workhub-expense-status">{statusText[claim.status]}</span>
               <strong>合計 {claim.totalYen.toLocaleString("ja-JP")}円</strong>

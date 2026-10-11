@@ -8,7 +8,17 @@ import "./workhub.css";
 interface DemoPersona { readonly key: string; readonly userId: string; readonly displayName: string; readonly roleLabel: string; readonly homeHint: string; }
 interface DemoConfig { readonly demoEnabled: boolean; readonly personas: DemoPersona[]; readonly demoPassword?: string; }
 interface OfficeOption { readonly itemId: string; readonly revisionId: string; readonly code: string; readonly label: string; }
-interface MyRequestRecord extends TravelRequestRecord { readonly workflowState: "active" | "awaiting_resubmission" | "completed" | "rejected" | "withdrawn" | null; readonly returnComment: string | null; }
+interface UnifiedMyRequest {
+  readonly kind: "travel" | "expense";
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle: string;
+  readonly status: "draft" | "in_progress" | "action_required" | "completed" | "rejected" | "withdrawn" | "unknown";
+  readonly statusLabel: string;
+  readonly returnReason: string | null;
+  readonly amountYen: number | null;
+  readonly updatedAt: string;
+}
 interface TravelRequestRecord { readonly id: string; readonly destinationOfficeItemId: string; readonly startDate: string; readonly endDate: string; readonly purpose: string; readonly status: "draft" | "submitting" | "submitted"; readonly version: number; readonly workflowInstanceId: string | null; }
 interface WorkflowRecord { readonly id: string; readonly state: string; readonly version: number; }
 interface WorkItemRecord { readonly id: string; readonly workflowInstanceId: string; readonly version: number; }
@@ -28,18 +38,6 @@ const HOME_HINTS: Record<string, { role: string; hint: string }> = {
 };
 const NOTIFICATION_LABELS: Record<string, string> = { "workflow.approval_requested": "出張申請の承認依頼が届きました", "workflow.returned": "出張申請が差し戻されました", "workflow.approved": "出張申請が承認されました", "workflow.rejected": "出張申請が却下されました" };
 const TIMELINE_LABELS: Record<string, string> = { "workflow.submitted": "申請しました", "workflow.returned": "差し戻されました", "workflow.resubmitted": "再申請しました", "workflow.approved": "承認されました", "workflow.rejected": "却下されました", "workflow.withdrawn": "取り下げました" };
-const myRequestStatusLabel = (request: MyRequestRecord): string => {
-  if (request.status === "draft") return "下書き";
-  if (request.status === "submitting") return "提出処理中";
-  const labels: Record<Exclude<MyRequestRecord["workflowState"], null>, string> = {
-    active: "承認待ち",
-    awaiting_resubmission: "差戻し・要修正",
-    completed: "承認済み",
-    rejected: "却下",
-    withdrawn: "取り下げ",
-  };
-  return request.workflowState === null ? "承認状況を確認できません" : labels[request.workflowState];
-};
 const REMEMBERED_USER_ID_KEY = "workhub.rememberedUserId";
 const readRememberedUserId = (): string => { try { return localStorage.getItem(REMEMBERED_USER_ID_KEY) ?? ""; } catch { return ""; } };
 const persistRememberedUserId = (remember: boolean, userId: string): void => { try { if (remember) localStorage.setItem(REMEMBERED_USER_ID_KEY, userId); else localStorage.removeItem(REMEMBERED_USER_ID_KEY); } catch { /* browser storage is optional */ } };
@@ -67,7 +65,7 @@ function LoginScreen() {
 
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
-  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<MyRequestRecord[]>([]); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
   const loadNotifications = useCallback(async () => { const [list, count] = await Promise.all([apiJson<{ items: NotificationRecord[] }>("/api/workhub/notifications"), apiJson<{ unreadCount: number }>("/api/workhub/notifications/unread-count")]); setNotifications(list.items); setUnreadCount(count.unreadCount); }, []);
   const loadMyWork = useCallback(async () => { if (!isRen) return; const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work"); setMyWork(result.items); }, [isRen]);
   const loadAnnouncements = useCallback(async () => {
@@ -80,7 +78,7 @@ function TravelWorkspace() {
       setAnnouncementLoad("error");
     }
   }, []);
-  const loadMyRequests = useCallback(async () => { if (!isAoi) return; setMyRequestsState("loading"); try { const result = await apiJson<{ items: MyRequestRecord[] }>("/api/workhub/travel-requests"); setMyRequests(result.items); setMyRequestsState("ready"); } catch { setMyRequestsState("error"); } }, [isAoi]);
+  const loadMyRequests = useCallback(async () => { if (!isAoi) return; setMyRequestsState("loading"); try { const result = await apiJson<{ items: UnifiedMyRequest[] }>("/api/workhub/my-requests"); setMyRequests(result.items); setMyRequestsState("ready"); } catch { setMyRequestsState("error"); } }, [isAoi]);
   const openRequest = useCallback(async (id: string) => { const detail = await apiJson<{ request: TravelRequestRecord; workflow: WorkflowRecord | null; returnComment: string | null }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}`); const history = await apiJson<{ items: TimelineActivity[] }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}/timeline`); setSelectedRequest(detail.request); setSelectedWorkflow(detail.workflow); setReturnComment(detail.workflow?.state === "awaiting_resubmission" ? detail.returnComment : null); setTimeline(history.items ?? []); setDestinationOfficeItemId(detail.request.destinationOfficeItemId); setStartDate(detail.request.startDate); setEndDate(detail.request.endDate); setPurpose(detail.request.purpose); return detail; }, []);
   useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements]);
   const run = async (operation: () => Promise<void>) => { if (busy) return; setBusy(true); setMessage(null); try { await operation(); } catch (caught) { setMessage(caught instanceof Error ? caught.message : "処理に失敗しました。"); } finally { setBusy(false); } };
@@ -104,23 +102,36 @@ function TravelWorkspace() {
   const openNotification = (notification: NotificationRecord) => void run(async () => { if (!notification.readAt) await apiJson(`/api/workhub/notifications/${notification.id}/read`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version }) }); const target = notification.actionTarget?.match(/^resource:travel_request:(.+)$/u)?.[1]; if (target && isAoi) await openRequest(target); await loadNotifications(); });
   const search = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const query = searchText.trim(); if (!query || searching) return; setSearching(true); setMessage(null); try { const response = await apiJson<{ results: SearchResultRecord[] }>(`/api/workhub/search?q=${encodeURIComponent(query)}`); setSearchResults(response.results); } catch (caught) { setMessage(caught instanceof Error ? caught.message : "検索に失敗しました。"); } finally { setSearching(false); } };
   const openSearchResult = (result: SearchResultRecord) => void run(async () => { if (result.resourceType === "travel_request") await openRequest(result.resourceId); });
-  const selectMyRequest = (request: MyRequestRecord) => void run(async () => {
-    // The list is a snapshot. Always reload current workflow before offering
-    // correction; the server validates identity and versions for resubmit.
-    const detail = await openRequest(request.id);
-    const isStillReturned = detail.request.status === "submitted"
-      && detail.workflow?.state === "awaiting_resubmission";
-    if (request.workflowState === "awaiting_resubmission" && !isStillReturned) {
-      setMessage("申請状況が更新されています。最新の状態を確認してください。");
-      await loadMyRequests();
+  const selectMyRequest = (request: UnifiedMyRequest) => {
+    if (request.kind === "expense") {
+      // ExpenseWorkspace owns the correction form and fetches its data from
+      // the expense domain. The unified projection is only an entry point.
+      const openExpense = () => {
+        const target = document.getElementById(`workhub-expense-${request.id}`)
+          ?? document.getElementById("workhub-expenses");
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (target?.id !== "workhub-expenses") target?.focus({ preventScroll: true });
+      };
+      requestAnimationFrame(openExpense);
+      return;
     }
-    requestAnimationFrame(() => {
-      const target = document.getElementById(isStillReturned ? "workhub-travel-purpose" : "workhub-request-detail");
-      if (!target) return;
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (isStillReturned) target.focus({ preventScroll: true });
+    void run(async () => {
+      // Always re-read authoritative request/workflow before editing.
+      const detail = await openRequest(request.id);
+      const isStillReturned = detail.request.status === "submitted"
+        && detail.workflow?.state === "awaiting_resubmission";
+      if (request.status === "action_required" && !isStillReturned) {
+        setMessage("申請状況が更新されています。最新の状態を確認してください。");
+        await loadMyRequests();
+      }
+      requestAnimationFrame(() => {
+        const target = document.getElementById(isStillReturned ? "workhub-travel-purpose" : "workhub-request-detail");
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (isStillReturned) target.focus({ preventScroll: true });
+      });
     });
-  });
+  };
   const awaitingResubmission = selectedWorkflow?.state === "awaiting_resubmission";
   return <div className="workhub-home-shell">
     <header className="workhub-home-header">
@@ -143,6 +154,7 @@ function TravelWorkspace() {
         <a className="is-active" href="#workhub-home" aria-current="page"><span aria-hidden="true">⌂</span>ホーム</a>
         <a href="#workhub-my-work"><span aria-hidden="true">✓</span>MY WORK</a>
         <a href="#workhub-requests"><span aria-hidden="true">▤</span>申請・手続き</a>
+        {isAoi && <a href="#workhub-my-requests"><span aria-hidden="true">☷</span>自分の申請一覧</a>}
         {(isAoi || user?.id === "workhub-demo-mei") && <a href="#workhub-expenses"><span aria-hidden="true">¥</span>交通費・経費精算</a>}
         <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">▦</span>アプリ</span>
         <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">♙</span>組織・人</span>
@@ -183,9 +195,27 @@ function TravelWorkspace() {
           </div>
         </section>
         {isAoi && <section className="workhub-my-requests" id="workhub-my-requests" aria-labelledby="workhub-my-requests-title">
-          <div className="workhub-section-heading"><div><span className="workhub-card-label">MY REQUESTS</span><h2 id="workhub-my-requests-title">自分の出張申請</h2></div><button type="button" className="workhub-secondary-button" onClick={() => void loadMyRequests()} disabled={myRequestsState === "loading"}>一覧を更新</button></div>
-          {myRequestsState === "loading" ? <p role="status">申請を読み込んでいます…</p> : myRequestsState === "error" ? <div role="alert"><p>申請一覧を取得できませんでした。申請が0件とは限りません。</p><button type="button" className="workhub-secondary-button" onClick={() => void loadMyRequests()}>再読み込み</button></div> : myRequests.length === 0 ? <p className="workhub-empty-state">まだ出張申請はありません。「出張したい」から申請できます。</p> : <div className="workhub-my-requests-list">{myRequests.map((request) => <button key={request.id} className={`workhub-my-request-item ${request.workflowState === "awaiting_resubmission" ? "is-returned" : ""}`} type="button" disabled={busy} onClick={() => selectMyRequest(request)}><strong>{request.purpose}</strong><span>{request.startDate} → {request.endDate}</span><small className="workhub-request-status">{myRequestStatusLabel(request)}</small>{request.workflowState === "awaiting_resubmission" && <span className="workhub-request-return-comment"><span>差戻し理由：</span>{request.returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</span>}{request.workflowState === "awaiting_resubmission" && <span className="workhub-request-next-action">選択して修正・再申請する →</span>}</button>)}</div>}
-          <small className="workhub-reference-note">本人の申請を更新日時順に最大20件表示。承認状況はWorkflowから取得し、一覧更新で最新状態を確認できます。</small>
+          <div className="workhub-section-heading">
+            <div><span className="workhub-card-label">MY REQUESTS</span><h2 id="workhub-my-requests-title">自分の申請一覧</h2></div>
+            <button type="button" className="workhub-secondary-button" onClick={() => void loadMyRequests()} disabled={myRequestsState === "loading"}>一覧を更新</button>
+          </div>
+          <p className="workhub-reference-note">出張申請と経費精算の進捗を、更新日時順にまとめて確認できます。</p>
+          {myRequestsState === "loading" ? <p role="status">申請を読み込んでいます…</p> :
+            myRequestsState === "error" ? <div role="alert"><p>申請一覧を取得できませんでした。申請が0件とは限りません。</p><button type="button" className="workhub-secondary-button" onClick={() => void loadMyRequests()}>再読み込み</button></div> :
+              myRequests.length === 0 ? <p className="workhub-empty-state">申請はまだありません。「出張したい」や「交通費・経費精算」から開始できます。</p> :
+                <div className="workhub-my-requests-list">{myRequests.map((request) =>
+                  <button key={`${request.kind}:${request.id}`}
+                    className={`workhub-my-request-item ${request.status === "action_required" ? "is-returned" : ""}`}
+                    type="button" disabled={busy} onClick={() => selectMyRequest(request)}>
+                    <span className="workhub-request-kind">{request.kind === "travel" ? "出張申請" : "経費精算"}</span>
+                    <strong>{request.title}</strong>
+                    <span>{request.subtitle}</span>
+                    {request.amountYen !== null && <span>合計 {request.amountYen.toLocaleString("ja-JP")}円</span>}
+                    <small className="workhub-request-status">{request.statusLabel}</small>
+                    {request.status === "action_required" && <span className="workhub-request-return-comment"><span>差戻し理由：</span>{request.returnReason?.trim() || "理由の記載がありません。担当者に確認してください。"}</span>}
+                    <span className="workhub-request-next-action">{request.kind === "travel" ? request.status === "action_required" ? "選択して修正・再申請する →" : "申請内容・履歴を確認する →" : request.status === "action_required" ? "精算の修正画面へ →" : "精算の明細を確認する →"}</span>
+                  </button>)}</div>}
+          <small className="workhub-reference-note">自分の申請を最大20件表示。出張の状態はWorkflow、経費の状態は経理承認データが正本です。情報は一覧更新で再取得します。</small>
         </section>}
         <section className="workhub-home-grid" id="workhub-requests" aria-label="出張申請 Reference Scenario">
           {isAoi && <article className="workhub-home-card workhub-home-card-primary" id="workhub-travel-form"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "出張申請"}</h2>{awaitingResubmission && <div className="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>{returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</p></div>}<div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => setDestinationOfficeItemId(event.target.value)}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><label>目的<textarea id="workhub-travel-purpose" aria-label="目的" value={purpose} onChange={(event) => setPurpose(event.target.value)} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy} onClick={updateAndResubmit}>修正して再申請</button> : <button className="workhub-primary-button" type="button" disabled={busy} onClick={createAndSubmit}>出張申請を提出</button>}</div></article>}
@@ -193,7 +223,7 @@ function TravelWorkspace() {
           {selectedRequest && <article className="workhub-home-card" id="workhub-request-detail"><span className="workhub-card-label">MY REQUEST DETAIL</span><h2>{selectedRequest.purpose}</h2><p>{selectedRequest.startDate} → {selectedRequest.endDate}</p><p>Workflow: <strong>{selectedWorkflow?.state ?? selectedRequest.status}</strong></p><div className="workhub-timeline" aria-label="申請履歴">{timeline.length === 0 ? <p>履歴はまだありません。</p> : timeline.map((activity) => <div key={activity.id} className="workhub-timeline-item"><strong>{TIMELINE_LABELS[activity.activityType] ?? activity.activityType}</strong><small>{new Date(activity.occurredAt).toLocaleString("ja-JP")}</small></div>)}</div></article>}
           {!isAoi && !isRen && <article className="workhub-home-card workhub-home-card-primary"><span className="workhub-card-label">あなたの優先エリア</span><h2>{reference?.hint ?? "MY WORK"}</h2><p>このReferenceではPersonaごとにHOMEの優先領域を変えます。</p></article>}
         </section>
-        <ExpenseWorkspace principalId={user?.id ?? ""} />
+        <ExpenseWorkspace principalId={user?.id ?? ""} onChanged={() => void loadMyRequests()} />
         <section className="workhub-announcements" id="workhub-announcements" aria-labelledby="workhub-announcements-title">
           <div className="workhub-section-heading">
             <div><span className="workhub-card-label">COMPANY ANNOUNCEMENTS</span><h2 id="workhub-announcements-title">社内お知らせ</h2></div>
