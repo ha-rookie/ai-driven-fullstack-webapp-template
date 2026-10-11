@@ -28,3 +28,17 @@
   .workhub-secondary-journeys { padding: 16px; }
   .workhub-secondary-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* In-page REQUESTS link is a keyboard-focusable navigation target. */
+.workhub-secondary-journeys:target,
+.workhub-secondary-journeys:focus-visible {
+  outline: 3px solid #176e72;
+  outline-offset: 3px;
+}
+.workhub-secondary-journeys > .workhub-section-heading button:focus-visible {
+  outline: 3px solid #176e72;
+  outline-offset: 3px;
+}
+@media (max-width: 390px) {
+  .workhub-secondary-actions { flex-direction: column; align-items: stretch; }
+}
