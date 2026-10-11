@@ -11,7 +11,7 @@ On 2026-10-11, a conversational "続けて" was wrongly interpreted as permissio
 3. **Select an Issue Change Contract** (Goal, In/Out, Planned Files, risks, validation, stop conditions). Tracking #132 is not the implementation Issue. If none is suitable, create a small Issue for the true focus work and ensure its eligibility is recorded *before coding*.
 4. **Keep an auditable selection record in the PR**, including exact main baseline, #132, selected Issue, why now, higher-priority blockers, Notion evidence or explicit unavailability, Human Gate and acceptance outcome. Follow `.github/pull_request_template.md`.
 5. **Validate before merge.** Existing required `validate` runs the fail-closed `scripts/work-selection-gate.mjs` on PR creation, code updates and edited PR descriptions. New human/AI PRs outside the base policy focus/approved exceptions fail, even if the PR body claims the priority was changed. Existing open PRs and verified Dependabot updates retain their existing route; this is not permission to silently merge them.
-6. **Post-merge reconcile** #132, implementation Issue, Notion roadmap/testing and actual main SHA. Report CI verified separately from Preview or Production operation. Do not close an Issue because a partial workaround was merged.
+6. **Post-merge reconcile** #132, implementation Issue, Notion roadmap/testing and actual main SHA. Report CI verified separately from Preview or Production operation. `completion: incremental` and `Refs #issue` keep unresolved incidents Open; only `completion: final` with closing linkage may auto-close after all acceptance gates are satisfied. Do not close an Issue because a partial workaround was merged.
 
 ## Gate design, protection and limits
 
@@ -28,6 +28,9 @@ On 2026-10-11, a conversational "続けて" was wrongly interpreted as permissio
 
 | Case | Result |
 |---|---|
+| Incremental diagnostic PR for #521 with `completion: incremental` and `Refs #521` | PASS; #521 remains Open |
+| Final #521 resolution with `completion: final` and `Closes #521` | PASS only with truthful resolution evidence |
+| `completion: incremental` but `Closes #521` | FAIL; would auto-close unresolved issue |
 | PR implementing #521 with complete evidence | PASS (subject to all other checks) |
 | PR implementing #595 with only "PDF was just discussed" | FAIL: not an approved priority |
 | PR implementing #595 that edits focus policy inside the same PR | FAIL: policy is read from the old main |
