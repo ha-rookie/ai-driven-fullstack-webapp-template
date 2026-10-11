@@ -41,6 +41,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
   const [message, setMessage] = useState("");
   const [reload, setReload] = useState(0);
   const inFlight = useRef(false);
+  const focusAfterUpdate = useRef<string | null>(null);
   const pendingStart = useRef<{ readonly key: string; readonly intent: SecondaryIntent } | null>(null);
 
   const refresh = useCallback(() => setReload(value => value + 1), []);
@@ -58,13 +59,31 @@ export default function WorkhubSecondaryJourneys({ role }: {
     return () => { alive = false; };
   }, [reload]);
 
-  const perform = async (action: () => Promise<void>) => {
+  useEffect(() => {
+    if (state !== "ready" || !focusAfterUpdate.current) return;
+    const requestedId = focusAfterUpdate.current;
+    focusAfterUpdate.current = null;
+    const frame = requestAnimationFrame(() => {
+      const section = document.getElementById("workhub-secondary-journeys");
+      if (!section) return;
+      const authorizedCard = Array.from(section.querySelectorAll<HTMLElement>("[data-journey-id]"))
+        .find(card => card.dataset.journeyId === requestedId);
+      // After delegation/handoff, the card may leave the current assignee's list.
+      // Focusing the section preserves keyboard/screen-reader orientation without
+      // revealing any unavailable journey detail.
+      (authorizedCard ?? section).focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [state, items]);
+
+  const perform = async (action: () => Promise<void>, focusId?: string) => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
       await action();
+      if (focusId) focusAfterUpdate.current = focusId;
       refresh();
     } catch {
       setMessage("処理結果を確認できません。再送信せず「最新状態を確認」で確認してください。");
@@ -105,7 +124,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
         expectedWorkItemVersion: workItemVersion,
         ...(step ? { stepKey: step.key } : {}),
       });
-    });
+    }, item.id);
   };
 
   const pcDecision = (item: SecondaryJourneyView, action: "return" | "reject" | "resubmit") => {
@@ -116,10 +135,10 @@ export default function WorkhubSecondaryJourneys({ role }: {
         expectedVersion: item.version,
         ...(action !== "resubmit" ? { expectedWorkItemVersion: item.workItemVersion } : {}),
       });
-    });
+    }, item.id);
   };
 
-  return <section className="workhub-secondary-journeys" id="workhub-secondary-journeys"
+  return <section className="workhub-secondary-journeys" id="workhub-secondary-journeys" tabIndex={-1}
     aria-labelledby="workhub-secondary-journeys-title">
     <div className="workhub-section-heading">
       <div><span className="workhub-card-label">SECONDARY JOURNEY / MOCK WORKFLOW</span>
@@ -147,7 +166,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
       : <div className="workhub-secondary-grid">
         {items.map(item => {
           const current = item.steps.find(step => step.status === "current");
-          return <article key={item.id} data-journey-id={item.id} className="workhub-secondary-item">
+          return <article key={item.id} data-journey-id={item.id} tabIndex={-1} className="workhub-secondary-item">
             <h3>{item.title}</h3>
             <p role="status">{item.state === "completed" ? "デモ完了"
               : item.state === "needs_information" ? "追加情報の確認待ち（デモ）"
