@@ -226,7 +226,7 @@ function TravelWorkspace() {
       <nav className="workhub-side-nav" aria-label="WORKHUB メインナビゲーション">
         <a className="is-active" href="#workhub-home" aria-current="page"><span aria-hidden="true">⌂</span>ホーム</a>
         <a href="#workhub-my-work"><span aria-hidden="true">✓</span>MY WORK</a>
-        <a href="#workhub-requests"><span aria-hidden="true">▤</span>申請・手続き</a>
+        <a href="#workhub-request-intents"><span aria-hidden="true">▤</span>申請・手続き</a>
         {isAoi && <a href="#workhub-my-requests"><span aria-hidden="true">☷</span>自分の申請一覧</a>}
         {(isAoi || user?.id === "workhub-demo-mei") && <a href="#workhub-expenses"><span aria-hidden="true">¥</span>交通費・経費精算</a>}
         <a href="#workhub-apps"><span aria-hidden="true">▦</span>アプリ</a>
