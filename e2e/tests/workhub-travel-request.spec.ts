@@ -36,7 +36,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(page.getByText("申請しました", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(initialPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
-  await expect(page.getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
+  await expect(page.locator(".workhub-global-search-results").getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
 
   await switchPersona(page, "ren");
   const firstTask = page.getByText(initialPurpose, { exact: true }).locator("..");
@@ -44,7 +44,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(latestNotification(page, "出張申請の承認依頼が届きました")).toBeVisible();
   await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(initialPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
-  await expect(page.getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
+  await expect(page.locator(".workhub-global-search-results").getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
   await firstTask.getByRole("button", { name: "差し戻す" }).click();
   await expect(page.getByText("差し戻しました。", { exact: true })).toBeVisible();
 
@@ -101,9 +101,17 @@ test("MY REQUESTS shows persisted personal requests and never exposes another em
   await switchPersona(page, "ren");
   await expect(page.getByRole("heading", { name: "自分の出張申請" })).toHaveCount(0);
   // Query parameters supplied by another user must not override server-side session ownership.
-  const response = await page.request.get("/api/workhub/travel-requests?requesterId=workhub-demo-aoi");
-  expect(response.status()).toBe(200);
-  const result = await response.json() as { items: Array<{ id: string; purpose: string; requesterId: string }> };
-  expect(result.items.find((item) => item.purpose === purpose)).toBeUndefined();
-  expect(result.items.every((item) => item.requesterId === "workhub-demo-ren")).toBe(true);
+  const result = await page.evaluate(async () => {
+    const response = await fetch("/api/workhub/travel-requests?requesterId=workhub-demo-aoi", {
+      credentials: "same-origin",
+    });
+    return {
+      status: response.status,
+      data: await response.json() as { items: Array<{ id: string; purpose: string; requesterId: string }> },
+    };
+  });
+  expect(result.status).toBe(200);
+  const { items } = result.data;
+  expect(items.find((item) => item.purpose === purpose)).toBeUndefined();
+  expect(items.every((item) => item.requesterId === "workhub-demo-ren")).toBe(true);
 });
