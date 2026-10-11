@@ -17,6 +17,7 @@ import { D1WorkhubAnnouncementStore, WorkhubAnnouncementError } from "../referen
 import { D1WorkhubExpenseStore, WorkhubExpenseError } from "../reference/workhub/expenses";
 import { WORKHUB_EXPENSE_EMPLOYEE_ID } from "../reference/workhub/expenses";
 import { projectWorkhubMyRequests } from "../reference/workhub/my-requests";
+import { WorkhubSecondaryJourneyService } from "../reference/workhub/secondary-journeys";
 import { resolveApplicationSession } from "./auth";
 import { findScopeMembership } from "./authorization";
 import { listWorkhubApps, searchWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
@@ -307,6 +308,39 @@ export const handleWorkhubBusinessApi = async (
       const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
       if (!membership) return error(403, "apps_forbidden", "Access denied");
       return json({ items: listWorkhubApps(membership.role) });
+    }
+
+    // Stage 2 Reference-only mock lifecycle: existing WorkflowStore owns
+    // persistence, concurrency and assignee checks. No HR/asset data changes.
+    if (pathname === "/api/workhub/secondary-journeys"
+      || /^\/api\/workhub\/secondary-journeys\/[^/]+\/advance$/u.test(pathname)) {
+      const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
+      if (!membership || !["employee", "corporate"].includes(membership.role)) {
+        return error(403, "secondary_journey_forbidden", "This reference journey is unavailable");
+      }
+      const journey = new WorkhubSecondaryJourneyService(env.DB, environment);
+      if (pathname === "/api/workhub/secondary-journeys" && request.method === "GET") {
+        return json({ items: await journey.list(principalId, membership.role) });
+      }
+      if (pathname === "/api/workhub/secondary-journeys" && request.method === "POST") {
+        const body = await bodyRecord(request);
+        if (body instanceof Response) return body;
+        const result = await journey.start(
+          principalId, membership.role, stringField(body, "intent"), stringField(body, "key"),
+        );
+        return json({ item: result }, 201);
+      }
+      const actionMatch = pathname.match(/^\/api\/workhub\/secondary-journeys\/([^/]+)\/advance$/u);
+      if (actionMatch && request.method === "POST") {
+        const body = await bodyRecord(request);
+        if (body instanceof Response) return body;
+        const result = await journey.advance(
+          principalId, membership.role, decodeURIComponent(actionMatch[1]),
+          intField(body, "expectedVersion"), intField(body, "expectedWorkItemVersion"),
+        );
+        return json({ item: result });
+      }
+      return error(405, "method_not_allowed", "Method is not supported");
     }
 
     if (pathname === "/api/workhub/my-requests" && request.method === "GET") {
