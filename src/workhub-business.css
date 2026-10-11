@@ -264,3 +264,25 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.workhub-return-reason-input {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  color: #405764;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workhub-return-reason-input textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 64px;
+  border: 1px solid #cbd7dc;
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: #173243;
+  background: white;
+  font: inherit;
+  font-size: 13px;
+}
