@@ -127,6 +127,15 @@ export class TravelRequestService {
     return this.loadOwnedDraftOrRequest(id, principalId);
   }
 
+  // This is a personal request history, not the manager's pending work queue.
+  async listMine(principalId: string, limit = 20): Promise<readonly TravelRequestRecord[]> {
+    const requesterId = boundedId(principalId, "principalId");
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+      throw new TravelRequestError("invalid_input", "limit must be between 1 and 50");
+    }
+    return this.options.store.listOwned(this.options.environment, requesterId, limit);
+  }
+
   async createDraft(command: CreateTravelRequestCommand): Promise<TravelRequestRecord> {
     await this.options.mutationGate?.assertMutationAllowed();
     const requesterId = boundedId(command.principalId, "principalId");
