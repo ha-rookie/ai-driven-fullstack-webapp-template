@@ -14,6 +14,7 @@ import {
   WorkhubWorkflowProjectionFanOut,
 } from "../reference/workhub/travel-request/integration";
 import { D1WorkhubAnnouncementStore, WorkhubAnnouncementError } from "../reference/workhub/announcements";
+import { D1WorkhubExpenseStore, WorkhubExpenseError } from "../reference/workhub/expenses";
 import { resolveApplicationSession } from "./auth";
 import {
   BusinessActivityProjector,
@@ -295,6 +296,44 @@ export const handleWorkhubBusinessApi = async (
   const pathname = url.pathname;
 
   try {
+    if (pathname === "/api/workhub/expenses" && request.method === "GET") {
+      const expenses = new D1WorkhubExpenseStore(env.DB, environment);
+      return json({ items: await expenses.list(principalId) });
+    }
+
+    if (pathname === "/api/workhub/expenses" && request.method === "POST") {
+      const body = await bodyRecord(request);
+      if (body instanceof Response) return body;
+      const expenses = new D1WorkhubExpenseStore(env.DB, environment);
+      return json({ item: await expenses.submit(principalId, body) }, 201);
+    }
+
+    const expenseMatch = pathname.match(/^\/api\/workhub\/expenses\/([^/]+)$/u);
+    if (expenseMatch && request.method === "GET") {
+      const expenses = new D1WorkhubExpenseStore(env.DB, environment);
+      return json({ item: await expenses.get(principalId, decodeURIComponent(expenseMatch[1])) });
+    }
+
+    if (expenseMatch && request.method === "PUT") {
+      const body = await bodyRecord(request);
+      if (body instanceof Response) return body;
+      const expenses = new D1WorkhubExpenseStore(env.DB, environment);
+      return json({ item: await expenses.resubmit(
+        principalId, decodeURIComponent(expenseMatch[1]), body, intField(body, "expectedVersion"),
+      ) });
+    }
+
+    const expenseDecisionMatch = pathname.match(/^\/api\/workhub\/expenses\/([^/]+)\/decision$/u);
+    if (expenseDecisionMatch && request.method === "POST") {
+      const body = await bodyRecord(request);
+      if (body instanceof Response) return body;
+      const expenses = new D1WorkhubExpenseStore(env.DB, environment);
+      return json({ item: await expenses.decide(
+        principalId, decodeURIComponent(expenseDecisionMatch[1]),
+        intField(body, "expectedVersion"), body.action, body.reason,
+      ) });
+    }
+
     if (pathname === "/api/workhub/announcements" && request.method === "GET") {
       const announcements = new D1WorkhubAnnouncementStore(env.DB, environment);
       return json({ items: await announcements.list() });
@@ -496,6 +535,13 @@ export const handleWorkhubBusinessApi = async (
 
     return error(404, "not_found", "WORKHUB API route was not found");
   } catch (caught) {
+    if (caught instanceof WorkhubExpenseError) {
+      const status = caught.code === "forbidden" ? 403
+        : caught.code === "not_found" ? 404
+          : caught.code === "conflict" ? 409
+            : caught.code === "invalid_input" ? 400 : 503;
+      return error(status, `expense_${caught.code}`, caught.message);
+    }
     if (caught instanceof WorkhubAnnouncementError) {
       const status = caught.code === "forbidden" ? 403 : caught.code === "invalid_input" ? 400 : 503;
       return error(status, `announcement_${caught.code}`, caught.message);
