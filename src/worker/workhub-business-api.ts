@@ -19,7 +19,7 @@ import { WORKHUB_EXPENSE_EMPLOYEE_ID } from "../reference/workhub/expenses";
 import { projectWorkhubMyRequests } from "../reference/workhub/my-requests";
 import { resolveApplicationSession } from "./auth";
 import { findScopeMembership } from "./authorization";
-import { listWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
+import { listWorkhubApps, searchWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
 import {
   BusinessActivityProjector,
   BusinessActivityTimelineService,
@@ -389,7 +389,12 @@ export const handleWorkhubBusinessApi = async (
         { principalId, environment },
         { text, categories: ["requests"], limit: 20, ...(cursor ? { cursor } : {}) },
       );
-      return json(response);
+      // Resolve Apps from the SAME server-owned catalog as /api/workhub/apps.
+      // Missing membership does not grant catalog discovery; the existing
+      // requester-scoped travel search keeps its own resource authorization.
+      const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
+      const appResults = membership && !cursor ? searchWorkhubApps(membership.role, text) : [];
+      return json({ ...response, results: [...appResults, ...response.results] });
     }
 
     if (request.method === "GET" && pathname === "/api/workhub/offices") {
