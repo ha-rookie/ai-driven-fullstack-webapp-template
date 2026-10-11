@@ -26,6 +26,7 @@ import {
   type CredentialAttackSubject,
 } from "./security";
 import type { AuditEvent } from "./audit";
+import { hasPreviewGoogleOidcConfig, requiresPreviewExternalIdentity } from "./workhub-oidc-login";
 
 const LOGIN_BODY_LIMIT_BYTES = 4 * 1024;
 const WORKHUB_LOGIN_ENDPOINT_ID = "workhub_login";
@@ -44,6 +45,10 @@ export interface WorkhubLoginEnvironment {
   readonly DB: D1Database;
   readonly RUNTIME_ENVIRONMENT?: string;
   readonly WORKHUB_DEMO_MODE?: string;
+  readonly WORKHUB_FREE_AUTH_MODE?: string;
+  readonly GOOGLE_OIDC_CLIENT_ID?: string;
+  readonly GOOGLE_OIDC_CLIENT_SECRET?: string;
+  readonly WORKHUB_OIDC_TRANSACTION_KEY?: string;
 }
 
 export type WorkhubLoginAudit = (
@@ -213,6 +218,15 @@ export const handleWorkhubDemoConfig = (
     );
   }
 
+  if (requiresPreviewExternalIdentity(env)) {
+    return Response.json({
+      authMode: "google_oidc",
+      oidcEnabled: hasPreviewGoogleOidcConfig(env),
+      demoEnabled: false,
+      personas: [],
+    }, { headers: { "cache-control": "no-store" } });
+  }
+
   const enabled = isWorkhubDemoEnabled(environment, env.WORKHUB_DEMO_MODE);
   return Response.json({
     demoEnabled: enabled,
@@ -237,6 +251,15 @@ export const handleWorkhubLogin = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (request.method !== "POST" || url.pathname !== "/api/auth/login") return null;
+  // Never fall back to the CPU-expensive local credential path when the
+  // Free Preview external-auth profile is selected but not configured.
+  if (requiresPreviewExternalIdentity(env)) {
+    return apiErrorResponse({
+      status: 409,
+      code: "external_sign_in_required",
+      message: "Use external sign-in",
+    }, requestId);
+  }
 
   let environment: RuntimeEnvironment;
   try {
