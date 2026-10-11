@@ -31,6 +31,7 @@ export const summarizeRows = rows => {
   let errors = 0;
   let maxCpuP99 = 0;
   const instants = new Set();
+  const timeline = [];
   for (const row of rows) {
     const status = row?.dimensions?.status;
     const script = row?.dimensions?.scriptName;
@@ -52,6 +53,13 @@ export const summarizeRows = rows => {
       throw new Error("analytics_datetime_outside_incident");
     }
     instants.add(datetime);
+    timeline.push({
+      datetimeUtc: datetime,
+      status,
+      requests: count,
+      errors: failed,
+      cpuP99Raw: p99 ?? null,
+    });
     statusTotals[status] = (statusTotals[status] ?? 0) + count;
     requests += count;
     errors += failed;
@@ -67,6 +75,9 @@ export const summarizeRows = rows => {
     sampledRequests: requests,
     sampledErrors: errors,
     statusCounts: Object.fromEntries(Object.entries(statusTotals).sort()),
+    timeline: timeline.sort((left, right) =>
+      left.datetimeUtc.localeCompare(right.datetimeUtc)
+      || left.status.localeCompare(right.status)),
     maxReportedCpuP99: maxCpuP99,
     atResponseLimit: rows.length === 100,
     individualRayIdCorrelation: false,
@@ -105,6 +116,11 @@ const selfTest = () => {
   assert.equal(result.sampledErrors, 1);
   assert.equal(result.statusCounts.exceededResources, 1);
   assert.equal(result.maxReportedCpuP99, 1200);
+  assert.equal(result.timeline.length, 2);
+  assert.deepEqual(result.timeline.map(item => item.status),
+    ["exceededResources", "success"]);
+  assert.equal(result.timeline[0].datetimeUtc, "2026-10-08T22:20:59Z");
+  assert.equal(result.timeline[0].cpuP99Raw, 1200);
   assert.equal(result.rootCauseConclusive, false);
   assert.equal(result.individualRayIdCorrelation, false);
   assert.deepEqual(summarizeRows([]).statusCounts, {});
