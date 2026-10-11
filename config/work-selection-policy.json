@@ -4,8 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    345,
-    352
+    346
   ],
   "approvedExceptions": [
     {
@@ -17,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-11 user-approved return to the original WORKHUB Stage 1 (HOME / MY WORK / APPS), as documented in #132 and Notion WORKHUB 01 Roadmap; #345 and #352 are existing child Issues, not new feature requests. #521 remains open for recurrence investigation, not a blocking focus. This policy transition is separate from subsequent implementation PRs, which are checked against its merged main revision."
+  "notes": "2026-10-12: Stage 1 #345/#352 completed. Stage 2 #346 is next per approved #343 WBS. No WBS or milestone change. Preview #521 remains open."
 }
