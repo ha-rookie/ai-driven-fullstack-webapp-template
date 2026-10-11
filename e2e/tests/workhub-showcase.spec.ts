@@ -20,17 +20,24 @@ test("public showcase explains the reference, offers real demo and source eviden
   await tour.getByRole("button", { name: "次へ →" }).click();
   await expect(tour).toContainText("承認後も、何が起きたか追える");
   await tour.getByRole("button", { name: "次へ →" }).click();
+  await expect(tour).toContainText("出張後の経費を申請し、経理が確認する");
+  await expect(tour.getByRole("link", { name: "E2Eテスト ↗" }))
+    .toHaveAttribute("href", /\/e2e\/tests\/workhub-expenses\.spec\.ts$/u);
+  await tour.getByRole("button", { name: "次へ →" }).click();
   await expect(tour).toContainText("検索・帳票も、現在の権限で確認する");
   await expect(tour.getByRole("link", { name: "実際のデモを試す →" })).toHaveAttribute("href", "/");
   await expect(tour.getByRole("link", { name: "E2Eテスト ↗" }))
     .toHaveAttribute("href", /github.com\/ha-rookie\/ai-driven-fullstack-webapp-template\/blob\/main\/e2e\/tests\/workhub-travel-request.spec.ts/u);
   await expect(page.locator(".showcase-status-grid")).toContainText("NOT IMPLEMENTED");
-  await expect(page.locator(".showcase-status-grid")).toContainText("外部SaaSの受領結果を実照合するAdapter");
+  await expect(page.locator(".showcase-status-grid")).toContainText("外部SaaSの受領実照合");
+  await expect(page.locator(".showcase-status-grid")).toContainText("領収書添付・実際の支払処理");
   await expect(page.getByRole("link", { name: "GitHub Source ↗" }))
     .toHaveAttribute("href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template");
   await expect(page.getByRole("heading", { name: /実際の画面では、/u })).toBeVisible();
   await expect(page.locator(".showcase-start-steps")).toContainText("Aoi Employeeでログイン");
   await expect(page.locator(".showcase-start-steps")).toContainText("Ren Managerでログイン");
+  await expect(page.locator(".showcase-start-steps")).toContainText("Mei Accountingが経理確認");
+  await expect(page.locator(".showcase-start-steps")).toContainText("経理承認は支払完了ではない");
   await expect(page.getByRole("link", { name: "WORKHUBログインを開く →" })).toHaveAttribute("href", "/");
   const feedback = page.getByRole("link", { name: "気づいたことを報告する ↗" });
   await expect(feedback).toHaveAttribute("href",
@@ -56,8 +63,8 @@ test("mobile tour retains step controls, demo entry and evidence links", async (
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/showcase");
   await expect(page.getByRole("heading", { level: 1, name: /業務システムを/u })).toBeVisible();
-  await expect(page.locator("#showcase-tour").getByRole("button", { name: "04" })).toBeVisible();
-  await page.locator("#showcase-tour").getByRole("button", { name: "04" }).click();
+  await expect(page.locator("#showcase-tour").getByRole("button", { name: "05" })).toBeVisible();
+  await page.locator("#showcase-tour").getByRole("button", { name: "05" }).click();
   await expect(page.locator("#showcase-tour")).toContainText("検索・帳票も、現在の権限で確認する");
   await expect(page.getByRole("link", { name: "実際のデモを試す →" })).toBeVisible();
   await expect(page.locator("#showcase-tour").getByRole("link", { name: "E2Eテスト ↗" })).toBeVisible();
