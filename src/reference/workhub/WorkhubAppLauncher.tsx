@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { selectWorkhubHomeShortcuts, type WorkhubAppEntry } from "./app-catalog";
 import { listWorkhubRequestIntents } from "./request-intents";
+import WorkhubSecondaryJourneys from "./WorkhubSecondaryJourneys";
 
 type LoadState = "loading" | "ready" | "unavailable" | "forbidden";
 
 /** Stage 1 Basic App Launcher; current membership is resolved only by the Worker. */
 export default function WorkhubAppLauncher() {
   const [apps, setApps] = useState<readonly WorkhubAppEntry[]>([]);
+  const [secondaryRole, setSecondaryRole] = useState<"employee" | "corporate" | null>(null);
   const [state, setState] = useState<LoadState>("loading");
   const [refresh, setRefresh] = useState(0);
   const [category, setCategory] = useState("all");
@@ -25,9 +27,9 @@ export default function WorkhubAppLauncher() {
         if (abort.signal.aborted) return;
         if (response.status === 403) { setState("forbidden"); return; }
         if (!response.ok) throw new Error("app_catalog_unavailable");
-        const result = await response.json() as { items?: WorkhubAppEntry[] };
+        const result = await response.json() as { items?: WorkhubAppEntry[]; secondaryJourneyRole?: string | null };
         if (!Array.isArray(result.items)) throw new Error("app_catalog_invalid");
-        if (!abort.signal.aborted) { setApps(result.items); setState("ready"); }
+        if (!abort.signal.aborted) { setApps(result.items); setSecondaryRole(result.secondaryJourneyRole === "employee" || result.secondaryJourneyRole === "corporate" ? result.secondaryJourneyRole : null); setState("ready"); }
       } catch {
         if (!abort.signal.aborted) setState("unavailable");
       }
@@ -36,7 +38,7 @@ export default function WorkhubAppLauncher() {
   }, [refresh]);
 
   const homeShortcuts = useMemo(() => selectWorkhubHomeShortcuts(apps), [apps]);
-  const requestIntents = useMemo(() => listWorkhubRequestIntents(apps), [apps]);
+  const requestIntents = useMemo(() => listWorkhubRequestIntents(apps, secondaryRole !== null), [apps, secondaryRole]);
   const categories = useMemo(() => Array.from(new Set(apps.map(app => app.category))), [apps]);
   const visibleApps = useMemo(() => apps.filter(app =>
     (category === "all" || app.category === category)
@@ -79,11 +81,12 @@ export default function WorkhubAppLauncher() {
           <p>{intent.description}</p>
           <ol>{intent.steps.map(step => <li key={step}>{step}</li>)}</ol>
           {intent.availability === "connected" && intent.target
-            ? <a className="workhub-request-intent-open" href={intent.target}>手続きを開く →</a>
+            ? <a className="workhub-request-intent-open" href={intent.target}>{intent.key === "moving" || intent.key === "pc-replacement" ? "手続きの進捗デモを開く →" : "手続きを開く →"}</a>
             : <span className="workhub-request-intent-guide">手順の案内のみ・申請は未接続</span>}
         </article>)}
       </div>}
     </section>
+    {state === "ready" && secondaryRole && <WorkhubSecondaryJourneys role={secondaryRole} />}
     <section className="workhub-app-launcher" id="workhub-apps" tabIndex={-1} aria-labelledby="workhub-apps-title">
     <div className="workhub-section-heading">
       <div><span className="workhub-card-label">APPS / APP LAUNCHER</span><h2 id="workhub-apps-title">アプリを探す</h2></div>

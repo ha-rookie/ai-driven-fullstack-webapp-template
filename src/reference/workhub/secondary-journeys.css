@@ -1,0 +1,30 @@
+/* WORKHUB #346: Reference-only secondary lifecycle cards. */
+.workhub-secondary-journeys {
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid #dce6e9;
+  border-radius: 18px;
+  background: #fff;
+  scroll-margin-top: 18px;
+}
+.workhub-secondary-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.workhub-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  gap: 12px;
+  margin: 15px 0;
+}
+.workhub-secondary-item { border: 1px solid #dce6e9; border-radius: 12px; padding: 16px; background: #f8fbfa; }
+.workhub-secondary-item h3 { margin: 0 0 8px; font-size: 17px; color: #173b51; }
+.workhub-secondary-item p { line-height: 1.6; }
+.workhub-secondary-item ol { margin: 12px 0; padding-left: 24px; line-height: 1.7; }
+.workhub-secondary-item li span { font-weight: 700; color: #176e72; }
+.workhub-secondary-feedback { color: #8b2a2a; font-weight: 600; }
+.workhub-secondary-item button,
+.workhub-secondary-actions button { min-height: 44px; }
+.workhub-secondary-item button:focus-visible,
+.workhub-secondary-actions button:focus-visible { outline: 3px solid #176e72; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .workhub-secondary-journeys { padding: 16px; }
+  .workhub-secondary-grid { grid-template-columns: minmax(0, 1fr); }
+}

@@ -49,6 +49,7 @@ const GUIDE_ONLY_INTENTS: readonly WorkhubRequestIntent[] = [
  */
 export const listWorkhubRequestIntents = (
   authorizedApps: readonly WorkhubAppEntry[],
+  secondaryJourneysEnabled = false,
 ): readonly WorkhubRequestIntent[] => {
   const connected = CONNECTED_INTENTS.flatMap(intent => {
     const app = authorizedApps.find(entry => entry.key === intent.appKey);
@@ -63,5 +64,15 @@ export const listWorkhubRequestIntents = (
       target: app.launchTarget,
     }];
   });
-  return [...connected, ...GUIDE_ONLY_INTENTS];
+  const secondary: readonly WorkhubRequestIntent[] = GUIDE_ONLY_INTENTS.map(intent => secondaryJourneysEnabled
+    ? {
+      ...intent,
+      availability: "connected" as const,
+      target: "/#workhub-secondary-journeys",
+      description: intent.key === "moving"
+        ? "住所・通勤・緊急連絡先の確認をデモとして進めます。実際の人事情報は更新しません。"
+        : "PC交換の依頼〜受付〜受領をデモで進めます。実際の端末交換は行いません。",
+    }
+    : intent);
+  return [...connected, ...secondary];
 };
