@@ -313,7 +313,7 @@ export const handleWorkhubBusinessApi = async (
     // Stage 2 Reference-only mock lifecycle: existing WorkflowStore owns
     // persistence, concurrency and assignee checks. No HR/asset data changes.
     if (pathname === "/api/workhub/secondary-journeys"
-      || /^\/api\/workhub\/secondary-journeys\/[0-9a-f-]{36}\/advance$/u.test(pathname)) {
+      || /^\/api\/workhub\/secondary-journeys\/[0-9a-f-]{36}\/(?:advance|decision)$/u.test(pathname)) {
       const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
       if (!membership || !["employee", "corporate"].includes(membership.role)) {
         return error(403, "secondary_journey_forbidden", "This reference journey is unavailable");
@@ -338,6 +338,21 @@ export const handleWorkhubBusinessApi = async (
           principalId, membership.role, decodeURIComponent(actionMatch[1]),
           intField(body, "expectedVersion"), intField(body, "expectedWorkItemVersion"),
           stringField(body, "stepKey") || undefined,
+        );
+        return json({ item: result });
+      }
+      const decisionMatch = pathname.match(/^\/api\/workhub\/secondary-journeys\/([0-9a-f-]{36})\/decision$/u);
+      if (decisionMatch && request.method === "POST") {
+        const body = await bodyRecord(request);
+        if (body instanceof Response) return body;
+        const action = stringField(body, "action");
+        if (action !== "return" && action !== "reject" && action !== "resubmit") {
+          return error(400, "invalid_pc_decision", "Unsupported PC demo action");
+        }
+        const result = await journey.decidePcReplacement(
+          principalId, membership.role, decodeURIComponent(decisionMatch[1]),
+          action, intField(body, "expectedVersion"),
+          action === "resubmit" ? undefined : intField(body, "expectedWorkItemVersion"),
         );
         return json({ item: result });
       }
