@@ -47,6 +47,8 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(initialPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
   await expect(page.locator(".workhub-global-search-results").getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
+  const correctionMessage = "日程を確認してください。開始日を1日後ろに変更してください";
+  await firstTask.getByRole("textbox", { name: `${initialPurpose}の差戻し理由` }).fill(correctionMessage);
   await firstTask.getByRole("button", { name: "差し戻す" }).click();
   await expect(page.getByText("差し戻しました。", { exact: true })).toBeVisible();
 
@@ -60,14 +62,18 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   const returnedItem = page.locator(".workhub-my-requests").getByRole("button",
     { name: new RegExp(initialPurpose, "u") });
   await expect(returnedItem).toContainText("選択して修正・再申請する");
+  await expect(returnedItem).toContainText(correctionMessage);
   await returnedItem.click();
   await expect(page.getByRole("heading", { name: "出張申請を修正" })).toBeVisible();
+  await expect(page.getByRole("note").filter({ hasText: "差戻し理由" })).toContainText(correctionMessage);
   await expect(page.getByLabel("目的")).toHaveValue(initialPurpose);
   await expect(page.getByLabel("目的")).toBeFocused();
   await expect(page.getByText("差し戻されました", { exact: true })).toBeVisible();
   await page.getByLabel("目的").fill(correctedPurpose);
   await page.getByRole("button", { name: "修正して再申請" }).click();
   await expect(page.getByText("出張申請を再申請しました。", { exact: true })).toBeVisible();
+  await expect(page.locator(".workhub-return-reason")).toHaveCount(0);
+  await expect(page.locator(".workhub-my-requests").getByText(`差戻し理由：${correctionMessage}`)).toHaveCount(0);
   await expect(page.getByText("再申請しました", { exact: true })).toBeVisible();
   await expect(page.locator(".workhub-my-requests").getByRole("button",
     { name: new RegExp(correctedPurpose, "u") })).toContainText("承認待ち");

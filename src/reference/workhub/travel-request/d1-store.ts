@@ -103,7 +103,16 @@ export class D1TravelRequestStore implements TravelRequestStore {
              tr.destination_office_revision_id, tr.start_date, tr.end_date,
              tr.purpose, tr.status, tr.submission_key, tr.workflow_instance_id,
              tr.submitted_at, tr.version, tr.created_at, tr.updated_at,
-             wi.state AS workflow_state
+             wi.state AS workflow_state,
+             CASE WHEN wi.state = 'awaiting_resubmission' THEN (
+               SELECT wt.comment
+               FROM workflow_transitions wt
+               WHERE wt.environment = wi.environment
+                 AND wt.workflow_instance_id = wi.id
+                 AND wt.transition = 'return'
+               ORDER BY wt.sequence DESC
+               LIMIT 1
+             ) ELSE NULL END AS return_comment
       FROM reference_travel_requests tr
       LEFT JOIN workflow_instances wi
         ON wi.id = tr.workflow_instance_id
@@ -114,8 +123,26 @@ export class D1TravelRequestStore implements TravelRequestStore {
       WHERE tr.environment = ? AND tr.requester_id = ?
       ORDER BY tr.updated_at DESC, tr.id DESC
       LIMIT ?
-    `).bind(WORKHUB_TRAVEL_RESOURCE_TYPE, environment, requesterId, limit).all<TravelRequestRow & { workflow_state: TravelRequestListItem["workflowState"] }>();
-    return (rows.results ?? []).map(row => ({ ...mapRow(row), workflowState: row.workflow_state }));
+    `).bind(WORKHUB_TRAVEL_RESOURCE_TYPE, environment, requesterId, limit).all<TravelRequestRow & {
+      workflow_state: TravelRequestListItem["workflowState"];
+      return_comment: string | null;
+    }>();
+    return (rows.results ?? []).map(row => ({
+      ...mapRow(row), workflowState: row.workflow_state, returnComment: row.return_comment,
+    }));
+  }
+
+  async getReturnComment(environment: string, workflowInstanceId: string): Promise<string | null> {
+    const row = await this.db.prepare(`
+      SELECT wt.comment
+      FROM workflow_transitions wt
+      WHERE wt.environment = ?
+        AND wt.workflow_instance_id = ?
+        AND wt.transition = 'return'
+      ORDER BY wt.sequence DESC
+      LIMIT 1
+    `).bind(environment, workflowInstanceId).first<{ comment: string | null }>();
+    return row?.comment ?? null;
   }
 
   async compareAndSet(

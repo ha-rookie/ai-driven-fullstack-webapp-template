@@ -23,6 +23,8 @@ export interface TravelRequestRecord {
 /** Read model for MY REQUESTS. Workflow, not TravelRequest.status, owns approval status. */
 export interface TravelRequestListItem extends TravelRequestRecord {
   readonly workflowState: WorkflowInstanceState | null;
+  /** Latest return comment only while correction is currently required. */
+  readonly returnComment: string | null;
 }
 
 export interface TravelRequestCompareAndSetOptions {

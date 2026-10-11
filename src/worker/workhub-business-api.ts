@@ -341,7 +341,15 @@ export const handleWorkhubBusinessApi = async (
       const workflowInstance = record.workflowInstanceId
         ? await services.workflowStore.getInstance(record.workflowInstanceId, environment)
         : null;
-      return json({ request: record, workflow: workflowInstance });
+      // The requester was authorized by travel.get above. Never surface
+      // another workflow's comments or a historical reason after resubmission.
+      const returnComment = workflowInstance?.state === "awaiting_resubmission"
+        && workflowInstance.resourceType === WORKHUB_TRAVEL_RESOURCE_TYPE
+        && workflowInstance.resourceId === record.id
+        && workflowInstance.requesterId === principalId
+        ? await services.travelStore.getReturnComment(environment, workflowInstance.id)
+        : null;
+      return json({ request: record, workflow: workflowInstance, returnComment });
     }
     if (travelMatch && request.method === "PUT") {
       const id = decodeURIComponent(travelMatch[1]);

@@ -27,7 +27,7 @@ export class InMemoryTravelRequestStore implements TravelRequestStore {
       .filter((record) => record.environment === environment && record.requesterId === requesterId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id))
       .slice(0, limit)
-      .map((record) => ({ ...record, workflowState: null }));
+      .map((record) => ({ ...record, workflowState: null, returnComment: null }));
   }
 
   async compareAndSet(
