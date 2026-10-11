@@ -115,8 +115,21 @@ function LoginScreen() {
 
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
-  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
-  const loadNotifications = useCallback(async () => { const [list, count] = await Promise.all([apiJson<{ items: NotificationRecord[] }>("/api/workhub/notifications"), apiJson<{ unreadCount: number }>("/api/workhub/notifications/unread-count")]); setNotifications(list.items); setUnreadCount(count.unreadCount); }, []);
+  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const loadNotifications = useCallback(async () => {
+    setNotificationState("loading");
+    try {
+      const [list, count] = await Promise.all([
+        apiJson<{ items: NotificationRecord[] }>("/api/workhub/notifications"),
+        apiJson<{ unreadCount: number }>("/api/workhub/notifications/unread-count"),
+      ]);
+      setNotifications(list.items);
+      setUnreadCount(count.unreadCount);
+      setNotificationState("ready");
+    } catch {
+      setNotificationState("error");
+    }
+  }, []);
   const loadMyWork = useCallback(async () => { if (!isRen) return; setMyWorkState("loading"); try { const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work"); setMyWork(result.items); setMyWorkState("ready"); } catch { setMyWorkState("error"); } }, [isRen]);
   const loadAnnouncements = useCallback(async () => {
     setAnnouncementLoad("loading");
@@ -203,7 +216,7 @@ function TravelWorkspace() {
       </form>
       <div className="workhub-header-actions" aria-label="グローバル操作">
         <button className="workhub-header-action" type="button" aria-label="Ask CECIL">Ask CECIL</button>
-        <a className="workhub-header-action workhub-header-icon" href="#workhub-notifications" aria-label={`通知 未読${unreadCount}件`}>🔔<span className="workhub-notification-badge">{unreadCount}</span></a>
+        <a className="workhub-header-action workhub-header-icon" href="#workhub-notifications" aria-label={notificationState === "ready" ? `通知 未読${unreadCount}件` : "通知 取得状況を確認"}>🔔{notificationState === "ready" && <span className="workhub-notification-badge">{unreadCount}</span>}</a>
         <a className="workhub-header-action workhub-header-icon" href="#workhub-apps" aria-label="アプリ一覧">▦</a>
         <div className="workhub-user-chip"><span className="workhub-user-dot" aria-hidden="true" /><span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span></div>
         <AccountSwitchButton />
@@ -264,7 +277,13 @@ function TravelWorkspace() {
                     <span>{request.returnReason?.trim() || "差戻し内容を確認して再申請してください"}</span>
                   </button>
                 )}<small className="workhub-reference-note">直近20件の申請から要対応を表示しています。すべての履歴の総件数ではありません。</small></div>
-            ) : <p className="workhub-empty-state">このデモ利用者向けのMY WORKは未接続です。</p>}
+            ) : user?.id === "workhub-demo-mei" ? (
+              <div className="workhub-task-list"><p>経費確認はこちらから行えます。処理待ち件数はHOMEでは取得していません。</p><a className="workhub-work-link" href="#workhub-expenses">経費確認画面を開く →</a></div>
+            ) : canPublishAnnouncements ? (
+              <div className="workhub-task-list"><p>社内お知らせの公開・確認はこちらから行えます。未処理件数の集計ではありません。</p><a className="workhub-work-link" href="#workhub-announcements">社内お知らせを管理する →</a></div>
+            ) : user?.id === "workhub-demo-kai" ? (
+              <div className="workhub-task-list"><p>システムの運用状況はこちらから確認できます。未処理タスクの件数ではありません。</p><a className="workhub-work-link" href="/admin">管理ポータルを開く →</a></div>
+            ) : <p className="workhub-empty-state">このデモ利用者向けの対応タスクはまだ接続されていません。お知らせとアプリ一覧を利用できます。</p>}
           </article>
           <article className="workhub-dashboard-card workhub-today-card">
             <span className="workhub-card-label">TODAY</span><h2>今日の予定</h2>
@@ -317,7 +336,17 @@ function TravelWorkspace() {
         </section>}
         <section className="workhub-home-grid" id="workhub-requests" aria-label="出張申請 Reference Scenario">
           {isAoi && <article className="workhub-home-card workhub-home-card-primary" id="workhub-travel-form"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "出張申請"}</h2>{awaitingResubmission && <div className="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>{returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</p></div>}<div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => setDestinationOfficeItemId(event.target.value)}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><label>目的<textarea id="workhub-travel-purpose" aria-label="目的" value={purpose} onChange={(event) => setPurpose(event.target.value)} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy} onClick={updateAndResubmit}>修正して再申請</button> : <button className="workhub-primary-button" type="button" disabled={busy} onClick={createAndSubmit}>出張申請を提出</button>}</div></article>}
-          <article className="workhub-home-card" id="workhub-notifications"><span className="workhub-card-label">NOTIFICATIONS</span><h2>通知 {unreadCount > 0 ? `(${unreadCount})` : ""}</h2>{notifications.length === 0 ? <p>通知はありません。</p> : <div className="workhub-notification-list">{notifications.slice(0, 4).map((notification) => <button key={notification.id} type="button" className={`workhub-notification-item ${notification.readAt ? "is-read" : ""}`} onClick={() => openNotification(notification)}><strong>{NOTIFICATION_LABELS[notification.notificationType] ?? notification.notificationType}</strong><small>{new Date(notification.createdAt).toLocaleString("ja-JP")}</small></button>)}</div>}</article>
+          <article className="workhub-home-card" id="workhub-notifications"><span className="workhub-card-label">NOTIFICATIONS</span><h2>通知 {notificationState === "ready" && unreadCount > 0 ? `(${unreadCount})` : ""}</h2>{
+            notificationState === "loading" ? <p role="status">通知を確認しています…</p>
+            : notificationState === "error" ? <div role="alert"><p>通知を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadNotifications()}>通知を再読み込み</button></div>
+            : notifications.length === 0 ? <p className="workhub-empty-state">通知はありません。</p>
+            : <div className="workhub-notification-list">{notifications.slice(0, 4).map(notification =>
+              <button key={notification.id} type="button" className={`workhub-notification-item ${notification.readAt ? "is-read" : ""}`} onClick={() => openNotification(notification)}>
+                <strong>{NOTIFICATION_LABELS[notification.notificationType] ?? notification.notificationType}</strong>
+                <small>{new Date(notification.createdAt).toLocaleString("ja-JP")}</small>
+              </button>
+            )}</div>
+          }</article>
           {selectedRequest && <article className="workhub-home-card" id="workhub-request-detail"><span className="workhub-card-label">MY REQUEST DETAIL</span><h2>{selectedRequest.purpose}</h2><p>{selectedRequest.startDate} → {selectedRequest.endDate}</p><p>Workflow: <strong>{selectedWorkflow?.state ?? selectedRequest.status}</strong></p>{isAoi && selectedRequest.status === "submitted" && <div className="workhub-travel-print-action">
               <button className="workhub-secondary-button" type="button" disabled={busy} onClick={printTravelRequest}>申請内容を印刷・PDF保存</button>
               <small>ブラウザの印刷画面からPDF保存できます。承認結果の履歴固定PDFではありません。</small>
