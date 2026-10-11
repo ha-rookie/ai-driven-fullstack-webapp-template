@@ -60,3 +60,60 @@ test("PC exchange mock transfers assigned work to Corporate and back without adm
   await expect(pc).toContainText("デモ完了");
   await expect(pc).toContainText("4/4ステップ");
 });
+
+test("lost secondary start response can be explicitly retried with the same key, without a duplicate", async ({ page }) => {
+  await login(page, "aoi");
+  let attempts = 0;
+  const keys: string[] = [];
+  let committedId: string | null = null;
+  await page.route("**/api/workhub/secondary-journeys", async route => {
+    if (route.request().method() !== "POST") { await route.continue(); return; }
+    attempts++;
+    const body = route.request().postDataJSON() as { intent: string; key: string };
+    keys.push(body.key);
+    const committed = await route.fetch();
+    expect(committed.status()).toBe(201);
+    const result = await committed.json() as { item: { id: string } };
+    committedId ??= result.item.id;
+    expect(result.item.id).toBe(committedId);
+    if (attempts === 1) {
+      await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+    } else {
+      await route.fulfill({ response: committed });
+    }
+  });
+
+  const section = page.locator("#workhub-secondary-journeys");
+  await section.getByRole("button", { name: "引っ越し手続きをデモ開始" }).click();
+  await expect(section.getByRole("alert")).toContainText("再送信せず");
+  await expect(section.getByRole("button", { name: "引っ越し手続きをデモ開始" })).toBeDisabled();
+  await section.getByRole("button", { name: "同じ依頼を安全に再確認・再試行" }).click();
+
+  const current = section.locator(".workhub-secondary-item").filter({ hasText: "引っ越した" });
+  await expect(current.filter({ hasText: "0/3ステップ" }).first()).toBeVisible();
+  expect(attempts).toBe(2);
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).toBe(keys[0]);
+  await page.unroute("**/api/workhub/secondary-journeys");
+
+  const listed = await page.evaluate(async () => {
+    const response = await fetch("/api/workhub/secondary-journeys", { credentials: "same-origin" });
+    if (!response.ok) throw new Error("list unavailable");
+    return response.json() as Promise<{ items: Array<{ id: string }> }>;
+  });
+  expect(listed.items.filter(item => item.id === committedId)).toHaveLength(1);
+
+  // Reusing an existing owner key for a different journey is rejected,
+  // never silently reassigned to another workflow definition.
+  const crossIntentStatus = await page.evaluate(async (key) => {
+    const token = await fetch("/api/auth/csrf", { credentials: "same-origin" });
+    const { csrfToken } = await token.json() as { csrfToken: string };
+    const response = await fetch("/api/workhub/secondary-journeys", {
+      method: "POST", credentials: "same-origin",
+      headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ key, intent: "pc-replacement" }),
+    });
+    return response.status;
+  }, keys[0]);
+  expect(crossIntentStatus).toBe(409);
+});
