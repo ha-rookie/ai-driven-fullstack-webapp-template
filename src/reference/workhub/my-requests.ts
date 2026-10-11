@@ -134,3 +134,11 @@ export const projectWorkhubMyRequests = (
       || right.id.localeCompare(left.id))
     .slice(0, limit);
 };
+
+/**
+ * HOME / MY WORK reads the same already owner-scoped unified list as MY REQUESTS.
+ * Its count is scoped to that bounded list, not a claim of a global total.
+ */
+export const listActionRequiredMyRequests = <T extends Pick<WorkhubMyRequest, "status">>(
+  requests: readonly T[],
+): readonly T[] => requests.filter(request => request.status === "action_required");
