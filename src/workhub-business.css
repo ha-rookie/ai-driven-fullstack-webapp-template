@@ -243,3 +243,24 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+.workhub-my-request-item .workhub-request-return-comment {
+  color: #744512;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.workhub-return-reason {
+  margin-top: 16px;
+  border-left: 4px solid #b97c30;
+  border-radius: 7px;
+  padding: 12px 14px;
+  color: #573916;
+  background: #fff7e9;
+}
+
+.workhub-return-reason p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

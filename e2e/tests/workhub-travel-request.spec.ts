@@ -60,14 +60,18 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   const returnedItem = page.locator(".workhub-my-requests").getByRole("button",
     { name: new RegExp(initialPurpose, "u") });
   await expect(returnedItem).toContainText("選択して修正・再申請する");
+  await expect(returnedItem).toContainText("差戻し理由：日程を確認してください");
   await returnedItem.click();
   await expect(page.getByRole("heading", { name: "出張申請を修正" })).toBeVisible();
+  await expect(page.getByRole("note").filter({ hasText: "差戻し理由" })).toContainText("日程を確認してください");
   await expect(page.getByLabel("目的")).toHaveValue(initialPurpose);
   await expect(page.getByLabel("目的")).toBeFocused();
   await expect(page.getByText("差し戻されました", { exact: true })).toBeVisible();
   await page.getByLabel("目的").fill(correctedPurpose);
   await page.getByRole("button", { name: "修正して再申請" }).click();
   await expect(page.getByText("出張申請を再申請しました。", { exact: true })).toBeVisible();
+  await expect(page.locator(".workhub-return-reason")).toHaveCount(0);
+  await expect(page.locator(".workhub-my-requests").getByText("差戻し理由：日程を確認してください")).toHaveCount(0);
   await expect(page.getByText("再申請しました", { exact: true })).toBeVisible();
   await expect(page.locator(".workhub-my-requests").getByRole("button",
     { name: new RegExp(correctedPurpose, "u") })).toContainText("承認待ち");
