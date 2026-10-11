@@ -10,6 +10,8 @@ import ReusePathPicker from "./ReusePathPicker";
 const REPO = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template";
 const travelTest = REPO + "/blob/main/e2e/tests/workhub-travel-request.spec.ts";
 const travelSource = REPO + "/blob/main/src/reference/workhub/travel-request/service.ts";
+const expenseSource = REPO + "/blob/main/src/reference/workhub/expenses.ts";
+const expenseTest = REPO + "/blob/main/e2e/tests/workhub-expenses.spec.ts";
 const searchSource = REPO + "/blob/main/src/reference/workhub/travel-search.ts";
 const workhubUiSource = REPO + "/blob/main/src/App.tsx";
 
@@ -24,6 +26,7 @@ const tour = [
     why: "見た目のフォームではなく、誰が何を申請できるかまで決める。",
     source: travelSource,
     sourceLabel: "出張申請の実装",
+    test: travelTest,
   },
   {
     eyebrow: "02 / APPROVAL",
@@ -35,6 +38,7 @@ const tour = [
     why: "ボタンを隠すだけではなく、サーバーが判断する。",
     source: travelSource,
     sourceLabel: "Workflow / 更新処理",
+    test: travelTest,
   },
   {
     eyebrow: "03 / TRACE",
@@ -46,9 +50,22 @@ const tour = [
     why: "現在の承認状態と「いつ何が起きたか」を混同しない。",
     source: workhubUiSource,
     sourceLabel: "通知・履歴の表示実装",
+    test: travelTest,
   },
   {
-    eyebrow: "04 / BOUNDARY",
+    eyebrow: "04 / EXPENSE",
+    title: "出張後の経費を申請し、経理が確認する",
+    actor: "Aoi · 一般社員 → Mei · 経理担当",
+    action: "承認済みの出張に経費を紐づけて申請。経理が承認・差戻しを行う",
+    visible: "MY REQUESTS の出張・精算の進捗と、交通費・経費精算の明細",
+    mechanism: "出張と精算の別Domain・金額のサーバー検証・役割別承認",
+    why: "出張の承認と精算の承認は別。経理承認済みを支払完了と表示しない。",
+    source: expenseSource,
+    sourceLabel: "経費精算の実装",
+    test: expenseTest,
+  },
+  {
+    eyebrow: "05 / BOUNDARY",
     title: "検索・帳票も、現在の権限で確認する",
     actor: "Aoi · 一般社員 / Ren · Manager",
     action: "自分に許可された出張申請を検索・参照する",
@@ -57,6 +74,7 @@ const tour = [
     why: "以前見えたデータが、現在も見えてよいとは限らない。",
     source: searchSource,
     sourceLabel: "認可付き検索",
+    test: travelTest,
   },
 ] as const;
 
@@ -65,7 +83,7 @@ const capabilityCards = [
     number: "01",
     title: "普通の業務が動く",
     capability: "Workflow / Validation / Notification",
-    description: "出張申請を提出、差し戻し、再申請、承認。画面操作と業務状態がつながる。",
+    description: "出張申請の差戻し・再申請・承認から、交通費・経費精算と経理確認までをつなぐ。内部では別Domainを維持する。",
     evidence: travelTest,
     evidenceLabel: "Browser E2Eを見る",
   },
@@ -152,7 +170,7 @@ export default function WorkhubShowcase() {
       </section>
 
       <section className="showcase-tour-section" id="showcase-tour" aria-labelledby="showcase-tour-title">
-        <div className="showcase-section-heading"><p className="showcase-label">GUIDED TOUR / 3 MINUTES</p><h2 id="showcase-tour-title">出張申請から、<span>業務システムの中身を見る。</span></h2><p>このツアーは実装内容の案内です。シナリオを実際に操作する場合は、WORKHUBへ移動してください。</p></div>
+        <div className="showcase-section-heading"><p className="showcase-label">GUIDED TOUR / 3 MINUTES</p><h2 id="showcase-tour-title">出張申請から、<span>経費精算までをたどる。</span></h2><p>このツアーは実装内容の案内です。シナリオを実際に操作する場合は、WORKHUBへ移動してください。</p></div>
         <div className="showcase-tour-shell">
           <div className="showcase-tour-rail" role="group" aria-label="ツアーのステップ">
             {tour.map((item, index) => <button type="button" key={item.eyebrow} className={index === step ? "is-current" : ""}
@@ -172,7 +190,7 @@ export default function WorkhubShowcase() {
             <p className="showcase-tour-why"><strong>ここがポイント</strong>{current.why}</p>
             <div className="showcase-tour-evidence">
               <a href={current.source} target="_blank" rel="noopener noreferrer">{current.sourceLabel} ↗</a>
-              <a href={travelTest} target="_blank" rel="noopener noreferrer">E2Eテスト ↗</a>
+              <a href={current.test} target="_blank" rel="noopener noreferrer">E2Eテスト ↗</a>
             </div>
             <div className="showcase-tour-controls">
               <button type="button" onClick={() => setStep((n) => Math.max(0, n - 1))} disabled={step === 0}>← 前へ</button>
@@ -192,18 +210,22 @@ export default function WorkhubShowcase() {
         </div>
         <ol className="showcase-start-steps">
           <li><span>01</span><div><strong>Aoi Employeeでログイン</strong><p>ログイン画面の「デモユーザを選ぶ」から一般社員を選択。出張申請を提出する</p></div></li>
-          <li><span>02</span><div><strong>Ren Managerでログイン</strong><p>画面右上の「ユーザー切替」でログアウトし、上長としてMY WORKから差戻し・承認を確認する</p></div></li>
-          <li><span>03</span><div><strong>Aoi Employeeに戻る</strong><p>通知・再申請・申請履歴を確認する。デモの一部は環境やデータ状態によって異なります</p></div></li>
+          <li><span>02</span><div><strong>Ren Managerでログイン</strong><p>画面右上の「ユーザー切替」でログアウトし、MY WORKから差戻し理由を入力する</p></div></li>
+          <li><span>03</span><div><strong>Aoi Employeeで再申請</strong><p>MY REQUESTSに表示された差戻し理由を確認し、出張申請を修正・再申請する</p></div></li>
+          <li><span>04</span><div><strong>Ren Managerが出張を承認</strong><p>MY WORKで再提出された申請を承認する</p></div></li>
+          <li><span>05</span><div><strong>Aoi Employeeが経費を申請</strong><p>MY REQUESTSの承認済み出張から「この出張の経費精算を始める」を選び、明細を登録・申請する</p></div></li>
+          <li><span>06</span><div><strong>Mei Accountingが経理確認</strong><p>交通費・経費精算で内容を確認し、承認する。差戻しならAoiが修正・再提出する</p></div></li>
+          <li><span>07</span><div><strong>Aoi Employeeが進捗を確認</strong><p>MY REQUESTSで「出張承認済み→経理承認済み」を確認する。経理承認は支払完了ではない</p></div></li>
         </ol>
         <a className="showcase-primary showcase-start-cta" href="/">WORKHUBログインを開く →</a>
-        <p className="showcase-start-note">ログインは既存の認証処理を利用します。このShowcaseから自動ログインや業務データ更新は行いません。</p>
+        <p className="showcase-start-note">ログインは既存の認証処理を利用します。経費精算の操作にはPreview側の対応DB Schemaとデモ用ユーザーが必要です。このShowcaseから自動ログインや業務データ更新は行いません。</p>
       </section>
       <section className="showcase-boundary" aria-labelledby="showcase-boundary-title">
         <div className="showcase-boundary-copy"><p className="showcase-label">HONEST EVIDENCE</p><h2 id="showcase-boundary-title">できることと、<br />まだできないこと。</h2><p>コードがあること、CIで検証したこと、実環境で検証したことは同じではありません。現時点の状態を区別します。</p></div>
         <div className="showcase-status-grid">
-          <div><strong>IMPLEMENTED / CI VERIFIED</strong><p>出張申請・差戻し・再申請・承認、通知・履歴、認可付き検索、管理用Outbox参照</p></div>
+          <div><strong>IMPLEMENTED / CI VERIFIED</strong><p>出張申請・差戻し・再申請・承認、出張に紐づく経費精算・経理承認、社内お知らせ、通知・履歴、認可付き検索</p></div>
           <div><strong>REFERENCE / DEMO</strong><p>架空ユーザー・デモデータを使うWORKHUB。実業務サービスの代替ではありません。</p></div>
-          <div><strong>NOT IMPLEMENTED</strong><p>外部SaaSの受領結果を実照合するAdapter、自由に再送する運用機能、完成したAI Agent操作</p></div>
+          <div><strong>NOT IMPLEMENTED</strong><p>領収書添付・実際の支払処理、外部SaaSの受領実照合、自由な再送操作、完成したAI Agent操作</p></div>
         </div>
       </section>
 
