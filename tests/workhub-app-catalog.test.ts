@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { listWorkhubApps, searchWorkhubApps, selectWorkhubHomeShortcuts, type WorkhubAppEntry } from "../src/reference/workhub/app-catalog";
+import { listWorkhubRequestIntents } from "../src/reference/workhub/request-intents";
 
 const keys = (role: string) => listWorkhubApps(role).map(app => app.key);
 
@@ -88,4 +89,31 @@ test("HOME shortcuts exclude unavailable and invalid targets and remain capped a
   assert.equal(result.length, 4);
   assert.ok(result.every(app => app.key !== "not-connected" && app.key !== "external" && app.key !== "script"));
   assert.deepEqual(result.slice(0, 3).map(app => app.key), ["travel-request", "expense-settlement", "announcements"]);
+});
+
+test("Stage 2 intent catalog launches only connected apps in the already-authorized role catalog", () => {
+  const employee = listWorkhubRequestIntents(listWorkhubApps("employee"));
+  assert.deepEqual(employee.filter(x => x.target).map(x => x.key), ["travel", "expenses"]);
+  assert.deepEqual(employee.find(x => x.key === "travel")?.target, "/#workhub-requests");
+  assert.deepEqual(listWorkhubRequestIntents(listWorkhubApps("manager"))
+    .filter(x => x.target).map(x => x.key), ["approvals"]);
+  assert.deepEqual(listWorkhubRequestIntents(listWorkhubApps("accounting"))
+    .filter(x => x.target).map(x => x.key), ["expenses"]);
+  assert.deepEqual(listWorkhubRequestIntents(listWorkhubApps("system_admin"))
+    .filter(x => x.target).map(x => x.key), []);
+});
+
+test("planned moving and PC replacement journeys cannot accidentally submit business actions", () => {
+  const intents = listWorkhubRequestIntents(listWorkhubApps("employee"));
+  for (const key of ["moving", "pc-replacement"]) {
+    const intent = intents.find(item => item.key === key);
+    assert.equal(intent?.availability, "guide_only");
+    assert.equal(intent?.target, null);
+    assert.ok((intent?.steps.length ?? 0) > 1);
+  }
+  assert.deepEqual(listWorkhubRequestIntents([]).filter(x => x.target), []);
+  const spoofed: WorkhubAppEntry = {
+    ...listWorkhubApps("employee")[0], launchTarget: "https://evil.invalid/",
+  };
+  assert.deepEqual(listWorkhubRequestIntents([spoofed]).filter(x => x.target), []);
 });
