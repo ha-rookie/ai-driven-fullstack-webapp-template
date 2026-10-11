@@ -174,7 +174,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
               : "デモ進行中"}
               {" · "}{item.steps.filter(step => step.status === "done").length}/{item.steps.length}ステップ</p>
             <ol>{item.steps.map(step => <li key={step.key}>
-              <span>{step.status === "done" ? "完了" : step.status === "current" ? "対応中" : "未着手"}</span>
+              <span>{step.status === "done" ? "完了" : step.status === "stopped" ? "却下" : step.status === "current" ? "対応中" : "未着手"}</span>
               {" "}{step.label}
             </li>)}</ol>
             {current && item.state === "in_progress" && <p>次の確認：{current.label}</p>}
