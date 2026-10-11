@@ -68,3 +68,38 @@ export const listWorkhubApps = (currentRole: string): readonly WorkhubAppEntry[]
     availability: app.availability,
     launchTarget: app.launchTarget,
   }));
+
+/**
+ * Project the *same* current-role-filtered app catalog into the WORKHUB global
+ * search contract. Only connected apps receive launch results; the caller's
+ * role must come from the current server-side membership, never the query.
+ */
+export interface WorkhubAppSearchResult {
+  readonly resourceType: "workhub_app";
+  readonly resourceId: string;
+  readonly category: "apps";
+  readonly title: string;
+  readonly snippet: string;
+  readonly actionTarget: string;
+}
+
+export const searchWorkhubApps = (
+  currentRole: string,
+  searchText: string,
+): readonly WorkhubAppSearchResult[] => {
+  const term = searchText.trim().toLocaleLowerCase("ja-JP");
+  if (!term) return [];
+
+  return listWorkhubApps(currentRole)
+    .filter(app => app.availability === "available" && app.launchTarget !== null)
+    .filter(app => [app.displayName, app.description, app.category]
+      .some(value => value.toLocaleLowerCase("ja-JP").includes(term)))
+    .map(app => ({
+      resourceType: "workhub_app",
+      resourceId: app.key,
+      category: "apps",
+      title: app.displayName,
+      snippet: app.description,
+      actionTarget: app.launchTarget!,
+    }));
+};
