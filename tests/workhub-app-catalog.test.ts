@@ -117,3 +117,15 @@ test("planned moving and PC replacement journeys cannot accidentally submit busi
   };
   assert.deepEqual(listWorkhubRequestIntents([spoofed]).filter(x => x.target), []);
 });
+
+test("secondary mock journey links require an explicit server-provided capability", () => {
+  const employee = listWorkhubRequestIntents(listWorkhubApps("employee"), true);
+  const mock = employee.filter(x => x.key === "moving" || x.key === "pc-replacement");
+  assert.equal(mock.length, 2);
+  assert.ok(mock.every(x => x.availability === "connected"
+    && x.target === "/#workhub-secondary-journeys"
+    && x.description.includes("実際の")));
+  assert.deepEqual(listWorkhubRequestIntents(listWorkhubApps("employee"))
+    .filter(x => x.key === "moving" || x.key === "pc-replacement")
+    .map(x => x.target), [null, null]);
+});
