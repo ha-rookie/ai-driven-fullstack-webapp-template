@@ -41,7 +41,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
   const [message, setMessage] = useState("");
   const [reload, setReload] = useState(0);
   const inFlight = useRef(false);
-  const pendingStart = useRef<string | null>(null);
+  const pendingStart = useRef<{ readonly key: string; readonly intent: SecondaryIntent } | null>(null);
 
   const refresh = useCallback(() => setReload(value => value + 1), []);
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
       if (!alive) return;
       setItems(result);
       setState("ready");
-      if (pendingStart.current && result.some(x => x.submissionKey.endsWith(pendingStart.current!))) {
+      if (pendingStart.current && result.some(x => x.submissionKey.endsWith(pendingStart.current!.key))) {
         pendingStart.current = null;
       }
     }).catch(() => { if (alive) setState("error"); });
@@ -80,11 +80,21 @@ export default function WorkhubSecondaryJourneys({ role }: {
       return;
     }
     const key = crypto.randomUUID();
-    pendingStart.current = key;
+    pendingStart.current = { intent, key };
     void perform(async () => {
       await mutate("/api/workhub/secondary-journeys", { intent, key });
     });
   };
+  const retryPendingStart = () => {
+    const pending = pendingStart.current;
+    if (!pending) return;
+    // Never generate a second idempotency key for the same uncertain start.
+    // The server returns the previous owner-scoped instance if already committed.
+    void perform(async () => {
+      await mutate("/api/workhub/secondary-journeys", pending);
+    });
+  };
+
   const advance = (item: SecondaryJourneyView) => {
     if (item.workItemVersion === null) return;
     void perform(async () => {
@@ -115,6 +125,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
         disabled={busy || !!pendingStart.current}>PC交換をデモ依頼</button>
     </div>}
     {message && <p role="alert" className="workhub-secondary-feedback">{message}</p>}
+    {pendingStart.current && message && <button className="workhub-secondary-button" type="button" disabled={busy} onClick={retryPendingStart}>同じ依頼を安全に再確認・再試行</button>}
     {state === "loading" && <p role="status">デモの進捗を確認中…</p>}
     {state === "error" && <p role="alert">進捗を取得できませんでした。未着手とは限りません。</p>}
     {state === "ready" && (items.length === 0
