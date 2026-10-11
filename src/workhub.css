@@ -1034,6 +1034,40 @@ input:disabled {
   margin-top: 16px;
 }
 
+.workhub-search-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.workhub-search-result {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid #dce6e9;
+  border-radius: 10px;
+  background: #fff;
+  color: #476371;
+  text-align: left;
+  text-decoration: none;
+}
+
+.workhub-search-result strong {
+  color: #173b51;
+}
+
+.workhub-search-result small {
+  color: #176e72;
+}
+
+.workhub-search-result:not(:disabled):hover,
+.workhub-search-result:focus-visible {
+  border-color: #176e72;
+  background: #f3f9f8;
+}
+
 .workhub-home-grid {
   margin-top: 18px;
 }
