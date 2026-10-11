@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { listWorkhubApps, searchWorkhubApps } from "../src/reference/workhub/app-catalog";
+import { listWorkhubApps, searchWorkhubApps, selectWorkhubHomeShortcuts, type WorkhubAppEntry } from "../src/reference/workhub/app-catalog";
 
 const keys = (role: string) => listWorkhubApps(role).map(app => app.key);
 
@@ -60,4 +60,32 @@ test("global Apps search reveals neither unauthorized nor unconnected app launch
   }
   assert.deepEqual(searchWorkhubApps("unexpected", "管理ポータル"), []);
   assert.deepEqual(searchWorkhubApps("employee", "セキュリティ"), []);
+});
+
+test("HOME shortcuts are the first four connected apps from the already authorized catalog", () => {
+  const employee = selectWorkhubHomeShortcuts(listWorkhubApps("employee"));
+  assert.deepEqual(employee.map(app => app.key), ["travel-request", "expense-settlement", "announcements"]);
+  assert.ok(employee.every(app => app.availability === "available" && app.launchTarget.startsWith("/")));
+  assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("manager")).map(app => app.key), [
+    "approval-tasks", "announcements",
+  ]);
+  assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("system_admin")).map(app => app.key), [
+    "announcements", "admin-portal",
+  ]);
+  assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("unknown")), []);
+});
+
+test("HOME shortcuts exclude unavailable and invalid targets and remain capped at four", () => {
+  const base = listWorkhubApps("employee").find(app => app.key === "travel-request");
+  assert.ok(base);
+  const invalid: WorkhubAppEntry[] = [
+    { ...base, key: "not-connected", availability: "unavailable", launchTarget: null },
+    { ...base, key: "external", launchTarget: "https://invalid.example/" },
+    { ...base, key: "script", launchTarget: "javascript:alert(1)" },
+  ];
+  const authorized = listWorkhubApps("employee");
+  const result = selectWorkhubHomeShortcuts([...invalid, ...authorized, ...authorized]);
+  assert.equal(result.length, 4);
+  assert.ok(result.every(app => app.key !== "not-connected" && app.key !== "external" && app.key !== "script"));
+  assert.deepEqual(result.slice(0, 3).map(app => app.key), ["travel-request", "expense-settlement", "announcements"]);
 });
