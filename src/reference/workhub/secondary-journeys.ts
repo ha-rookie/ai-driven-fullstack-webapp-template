@@ -196,7 +196,7 @@ export class WorkhubSecondaryJourneyService {
       const instance = await this.store.getInstance(row.id, this.environment);
       if (!instance || !SECONDARY_DEFINITIONS.some(d => d.key === instance.definitionKey)) continue;
       const item = await this.store.getOpenWorkItem(row.id, this.environment);
-      views.push(this.projectInstance(instance, item, principalId));
+      views.push(await this.projectInstance(instance, item, principalId));
     }
     if (role === "employee") {
       for (const key of movingKeys) {
