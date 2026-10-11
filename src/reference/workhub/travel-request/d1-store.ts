@@ -92,6 +92,21 @@ export class D1TravelRequestStore implements TravelRequestStore {
     return row ? mapRow(row) : null;
   }
 
+  async listOwned(environment: string, requesterId: string, limit: number): Promise<readonly TravelRequestRecord[]> {
+    // All identity filtering happens in D1 before results leave the Worker.
+    // The order is stable even for requests updated in the same millisecond.
+    const rows = await this.db.prepare(`
+      SELECT id, environment, requester_id, destination_office_item_id,
+             destination_office_revision_id, start_date, end_date, purpose, status,
+             submission_key, workflow_instance_id, submitted_at, version, created_at, updated_at
+      FROM reference_travel_requests
+      WHERE environment = ? AND requester_id = ?
+      ORDER BY updated_at DESC, id DESC
+      LIMIT ?
+    `).bind(environment, requesterId, limit).all<TravelRequestRow>();
+    return (rows.results ?? []).map(mapRow);
+  }
+
   async compareAndSet(
     record: TravelRequestRecord,
     options: TravelRequestCompareAndSetOptions,

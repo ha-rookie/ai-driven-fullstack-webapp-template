@@ -314,6 +314,13 @@ export const handleWorkhubBusinessApi = async (
       })) });
     }
 
+    if (request.method === "GET" && pathname === "/api/workhub/travel-requests") {
+      // The requesterId is derived exclusively from the authenticated session.
+      // Caller-supplied identity or query filters must never widen visibility.
+      const items = await services.travel.listMine(principalId);
+      return json({ items });
+    }
+
     if (request.method === "POST" && pathname === "/api/workhub/travel-requests") {
       const body = await bodyRecord(request);
       if (body instanceof Response) return body;

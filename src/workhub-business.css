@@ -175,3 +175,53 @@
     flex-direction: column;
   }
 }
+
+/* Personal request history is read-only. Approval remains in MY WORK. */
+.workhub-my-requests {
+  margin: 24px 0;
+  border: 1px solid #dce6e8;
+  border-radius: 14px;
+  padding: 20px;
+  background: #fff;
+}
+
+.workhub-my-requests .workhub-section-heading {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.workhub-my-requests-list {
+  margin: 16px 0 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+}
+
+.workhub-my-request-item {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  border: 1px solid #d0dfe3;
+  border-radius: 12px;
+  padding: 14px;
+  color: #173243;
+  background: #fbfdfd;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.workhub-my-request-item:hover,
+.workhub-my-request-item:focus-visible {
+  border-color: #176f74;
+  outline-offset: 2px;
+}
+
+.workhub-my-request-item strong {
+  overflow-wrap: anywhere;
+}
+
+.workhub-my-request-item span,
+.workhub-my-request-item small {
+  color: #526b77;
+}

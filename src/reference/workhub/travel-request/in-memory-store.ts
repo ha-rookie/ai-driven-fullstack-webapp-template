@@ -21,6 +21,14 @@ export class InMemoryTravelRequestStore implements TravelRequestStore {
     return record ? { ...record } : null;
   }
 
+  async listOwned(environment: string, requesterId: string, limit: number): Promise<readonly TravelRequestRecord[]> {
+    return [...this.records.values()]
+      .filter((record) => record.environment === environment && record.requesterId === requesterId)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id))
+      .slice(0, limit)
+      .map((record) => ({ ...record }));
+  }
+
   async compareAndSet(
     record: TravelRequestRecord,
     options: TravelRequestCompareAndSetOptions,
