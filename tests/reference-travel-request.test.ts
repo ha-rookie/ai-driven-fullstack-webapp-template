@@ -269,3 +269,34 @@ test("definite Workflow start failure rolls the reservation back to Draft", asyn
   assert.equal(rolledBack?.workflowInstanceId, null);
   assert.equal(rolledBack?.version, 3);
 });
+
+
+test("MY REQUESTS is a bounded, ordered list of only the requesting employee's records", async () => {
+  const { masterData, travel, travelStore } = createFixture();
+  const tokyo = await seedOffice(masterData, "TOKYO", "Tokyo Office");
+  const first = await travel.createDraft({ ...draftCommand(tokyo.item.id), purpose: "first" });
+  const second = await travel.createDraft({ ...draftCommand(tokyo.item.id), purpose: "second" });
+  await travelStore.create({
+    ...first, id: "other-requester", requesterId: "workhub-demo-ren",
+    purpose: "must not disclose", environment: "test",
+  });
+  await travelStore.create({
+    ...first, id: "other-environment", requesterId: "workhub-demo-aoi",
+    purpose: "must not cross environment", environment: "production",
+  });
+  const items = await travel.listMine("workhub-demo-aoi");
+  assert.deepEqual(items.map((item) => item.id), [second.id, first.id]);
+  assert.equal(items.every((item) => item.requesterId === "workhub-demo-aoi" && item.environment === "test"), true);
+  assert.deepEqual((await travel.listMine("workhub-demo-aoi", 1)).map((item) => item.id), [second.id]);
+  assert.deepEqual((await travel.listMine("workhub-demo-haru")).map((item) => item.id), []);
+  for (const limit of [0, -1, 51, 1.2]) {
+    await assert.rejects(
+      () => travel.listMine("workhub-demo-aoi", limit),
+      (error: unknown) => error instanceof TravelRequestError && error.code === "invalid_input",
+    );
+  }
+  await assert.rejects(
+    () => travel.listMine("   "),
+    (error: unknown) => error instanceof TravelRequestError && error.code === "invalid_input",
+  );
+});
