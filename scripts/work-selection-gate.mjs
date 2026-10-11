@@ -190,8 +190,8 @@ const selfTest = () => {
     "blocked", "remote-sensitive paths are declared");
   assert.equal(result(pr({ ...record(), humanGate: "remote-approval-required" }),
     ["migrations/0099.sql"]).status, "passed", "remote approval pending can merge code");
-  assert.equal(result(pr(record(), { body: "Closes #521" })).status,
-    "blocked", "missing selection record fails");
+  assert.throws(() => result(pr(record(), { body: "Closes #521" })),
+    /one_work_selection_record_required/u, "missing selection record fails");
   assert.equal(result(pr(record(), { body: pr().body + "\nCloses #595" })).status,
     "blocked", "multiple Issues forbidden");
   assert.equal(result(pr(), ["src/worker/workhub-login.ts"],
