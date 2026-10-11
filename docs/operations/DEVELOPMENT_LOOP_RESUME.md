@@ -63,7 +63,7 @@ node scripts/dev-loop-resume.mjs --repo ha-rookie/ai-driven-fullstack-webapp-tem
 
 | 条件 | Next action | 安全境界 |
 | --- | --- | --- |
-| Issue Open、PRなし | `select_bounded_change_and_create_pr` | 最初にIssue・依存・許可範囲を確認 |
+| Issue Open、PRなし | `inspect_issue_and_locate_existing_pr_before_branch` | Issue/PRを先に探索し重複作成を防ぐ。依存・許可範囲も確認 |
 | PR Draft | `finish_bounded_implementation_and_open_review` | 実装残あり |
 | HEADに対しCI未確認 | `verify_exact_head_sha_required_checks` | マージ候補にしない |
 | CI running | `recheck_required_checks_on_same_head` | 無期限再試行しない |
