@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, edited, ready_for_review]
 
 permissions:
   contents: read
@@ -31,6 +32,23 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      # Before npm/DB/browser work, reject new human/AI PRs that did not
+      # follow the main-commit work selection policy. PR description edits
+      # retrigger this check; the policy is read from the base SHA, not HEAD.
+      - name: Verify work selection against main Roadmap focus
+        shell: bash
+        env:
+          CHANGE_BASE: ${{ github.event.pull_request.base.sha }}
+          CHANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/work-selection-gate.mjs --self-test
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            node scripts/work-selection-gate.mjs --check --base "$CHANGE_BASE" --head "$CHANGE_HEAD"
+          else
+            echo "Work selection guard: scheduled/manual regression does not represent a PR."
+          fi
 
       - name: Select required validation tier (fail-closed)
         id: impact
