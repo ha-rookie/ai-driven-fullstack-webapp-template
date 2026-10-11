@@ -78,9 +78,15 @@ const travelJourney = (
   const count = summary?.claimCount ?? 0;
   let settlementStage: string;
   if (count === 0) {
-    settlementStage = state.status === "completed"
-      ? "紐づいた精算は未登録"
-      : "出張承認後に申請可能";
+    if (state.status === "completed") {
+      settlementStage = "紐づいた精算は未登録";
+    } else if (state.status === "rejected" || state.status === "withdrawn") {
+      settlementStage = "出張申請は終了・精算は未登録";
+    } else if (state.status === "unknown") {
+      settlementStage = "申請状態を確認できないため精算状況は未確認";
+    } else {
+      settlementStage = "出張承認後に申請可能";
+    }
   } else if ((summary?.returnedCount ?? 0) > 0) {
     settlementStage = `差戻しあり（${count}件）`;
   } else if ((summary?.submittedCount ?? 0) > 0) {

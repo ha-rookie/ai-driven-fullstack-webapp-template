@@ -144,3 +144,17 @@ test("HOME MY WORK shows empty only for an actually resolved owner-scoped empty 
     [travel({ workflowState: "completed" })], [expense({ status: "approved" })],
   )), []);
 });
+
+test("terminal and unknown travel states never invite a settlement against an unapproved trip", () => {
+  const rows = projectWorkhubMyRequests([
+    travel({ id: "rejected", workflowState: "rejected" }),
+    travel({ id: "withdrawn", workflowState: "withdrawn" }),
+    travel({ id: "unknown", workflowState: null }),
+    travel({ id: "pending", workflowState: "active" }),
+  ], [], 20);
+  assert.equal(rows.find(row => row.id === "rejected")?.journey?.settlementStage, "出張申請は終了・精算は未登録");
+  assert.equal(rows.find(row => row.id === "withdrawn")?.journey?.settlementStage, "出張申請は終了・精算は未登録");
+  assert.equal(rows.find(row => row.id === "unknown")?.journey?.settlementStage, "申請状態を確認できないため精算状況は未確認");
+  assert.equal(rows.find(row => row.id === "pending")?.journey?.settlementStage, "出張承認後に申請可能");
+  assert.ok(rows.every(row => row.journey?.linkedClaimCount === 0));
+});
