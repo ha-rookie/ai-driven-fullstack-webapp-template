@@ -46,7 +46,7 @@ export interface SecondaryJourneyView {
   readonly intent: SecondaryIntent;
   readonly title: string;
   readonly requesterId: string;
-  readonly state: "in_progress" | "completed";
+  readonly state: "in_progress" | "completed" | "needs_information" | "rejected";
   readonly version: number;
   readonly workItemVersion: number | null;
   readonly assignedToMe: boolean;
@@ -85,13 +85,15 @@ export const projectSecondaryJourney = (
   const intent: SecondaryIntent = instance.definitionKey === CONFIG.moving.definitionKey
     ? "moving" : "pc-replacement";
   const spec = CONFIG[intent];
-  const current = spec.steps.findIndex(([key]) => key === instance.currentStepKey);
+  const current = spec.steps.findIndex(([key]) => key === (instance.currentStepKey ?? instance.returnedStepKey));
   return {
     id: instance.id,
     intent,
     title: spec.title,
     requesterId: instance.requesterId,
-    state: instance.state === "completed" ? "completed" : "in_progress",
+    state: instance.state === "completed" ? "completed"
+      : instance.state === "awaiting_resubmission" ? "needs_information"
+      : instance.state === "rejected" ? "rejected" : "in_progress",
     version: instance.version,
     workItemVersion: item?.version ?? null,
     assignedToMe: item?.assigneePrincipal === principalId,
@@ -257,6 +259,56 @@ export class WorkhubSecondaryJourneyService {
       }
       throw caught;
     }
+  }
+
+  /**
+   * PC-only exception handling. The current Workflow work item and requester
+   * are the authorization boundary; no simulated stock or device record exists.
+   */
+  async decidePcReplacement(
+    principalId: string, role: string, id: string,
+    action: "return" | "reject" | "resubmit",
+    version: number, workItemVersion?: number,
+  ): Promise<SecondaryJourneyView> {
+    const instance = await this.store.getInstance(id, this.environment);
+    if (!instance || instance.resourceType !== SECONDARY_RESOURCE_TYPE
+      || instance.definitionKey !== CONFIG["pc-replacement"].definitionKey) {
+      throw new WorkflowError("not_found", "PC replacement demo is unavailable");
+    }
+    if (action === "resubmit") {
+      if (role !== "employee" || principalId !== instance.requesterId
+        || instance.state !== "awaiting_resubmission") {
+        throw new WorkflowError("not_found", "PC replacement correction is unavailable");
+      }
+      const result = await this.workflow.resubmit({
+        instanceId: id, actorId: principalId, expectedInstanceVersion: version,
+      });
+      return projectSecondaryJourney(result.instance, result.currentWorkItem, principalId);
+    }
+    const workItem = await this.store.getOpenWorkItem(id, this.environment);
+    if (role !== "corporate" || principalId !== "workhub-demo-sora"
+      || !workItem || workItem.assigneePrincipal !== principalId
+      || workItemVersion === undefined) {
+      throw new WorkflowError("not_found", "PC replacement work item is unavailable");
+    }
+    if (action === "return" && instance.currentStepKey !== "intake") {
+      throw new WorkflowError("invalid_state", "Information request is available only at intake");
+    }
+    if (action === "reject" && instance.currentStepKey !== "processing") {
+      throw new WorkflowError("invalid_state", "Stock unavailable is available only at processing");
+    }
+    const command = {
+      instanceId: id, actorId: principalId,
+      expectedInstanceVersion: version, expectedWorkItemVersion: workItemVersion,
+      reasonCode: action === "return" ? "additional_information" : "no_stock",
+      comment: action === "return"
+        ? "追加情報の確認が必要です（Referenceデモ）"
+        : "デモ在庫なしとして処理を終了します（Referenceデモ）",
+    };
+    const result = action === "return"
+      ? await this.workflow.returnForCorrection(command)
+      : await this.workflow.reject(command);
+    return projectSecondaryJourney(result.instance, result.currentWorkItem, principalId);
   }
 
   async advance(
