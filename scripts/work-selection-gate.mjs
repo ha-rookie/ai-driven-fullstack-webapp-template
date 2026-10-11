@@ -102,6 +102,9 @@ export const evaluate = ({ policy: rawPolicy, pr, changedPaths }) => {
   if (!meaningful(record.acceptanceOutcome)) {
     errors.push("business_acceptance_outcome_missing_or_placeholder");
   }
+  if (!["incremental", "final"].includes(record.completion)) {
+    errors.push("completion_intent_missing");
+  }
   if (record.notionCheck === "checked") {
     if (!NOTION_REF.test(record.notionReference || "")) errors.push("notion_reference_missing");
   } else if (record.notionCheck === "not-accessible") {
@@ -131,15 +134,20 @@ export const evaluate = ({ policy: rawPolicy, pr, changedPaths }) => {
     && !hasNumber(policy.governanceChangeIssues, record.issue)) {
     errors.push("governance_paths_require_base_approved_governance_issue");
   }
-  // An Issue Change Contract is required by CONTRIBUTING. PR bodies are
-  // independently editable: do not infer closure/association from a title.
-  if (Number.isSafeInteger(record.issue)
-    && !new RegExp("\\b(?:Closes|Fixes|Resolves)\\s+#" + record.issue + "\\b", "iu").test(body)) {
-    errors.push("pr_must_close_exactly_selected_issue");
-  }
-  const otherCloses = Array.from(body.matchAll(/\b(?:Closes|Fixes|Resolves)\s+#([1-9]\d*)\b/giu));
-  if (otherCloses.length !== 1 || Number(otherCloses[0][1]) !== record.issue) {
-    errors.push("pr_must_close_one_selected_issue_only");
+  // An Issue Change Contract is required by CONTRIBUTING. Do not auto-close
+  // an unresolved incident merely to satisfy a work-selection metadata gate.
+  // Incremental work uses Refs; final completion requires a closing keyword.
+  const issueMentions = Array.from(
+    body.matchAll(/\b(Closes|Fixes|Resolves|Refs|References)\s+#([1-9]\d*)\b/giu),
+  );
+  if (issueMentions.length !== 1 || Number(issueMentions[0]?.[2]) !== record.issue) {
+    errors.push("pr_must_reference_exactly_one_selected_issue");
+  } else {
+    const keyword = issueMentions[0][1].toLowerCase();
+    const closes = ["closes", "fixes", "resolves"].includes(keyword);
+    if ((record.completion === "final") !== closes) {
+      errors.push("pr_reference_must_match_incremental_or_final_completion");
+    }
   }
 
   return { status: errors.length ? "blocked" : "passed", errors, issue: record.issue };
@@ -162,6 +170,7 @@ const selfTest = () => {
     notionReference: "https://app.notion.com/p/3eed7c109faf810c8e9af72915fdfe85",
     humanGate: "none",
     acceptanceOutcome: "The agreed issue work will reach an independently verifiable acceptance outcome.",
+    completion: "final",
   });
   const pr = (r = record(), opts = {}) => ({
     number: 600, user: { login: "agent", type: "User" },
@@ -172,6 +181,22 @@ const selfTest = () => {
   const result = (p, paths = ["src/worker/workhub-login.ts"], rule = policy) =>
     evaluate({ policy: rule, pr: p, changedPaths: paths });
   assert.equal(result(pr()).status, "passed", "focus PR passes");
+  const incremental = pr({ ...record(), completion: "incremental" });
+  incremental.body = incremental.body.replace("Closes #521", "Refs #521");
+  assert.equal(result(incremental).status, "passed",
+    "incremental focused work keeps an unresolved incident open");
+  assert.equal(result(pr({ ...record(), completion: "incremental" })).status, "blocked",
+    "incremental work cannot include an auto-close keyword");
+  assert.equal(result(pr({ ...record(), completion: "final" }), undefined).status, "passed",
+    "final work explicitly closes the selected Issue");
+  const accidentalClose = pr();
+  accidentalClose.body = accidentalClose.body.replace("Closes #521", "Refs #521");
+  assert.equal(result(accidentalClose).status, "blocked",
+    "final work must use an explicit closing keyword");
+  const wrongRef = pr({ ...record(), completion: "incremental" });
+  wrongRef.body = wrongRef.body.replace("Closes #521", "Refs #595");
+  assert.equal(result(wrongRef).status, "blocked",
+    "incremental PR must not cite another Issue");
   assert.equal(result(pr(record(597, "approved-exception")),
     ["config/work-selection-policy.json", "AGENTS.md"]).status, "passed",
     "governance exception passes");
@@ -216,7 +241,7 @@ const selfTest = () => {
   })).status, "passed", "public contributors can cite GitHub rather than private Notion");
   assert.throws(() => validatePolicy({ ...policy, focusIssues: [] }),
     /invalid_base_work_selection_policy/u);
-  console.log("Work Selection Gate: 16 adversarial/normal cases passed");
+  console.log("Work Selection Gate: 21 adversarial/normal cases passed");
 };
 
 const cli = args => {
