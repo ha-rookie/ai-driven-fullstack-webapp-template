@@ -3,13 +3,19 @@
   "schemaVersion": 1,
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
-  "focusIssues": [521],
+  "focusIssues": [
+    345,
+    352
+  ],
   "approvedExceptions": [
     {
       "issue": 597,
       "reason": "User explicitly requested a guard against work-selection drift before resuming ordinary roadmap execution."
     }
   ],
-  "governanceChangeIssues": [597, 521],
-  "notes": "Read this policy from the PR base commit, not from the PR branch. The next focus transition must be justified against GitHub #132 and Notion, then committed as its own reviewed governance change."
+  "governanceChangeIssues": [
+    597,
+    521
+  ],
+  "notes": "2026-10-11 user-approved return to the original WORKHUB Stage 1 (HOME / MY WORK / APPS), as documented in #132 and Notion WORKHUB 01 Roadmap; #345 and #352 are existing child Issues, not new feature requests. #521 remains open for recurrence investigation, not a blocking focus. This policy transition is separate from subsequent implementation PRs, which are checked against its merged main revision."
 }
