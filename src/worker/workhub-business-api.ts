@@ -313,7 +313,7 @@ export const handleWorkhubBusinessApi = async (
     // Stage 2 Reference-only mock lifecycle: existing WorkflowStore owns
     // persistence, concurrency and assignee checks. No HR/asset data changes.
     if (pathname === "/api/workhub/secondary-journeys"
-      || /^\/api\/workhub\/secondary-journeys\/[^/]+\/advance$/u.test(pathname)) {
+      || /^\/api\/workhub\/secondary-journeys\/[0-9a-f-]{36}\/advance$/u.test(pathname)) {
       const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
       if (!membership || !["employee", "corporate"].includes(membership.role)) {
         return error(403, "secondary_journey_forbidden", "This reference journey is unavailable");
@@ -330,7 +330,7 @@ export const handleWorkhubBusinessApi = async (
         );
         return json({ item: result }, 201);
       }
-      const actionMatch = pathname.match(/^\/api\/workhub\/secondary-journeys\/([^/]+)\/advance$/u);
+      const actionMatch = pathname.match(/^\/api\/workhub\/secondary-journeys\/([0-9a-f-]{36})\/advance$/u);
       if (actionMatch && request.method === "POST") {
         const body = await bodyRecord(request);
         if (body instanceof Response) return body;
