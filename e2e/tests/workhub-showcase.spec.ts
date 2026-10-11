@@ -29,7 +29,8 @@ test("public showcase explains the reference, offers real demo and source eviden
   await expect(tour.getByRole("link", { name: "E2Eテスト ↗" }))
     .toHaveAttribute("href", /github.com\/ha-rookie\/ai-driven-fullstack-webapp-template\/blob\/main\/e2e\/tests\/workhub-travel-request.spec.ts/u);
   await expect(page.locator(".showcase-status-grid")).toContainText("NOT IMPLEMENTED");
-  await expect(page.locator(".showcase-status-grid")).toContainText("外部SaaSの受領結果を実照合するAdapter");
+  await expect(page.locator(".showcase-status-grid")).toContainText("外部SaaSの受領実照合");
+  await expect(page.locator(".showcase-status-grid")).toContainText("領収書添付・実際の支払処理");
   await expect(page.getByRole("link", { name: "GitHub Source ↗" }))
     .toHaveAttribute("href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template");
   await expect(page.getByRole("heading", { name: /実際の画面では、/u })).toBeVisible();
