@@ -152,6 +152,22 @@ test("MY REQUESTS shows persisted personal requests and never exposes another em
   await page.getByRole("button", { name: new RegExp(purpose, "u") }).click();
   await expect(page.getByText("MY REQUEST DETAIL", { exact: true })).toBeVisible();
   await expect(page.getByText("申請しました", { exact: true })).toBeVisible();
+  // Print only the currently authorized submitted request. The browser can
+  // save this presentation to PDF; it is NOT the historical approval report.
+  const printButton = page.getByRole("button", { name: "申請内容を印刷・PDF保存" });
+  await expect(printButton).toBeVisible();
+  await page.evaluate(() => {
+    window.print = () => { document.documentElement.dataset.workhubPrintInvoked = "yes"; };
+  });
+  await printButton.click();
+  await expect(page.locator("html")).toHaveAttribute("data-workhub-print-invoked", "yes");
+  await page.emulateMedia({ media: "print" });
+  const printSheet = page.getByRole("region", { name: "出張申請内容（印刷用）" });
+  await expect(printSheet).toBeVisible();
+  await expect(printSheet).toContainText(purpose);
+  await expect(printSheet).toContainText("正式な承認証跡、電子署名付きPDFではありません");
+  await expect(page.locator("#workhub-requests")).toBeHidden();
+  await page.emulateMedia({ media: "screen" });
 
   await switchPersona(page, "ren");
   await expect(page.getByRole("heading", { name: "自分の申請一覧" })).toHaveCount(0);
