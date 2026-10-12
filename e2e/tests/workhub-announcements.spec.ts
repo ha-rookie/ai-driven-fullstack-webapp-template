@@ -5,7 +5,7 @@ const login = async (page: Page, userId: "sora" | "aoi" | "ren") => {
   await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill(userId);
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await expect(page.getByRole("heading", { name: userId === "sora" ? /Sora/u : /Aoi/u })).toBeVisible();
+  await expect(page.getByRole("heading", { name: userId === "sora" ? /Sora/u : userId === "ren" ? /Ren/u : /Aoi/u })).toBeVisible();
 };
 
 test("General Affairs publishes a company announcement; employees read but cannot publish", async ({ page }, testInfo) => {
