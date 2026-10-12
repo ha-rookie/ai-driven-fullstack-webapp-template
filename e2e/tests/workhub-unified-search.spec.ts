@@ -17,7 +17,7 @@ test("Stage3 unified search enforces facets and authorization on mobile without 
   await query.fill("出張");
   await category.selectOption("documents");
   await button.click();
-  await expect(results.getByRole("link", { name: /出張と経費精算の手順/ })).toBeVisible();
+  await expect(results.getByRole("link", { name: /^出張と経費精算の手順（デモ）/u })).toBeVisible();
   await expect(results).toContainText("旧版・利用注意");
   await expect(results).not.toContainText("インシデント");
   await expect(results.getByRole("status")).toContainText("閲覧可能な結果");
