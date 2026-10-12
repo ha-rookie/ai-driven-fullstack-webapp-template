@@ -44,7 +44,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
   const focusAfterUpdate = useRef<string | null>(null);
   const pendingStart = useRef<{ readonly key: string; readonly intent: SecondaryIntent } | null>(null);
 
-  const refresh = useCallback(() => setReload(value => value + 1), []);
+  const refresh = useCallback(() => { setState("loading"); setReload(value => value + 1); }, []);
   useEffect(() => {
     let alive = true;
     setState("loading");
@@ -77,7 +77,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
   }, [state, items]);
 
   const perform = async (action: () => Promise<void>, focusId?: string) => {
-    if (inFlight.current) return;
+    if (inFlight.current || state !== "ready") return;
     inFlight.current = true;
     setBusy(true);
     setMessage("");
@@ -85,8 +85,13 @@ export default function WorkhubSecondaryJourneys({ role }: {
       await action();
       if (focusId) focusAfterUpdate.current = focusId;
       refresh();
-    } catch {
-      setMessage("処理結果を確認できません。再送信せず「最新状態を確認」で確認してください。");
+    } catch (caught) {
+      const status = caught instanceof Error ? caught.message : "";
+      setMessage(status === "HTTP 409"
+        ? "手続きの状態が変更されています。再送信せず「最新状態を確認」で確認してください。"
+        : status === "HTTP 403" || status === "HTTP 404"
+          ? "現在の担当権限では操作できません。最新状態を確認してください。"
+          : "処理結果を確認できません。再送信せず「最新状態を確認」で確認してください。");
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -94,6 +99,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
   };
 
   const begin = (intent: SecondaryIntent) => {
+    if (state !== "ready") return;
     if (pendingStart.current) {
       setMessage("直前の依頼結果が未確認です。まず「最新状態を確認」を押してください。");
       return;
@@ -106,7 +112,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
   };
   const retryPendingStart = () => {
     const pending = pendingStart.current;
-    if (!pending) return;
+    if (!pending || state !== "ready") return;
     // Never generate a second idempotency key for the same uncertain start.
     // The server returns the previous owner-scoped instance if already committed.
     void perform(async () => {
@@ -164,12 +170,12 @@ export default function WorkhubSecondaryJourneys({ role }: {
     </p>
     {role === "employee" && <div className="workhub-secondary-actions">
       <button type="button" className="workhub-secondary-button" onClick={() => begin("moving")}
-        disabled={busy || !!pendingStart.current}>引っ越し手続きをデモ開始</button>
+        disabled={busy || state !== "ready" || !!pendingStart.current}>引っ越し手続きをデモ開始</button>
       <button type="button" className="workhub-secondary-button" onClick={() => begin("pc-replacement")}
-        disabled={busy || !!pendingStart.current}>PC交換をデモ依頼</button>
+        disabled={busy || state !== "ready" || !!pendingStart.current}>PC交換をデモ依頼</button>
     </div>}
     {message && <p role="alert" className="workhub-secondary-feedback">{message}</p>}
-    {pendingStart.current && message && <button className="workhub-secondary-button" type="button" disabled={busy} onClick={retryPendingStart}>同じ依頼を安全に再確認・再試行</button>}
+    {pendingStart.current && message && <button className="workhub-secondary-button" type="button" disabled={busy || state !== "ready"} onClick={retryPendingStart}>同じ依頼を安全に再確認・再試行</button>}
     {state === "loading" && <p role="status">デモの進捗を確認中…</p>}
     {state === "error" && <p role="alert">進捗を取得できませんでした。未着手とは限りません。</p>}
     {state === "ready" && (items.length === 0
@@ -184,7 +190,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
               : item.state === "rejected" ? "デモ在庫なし・処理終了"
               : "デモ進行中"}
               {" · "}{item.steps.filter(step => step.status === "done").length}/{item.steps.length}ステップ</p>
-            <ol>{item.steps.map(step => <li key={step.key}>
+            <ol aria-label={`${item.title}の手続き進捗`}>{item.steps.map(step => <li key={step.key}>
               <span>{step.status === "done" ? "完了" : step.status === "stopped" ? "却下" : step.status === "current" ? "対応中" : "未着手"}</span>
               {" "}{step.label}
             </li>)}</ol>
