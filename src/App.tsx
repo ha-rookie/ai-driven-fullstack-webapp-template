@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useAuth } from "./frontend/auth";
 import AdminPortal from "./reference/admin/AdminPortal";
 import AccountSwitchButton from "./reference/workhub/AccountSwitchButton";
+import { ANNOUNCEMENT_AUDIENCE_DEPARTMENTS } from "./reference/workhub/announcements";
 import ExpenseWorkspace from "./reference/workhub/ExpenseWorkspace";
 import { listActionRequiredMyRequests } from "./reference/workhub/my-requests";
 import WorkhubAppLauncher from "./reference/workhub/WorkhubAppLauncher";
@@ -43,7 +44,8 @@ interface SearchResultRecord { readonly resourceType: string; readonly resourceI
 interface CompanyAnnouncement {
   readonly id: string; readonly title: string; readonly body: string; readonly authorId: string;
   readonly publishedAt: string; readonly importance: "normal" | "important" | "critical";
-  readonly audienceRole: string | null; readonly visibleFrom: string; readonly visibleUntil: string | null;
+  readonly audienceRole: string | null; readonly audienceDepartment: string | null;
+  readonly visibleFrom: string; readonly visibleUntil: string | null;
 }
 const ANNOUNCEMENT_IMPORTANCE_LABELS: Record<CompanyAnnouncement["importance"], string> = {
   normal: "通常", important: "重要", critical: "緊急",
@@ -51,6 +53,17 @@ const ANNOUNCEMENT_IMPORTANCE_LABELS: Record<CompanyAnnouncement["importance"], 
 const ANNOUNCEMENT_AUDIENCE_LABELS: Record<string, string> = {
   newcomer: "新入社員", employee: "一般社員", manager: "管理職", accounting: "経理",
   corporate: "総務", system_admin: "システム管理者",
+};
+const ANNOUNCEMENT_DEPARTMENT_LABELS: Record<string, string> = Object.fromEntries(
+  ANNOUNCEMENT_AUDIENCE_DEPARTMENTS.map(({ code, label }) => [code, label]),
+);
+const announcementAudienceLabel = (item: CompanyAnnouncement): string => {
+  const role = item.audienceRole ? ANNOUNCEMENT_AUDIENCE_LABELS[item.audienceRole] ?? "指定ロール" : null;
+  const department = item.audienceDepartment
+    ? ANNOUNCEMENT_DEPARTMENT_LABELS[item.audienceDepartment] ?? "指定部署"
+    : null;
+  return role && department ? `${role}・${department}向け`
+    : role ? `${role}向け` : department ? `${department}向け` : "全社員向け";
 };
 interface WorkhubSocialPost {
   readonly id: string; readonly category: "community" | "thanks" | "knowledge_share";
@@ -146,7 +159,7 @@ function LoginScreen() {
 
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const isMei = user?.id === "workhub-demo-mei"; const canReviewTravel = isRen || isMei; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
-  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [showAllAnnouncements, setShowAllAnnouncements] = useState(false); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [announcementImportance, setAnnouncementImportance] = useState<CompanyAnnouncement["importance"]>("normal"); const [announcementAudience, setAnnouncementAudience] = useState("all"); const [announcementFrom, setAnnouncementFrom] = useState(""); const [announcementUntil, setAnnouncementUntil] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [showAllAnnouncements, setShowAllAnnouncements] = useState(false); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [announcementImportance, setAnnouncementImportance] = useState<CompanyAnnouncement["importance"]>("normal"); const [announcementAudience, setAnnouncementAudience] = useState("all"); const [announcementDepartment, setAnnouncementDepartment] = useState("all"); const [announcementFrom, setAnnouncementFrom] = useState(""); const [announcementUntil, setAnnouncementUntil] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<"all" | "unread">("all");
   const notificationBellRef = useRef<HTMLButtonElement>(null);
@@ -289,6 +302,7 @@ function TravelWorkspace() {
           title: announcementTitle, body: announcementBody,
           importance: announcementImportance,
           audienceRole: announcementAudience === "all" ? null : announcementAudience,
+          audienceDepartment: announcementDepartment === "all" ? null : announcementDepartment,
           ...(announcementFrom ? { visibleFrom: new Date(announcementFrom).toISOString() } : {}),
           ...(announcementUntil ? { visibleUntil: new Date(announcementUntil).toISOString() } : {}),
         }),
@@ -297,6 +311,7 @@ function TravelWorkspace() {
       setAnnouncementBody("");
       setAnnouncementImportance("normal");
       setAnnouncementAudience("all");
+      setAnnouncementDepartment("all");
       setAnnouncementFrom("");
       setAnnouncementUntil("");
       await loadAnnouncements();
@@ -536,7 +551,7 @@ function TravelWorkspace() {
       </nav>
       <main className="workhub-home-main" id="workhub-home">
         {announcementLoad === "ready" && bannerAnnouncement && <aside className="workhub-global-banner" role="alert" aria-labelledby="workhub-critical-news-title">
-          <span className="workhub-global-banner-kicker">緊急のお知らせ · {bannerAnnouncement.audienceRole ? ANNOUNCEMENT_AUDIENCE_LABELS[bannerAnnouncement.audienceRole] ?? "対象者限定" : "全社員向け"}</span>
+          <span className="workhub-global-banner-kicker">緊急のお知らせ · {announcementAudienceLabel(bannerAnnouncement)}</span>
           <h2 id="workhub-critical-news-title">{bannerAnnouncement.title}</h2>
           <p>{bannerAnnouncement.body}</p>
           <small>総務からの公式連絡 · 公開：{new Date(bannerAnnouncement.publishedAt).toLocaleString("ja-JP")}</small>
@@ -623,7 +638,7 @@ function TravelWorkspace() {
             <div><span className="workhub-card-label">COMPANY NEWS / ANNOUNCEMENTS</span><h2 id="workhub-announcements-title">社内お知らせ</h2></div>
             <button type="button" className="workhub-secondary-button" onClick={() => void loadAnnouncements()} disabled={announcementLoad === "loading"}>お知らせを更新</button>
           </div>
-          <p className="workhub-announcements-intro">会社からの公式連絡です。現在の所属ロールと掲載期間で配信対象を判定し、緊急連絡はHOME上部に一度だけ表示します。部署単位の指定は未対応です。</p>
+          <p className="workhub-announcements-intro">会社からの公式連絡です。現在の所属ロール・部署と掲載期間で配信対象を判定し、緊急連絡はHOME上部に一度だけ表示します。</p>
           {canPublishAnnouncements && <form className="workhub-announcement-compose" onSubmit={publishAnnouncement} aria-label="社内お知らせを登録">
             <h3>お知らせを公開する（総務担当）</h3>
             <label>件名<input aria-label="お知らせの件名" value={announcementTitle} maxLength={120} required onChange={(event) => setAnnouncementTitle(event.target.value)} /></label>
@@ -636,10 +651,14 @@ function TravelWorkspace() {
                 <option value="all">全社員</option>
                 {Object.entries(ANNOUNCEMENT_AUDIENCE_LABELS).map(([role, label]) => <option value={role} key={role}>{label}</option>)}
               </select></label>
+              <label>配信部署<select aria-label="お知らせの配信部署" value={announcementDepartment} onChange={(event) => setAnnouncementDepartment(event.target.value)}>
+                <option value="all">部署を指定しない</option>
+                {ANNOUNCEMENT_AUDIENCE_DEPARTMENTS.map(({ code, label }) => <option key={code} value={code}>{label}</option>)}
+              </select></label>
               <label>掲載開始（省略時は今すぐ）<input type="datetime-local" aria-label="お知らせの掲載開始" value={announcementFrom} onChange={(event) => setAnnouncementFrom(event.target.value)} /></label>
               <label>掲載終了（省略時は無期限）<input type="datetime-local" aria-label="お知らせの掲載終了" value={announcementUntil} min={announcementFrom || undefined} onChange={(event) => setAnnouncementUntil(event.target.value)} /></label>
             </div>
-            <small className="workhub-reference-note">配信対象は現在のWORKHUB所属ロールをサーバーで判定します。未来日時の告知は開始時刻まで表示されません。</small>
+            <small className="workhub-reference-note">配信対象は現在のWORKHUB所属ロール・部署をサーバーで判定します。ロールと部署の両方を指定した場合は両条件を満たす社員に配信します。未来日時の告知は開始時刻まで表示されません。</small>
             <button className="workhub-primary-button" type="submit" disabled={busy || !announcementTitle.trim() || !announcementBody.trim()}>お知らせを公開</button>
           </form>}
           {announcementLoad === "loading" ? <p role="status">お知らせを読み込んでいます…</p> :
@@ -649,7 +668,7 @@ function TravelWorkspace() {
                   <article key={item.id} className="workhub-announcement-item">
                     <h3>{item.importance !== "normal" && <span className="workhub-announcement-importance">{ANNOUNCEMENT_IMPORTANCE_LABELS[item.importance]}</span>}{item.title}</h3>
                     <p>{item.body}</p>
-                    <small>{item.audienceRole ? ANNOUNCEMENT_AUDIENCE_LABELS[item.audienceRole] ?? "指定ロール向け" : "全社向け"} · 公開日時：{new Date(item.publishedAt).toLocaleString("ja-JP")}{item.visibleUntil ? ` · 終了：${new Date(item.visibleUntil).toLocaleString("ja-JP")}` : ""}</small>
+                    <small>{announcementAudienceLabel(item)} · 公開日時：{new Date(item.publishedAt).toLocaleString("ja-JP")}{item.visibleUntil ? ` · 終了：${new Date(item.visibleUntil).toLocaleString("ja-JP")}` : ""}</small>
                   </article>
                 )}</div>}
           {announcementLoad === "ready" && regularAnnouncements.length > 3 &&
