@@ -27,8 +27,9 @@ test("WORKHUB Stage 1 mobile app navigation and keyboard-filter feedback", async
 
   await search.fill("社員・組織");
   await expect(launcher.getByRole("status")).toHaveText("1件のアプリが見つかりました。");
-  await expect(resultRegion.getByText("接続準備中")).toBeVisible();
-  await expect(resultRegion.getByRole("link")).toHaveCount(0);
+  await expect(resultRegion.getByRole("link", { name: "社員・組織を開く" })).toBeVisible();
+  await resultRegion.getByRole("link", { name: "社員・組織を開く" }).click();
+  await expect(page.getByRole("region", { name: "社員・組織" })).toBeInViewport();
 
   await search.fill("該当しないアプリ名");
   await expect(launcher.getByRole("status")).toHaveText("0件のアプリが見つかりました。");
