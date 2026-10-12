@@ -6,7 +6,7 @@
 export const WORKHUB_APP_SCOPE_ID = "workhub-company";
 
 export type WorkhubAppAvailability = "available" | "unavailable";
-export type WorkhubAppCategory = "申請・手続き" | "経理・財務" | "コミュニケーション" | "組織・人" | "システム";
+export type WorkhubAppCategory = "申請・手続き" | "経理・財務" | "コミュニケーション" | "組織・人" | "ナレッジ" | "システム";
 
 export interface WorkhubAppEntry {
   readonly key: string;
@@ -53,7 +53,7 @@ const REFERENCE_APPS: readonly ReferenceAppDefinition[] = [
   },
   {
     key: "knowledge", displayName: "文書・ナレッジ", description: "版数と確認日を見て業務文書を探す",
-    category: "コミュニケーション", sourceSystem: "WORKHUB Reference",
+    category: "ナレッジ", sourceSystem: "WORKHUB Reference",
     availability: "available", launchTarget: "/#workhub-documents", allowedRoles: EVERY_ROLE,
   },
   {
