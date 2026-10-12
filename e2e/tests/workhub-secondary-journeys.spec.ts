@@ -263,9 +263,34 @@ test("390px secondary journey blocks actions on failed GET and resolves external
   }, journeyId);
   expect(externalStatus).toBe(200);
   await moving.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" }).click();
-  await expect(section.getByRole("alert")).toContainText("手続きの状態が変更されています");
+  // Once the other actor completes this work item, the server intentionally
+  // hides the no-longer-open task as 404, rather than returning a stale 409.
+  await expect(section.getByRole("alert")).toContainText("現在の担当権限では操作できません");
   await section.getByRole("button", { name: "最新状態を確認" }).click();
   await expect(moving).toContainText("1/3ステップ");
   await expect(moving.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" }))
     .toHaveCount(0);
+
+  // A stale read of a STILL OPEN step has a different, version-conflict 409.
+  // Simulate an outdated read model only in this browser; the server's SoT and
+  // Work Item remain untouched, preserving the real authorization guard.
+  await page.route("**/api/workhub/secondary-journeys", async route => {
+    if (route.request().method() !== "GET") { await route.continue(); return; }
+    const original = await route.fetch();
+    const data = await original.json() as { items: Array<{
+      id: string; steps: Array<{ key: string; version: number | null }>;
+    }> };
+    const commute = data.items.find(item => item.id === journeyId)
+      ?.steps.find(step => step.key === "commute");
+    if (commute?.version == null) throw new Error("commute version unavailable");
+    commute.version += 1;
+    await route.fulfill({ response: original, json: data });
+  });
+  await section.getByRole("button", { name: "最新状態を確認" }).click();
+  await expect(moving).toContainText("1/3ステップ");
+  await moving.getByRole("button", { name: "通勤経路の確認（デモ）をデモ完了する" }).click();
+  await expect(section.getByRole("alert")).toContainText("手続きの状態が変更されています");
+  await page.unroute("**/api/workhub/secondary-journeys");
+  await section.getByRole("button", { name: "最新状態を確認" }).click();
+  await expect(moving).toContainText("1/3ステップ");
 });
