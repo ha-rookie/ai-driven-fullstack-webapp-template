@@ -442,7 +442,7 @@ function TravelWorkspace() {
             {searchResults.map(result => {
               const key = `${result.resourceType}:${result.resourceId}`;
               const internalAppTarget = ["workhub_app", "workhub_person", "workhub_document"].includes(result.resourceType)
-                && /^\/(?:#workhub-[a-z-]+|admin)$/u.test(result.actionTarget ?? "")
+                && /^\/(?:#workhub-[a-z0-9-]+|admin)$/u.test(result.actionTarget ?? "")
                   ? result.actionTarget : null;
               const content = <><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category === "apps" ? "アプリ" : result.category}</small></>;
               return internalAppTarget
@@ -510,8 +510,8 @@ function TravelWorkspace() {
           {peopleState === "loading" ? <p role="status">社員一覧を読み込んでいます…</p> :
             peopleState === "error" ? <div role="alert"><p>社員一覧を取得できません。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadPeople()}>再読み込み</button></div> :
               people.length === 0 ? <p className="workhub-empty-state">表示できる社員データはありません。</p> :
-                <div className="workhub-people-grid">{people.map(person =>
-                  <article className="workhub-people-card" key={person.displayName} aria-label={`社員 ${person.displayName}`}>
+                <div className="workhub-people-grid">{people.map((person, index) =>
+                  <article id={`workhub-person-reference-person-${index + 1}`} tabIndex={-1} className="workhub-people-card" key={person.displayName} aria-label={`社員 ${person.displayName}`}>
                     <strong>{person.displayName}</strong><p>{person.roleLabel}</p><small>{person.organizationLabel}</small>
                   </article>
                 )}</div>}
@@ -526,7 +526,7 @@ function TravelWorkspace() {
             documentsState === "error" ? <div role="alert"><p>文書一覧を取得できません。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadDocuments()}>再読み込み</button></div> :
               documents.length === 0 ? <p className="workhub-empty-state">閲覧できるデモ文書はありません。</p> :
                 <div className="workhub-document-grid">{documents.map(doc =>
-                  <article className="workhub-document-card" aria-label={`文書 ${doc.title}`} key={doc.id}>
+                  <article id={`workhub-document-${doc.id}`} tabIndex={-1} className="workhub-document-card" aria-label={`文書 ${doc.title}`} key={doc.id}>
                     <div className="workhub-document-card-top"><span>{doc.category}</span><strong className={`workhub-document-state is-${doc.state}`}>{doc.state === "current" ? "現行" : doc.state === "stale" ? "要再確認" : "旧版・参照注意"}</strong></div>
                     <strong className="workhub-document-title">{doc.title}</strong>
                     <p>{doc.summary}</p>
