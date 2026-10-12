@@ -90,3 +90,61 @@ test("explicit manager delegation shows travel work only within grant, and revoc
   });
   expect(deniedAdmin).toBe(403);
 });
+
+test("390px delegation reconciles committed-but-lost POST and blocks unsafe retry until GET recovers", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop-chromium", "named Reference grant is tested once per CI");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, "ren");
+  const enable = page.getByRole("button", { name: "Meiへ24時間委任する" });
+  const revoke = page.getByRole("button", { name: "代理承認を取り消す" });
+  await expect(enable.or(revoke)).toBeVisible();
+  if (await revoke.isVisible()) {
+    await revoke.click();
+    await expect(enable).toBeVisible();
+  }
+
+  // Route the POST to the server ONCE, then hide only the successful response:
+  // the browser must reconcile via GET without repeating the privilege grant.
+  let grantPosts = 0;
+  await page.route("**/api/workhub/approval-delegation", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    grantPosts += 1;
+    const original = await route.fetch();
+    if (!original.ok()) return route.fulfill({ response: original });
+    return route.fulfill({
+      status: 503, contentType: "application/json",
+      body: JSON.stringify({ error: { code: "response_lost", message: "response was lost after commit" } }),
+    });
+  });
+  await enable.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/委任処理の応答を確認できませんでした/u)).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Meiへ委任中" })).toBeVisible();
+  await expect(revoke).toBeVisible();
+  expect(grantPosts, "grant must not be replayed following an ambiguous result").toBe(1);
+  await page.unroute("**/api/workhub/approval-delegation");
+
+  // A successful revoke followed by a failed GET is also ambiguous to the UI:
+  // no further POST is permitted until an explicit read-only refresh succeeds.
+  let revokePosts = 0;
+  await page.route("**/api/workhub/approval-delegation", async (route) => {
+    if (route.request().method() === "POST") {
+      revokePosts += 1;
+      return route.continue();
+    }
+    return route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+  await revoke.click();
+  await expect(page.getByText("委任処理の結果を確認できません。再送信せず、委任状態を再確認してください。")).toBeVisible();
+  await expect(revoke).toHaveCount(0);
+  await expect(enable).toHaveCount(0);
+  const retryRead = page.getByRole("button", { name: "委任状態を再確認" });
+  await expect(retryRead).toBeVisible();
+  expect(revokePosts, "revocation must only be sent once").toBe(1);
+  await page.unroute("**/api/workhub/approval-delegation");
+  await retryRead.focus();
+  await page.keyboard.press("Enter");
+  await expect(enable).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "現在、代理承認は無効です" })).toBeVisible();
+  expect(revokePosts, "refresh must be read-only").toBe(1);
+});
