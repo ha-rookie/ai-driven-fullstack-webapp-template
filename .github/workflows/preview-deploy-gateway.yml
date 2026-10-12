@@ -53,7 +53,7 @@ jobs:
 
       - name: Checkout main for ancestry validation
         if: steps.request.outputs.operation != 'browser' && steps.request.outputs.operation != 'showcase' && steps.request.outputs.operation != 'account_switch' && steps.request.outputs.operation != 'auth_metrics'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0

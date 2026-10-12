@@ -36,7 +36,7 @@ jobs:
       EXPECTED_PENDING: ${{ inputs.expected_pending_migrations }}
     steps:
       - name: Checkout exact requested SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
@@ -69,7 +69,7 @@ jobs:
       PREVIEW_DATABASE_ID: f1ce1268-2be2-4a20-ab10-a94c32feee64
     steps:
       - name: Checkout exact requested SHA after the Human Gate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0

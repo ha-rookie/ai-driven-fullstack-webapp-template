@@ -20,7 +20,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout fixed main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
       - name: Setup Node

@@ -39,7 +39,7 @@ jobs:
         run: test "${{ github.ref }}" = "refs/heads/main"
 
       - name: Checkout immutable control plane
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: control
@@ -49,7 +49,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
       - name: Checkout exact rollback target
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.target_sha }}
           path: target
@@ -104,7 +104,7 @@ jobs:
         run: test "${{ github.ref }}" = "refs/heads/main"
 
       - name: Checkout immutable control plane after Human Gate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: control
@@ -114,7 +114,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
       - name: Checkout exact rollback target after Human Gate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.target_sha }}
           path: target
