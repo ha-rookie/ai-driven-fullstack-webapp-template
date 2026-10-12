@@ -437,7 +437,7 @@
   border-radius: 11px;
   background: #f8fbfa;
 }
-.workhub-people-card h3 { margin: 0; color: #173b51; font-size: 17px; overflow-wrap: anywhere; }
+.workhub-people-card strong { display: block; color: #173b51; font-size: 17px; overflow-wrap: anywhere; }
 .workhub-people-card p { margin: 8px 0 4px; color: #294c59; font-size: 14px; font-weight: 650; }
 .workhub-people-card small { color: #506d79; font-size: 12px; }
 @media (max-width: 600px) {
