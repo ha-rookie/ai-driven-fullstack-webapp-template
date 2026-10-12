@@ -52,6 +52,11 @@ const REFERENCE_APPS: readonly ReferenceAppDefinition[] = [
     availability: "available", launchTarget: "/#workhub-people", allowedRoles: EVERY_ROLE,
   },
   {
+    key: "knowledge", displayName: "文書・ナレッジ", description: "版数と確認日を見て業務文書を探す",
+    category: "コミュニケーション", sourceSystem: "WORKHUB Reference",
+    availability: "available", launchTarget: "/#workhub-documents", allowedRoles: EVERY_ROLE,
+  },
+  {
     key: "admin-portal", displayName: "管理ポータル", description: "システムの運用状況を確認する",
     category: "システム", sourceSystem: "WORKHUB",
     availability: "available", launchTarget: "/admin", allowedRoles: ["system_admin"],
