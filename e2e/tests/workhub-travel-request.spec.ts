@@ -48,7 +48,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(page.locator("#workhub-notifications")).toContainText("「今日対応すること」に");
   await page.getByRole("button", { name: /通知 未読\d+件/u }).click();
   await expect(page.locator("#workhub-notification-center").getByRole("button",
-    { name: /出張申請の承認依頼が届きました/u })).toBeVisible();
+    { name: /出張申請の承認依頼が届きました/u }).first()).toBeVisible();
   await page.getByRole("button", { name: "ホームへ戻る" }).click();
   await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(initialPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
@@ -66,7 +66,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(page.locator("#workhub-notifications")).toContainText("「今日対応すること」に");
   await page.getByRole("button", { name: /通知 未読\d+件/u }).click();
   await expect(page.locator("#workhub-notification-center").getByRole("button",
-    { name: /出張申請が差し戻されました/u })).toBeVisible();
+    { name: /出張申請が差し戻されました/u }).first()).toBeVisible();
   await page.getByRole("button", { name: "ホームへ戻る" }).click();
   // A returned request can be corrected directly from MY REQUESTS,
   // without first opening the notification or navigating to details.
