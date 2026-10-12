@@ -30,7 +30,6 @@ jobs:
       EXPECTED_PENDING: 0036_workhub_announcement_delivery.sql
       PREVIEW_DATABASE_ID: f1ce1268-2be2-4a20-ab10-a94c32feee64
       PREVIEW_DATABASE_NAME: ai-driven-webapp-template-preview
-      CLOUDFLARE_ENV: preview
       RUNTIME_ENVIRONMENT: preview
     steps:
       - name: Check out exactly the code authorized by the user
