@@ -56,10 +56,15 @@ test("explicit manager delegation shows travel work only within grant, and revoc
   expect(deniedGrant).toBe(403);
 
   await change(page, "ren");
-  await enabled.click();
+  await enabled.focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByRole("status").filter({ hasText: "Meiへ委任中" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "出張承認の代理設定" })).toBeFocused();
   await change(page, "mei");
-  const task = page.locator("#workhub-my-work .workhub-task-item").filter({ hasText: first });
+  const task = page.getByRole("article", { name: `${first}の出張承認タスク` });
+  await expect(task.getByRole("heading", { level: 3, name: first })).toBeVisible();
+  await expect(task.getByRole("button", { name: `${first}：差し戻す`, exact: true })).toBeVisible();
+  await expect(task.getByRole("button", { name: `${first}：承認する`, exact: true })).toBeVisible();
   await expect(task).toContainText("Renの代理として操作・記録します");
   const record = await page.evaluate(async purpose => {
     const response = await fetch("/api/workhub/my-work", { credentials: "same-origin" });
@@ -71,13 +76,16 @@ test("explicit manager delegation shows travel work only within grant, and revoc
     return payload.items.find(item => item.request.purpose === purpose)?.workItem.assigneePrincipal ?? "";
   }, first);
   expect(record).toBe("workhub-demo-ren"); // Delegation never forges assignee identity.
-  await task.getByRole("button", { name: "承認する" }).click();
+  await task.getByRole("button", { name: `${first}：承認する`, exact: true }).focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByText("承認しました。", { exact: true })).toBeVisible();
   await expect(task).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 2, name: "今日対応すること" })).toBeFocused();
 
   await change(page, "ren");
   await revoked.click();
   await expect(enabled).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "出張承認の代理設定" })).toBeFocused();
 
   await change(page, "aoi");
   await submitTravel(page, afterRevoke);
@@ -119,6 +127,7 @@ test("390px delegation reconciles committed-but-lost POST and blocks unsafe retr
   await enable.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText(/委任処理の応答を確認できませんでした/u)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "出張承認の代理設定" })).toBeFocused();
   await expect(page.getByRole("status").filter({ hasText: "Meiへ委任中" })).toBeVisible();
   await expect(revoke).toBeVisible();
   expect(grantPosts, "grant must not be replayed following an ambiguous result").toBe(1);
@@ -146,5 +155,6 @@ test("390px delegation reconciles committed-but-lost POST and blocks unsafe retr
   await page.keyboard.press("Enter");
   await expect(enable).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "現在、代理承認は無効です" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "出張承認の代理設定" })).toBeFocused();
   expect(revokePosts, "refresh must be read-only").toBe(1);
 });
