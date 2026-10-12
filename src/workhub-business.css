@@ -412,3 +412,35 @@
   outline: 3px solid #0b8a99;
   outline-offset: 2px;
 }
+
+
+/* WORKHUB Stage3: fictitious read-only company directory, no personal contacts. */
+.workhub-people {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid #dce6e8;
+  border-radius: 14px;
+  background: #fff;
+  scroll-margin-top: 16px;
+}
+.workhub-people > p { color: #4a6470; font-size: 14px; line-height: 1.6; }
+.workhub-people-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.workhub-people-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #d9e5e7;
+  border-radius: 11px;
+  background: #f8fbfa;
+}
+.workhub-people-card strong { display: block; color: #173b51; font-size: 17px; overflow-wrap: anywhere; }
+.workhub-people-card p { margin: 8px 0 4px; color: #294c59; font-size: 14px; font-weight: 650; }
+.workhub-people-card small { color: #506d79; font-size: 12px; }
+@media (max-width: 600px) {
+  .workhub-people { padding: 16px; }
+  .workhub-people-grid { grid-template-columns: minmax(0, 1fr); }
+}

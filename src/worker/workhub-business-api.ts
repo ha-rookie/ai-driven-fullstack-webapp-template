@@ -22,6 +22,7 @@ import { WorkhubTravelDelegation } from "../reference/workhub/approval-delegatio
 import { resolveApplicationSession } from "./auth";
 import { findScopeMembership } from "./authorization";
 import { listWorkhubApps, searchWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
+import { listWorkhubReferencePeople } from "../reference/workhub/people";
 import {
   BusinessActivityProjector,
   BusinessActivityTimelineService,
@@ -336,6 +337,17 @@ export const handleWorkhubBusinessApi = async (
         }
       }
       return error(405, "method_not_allowed", "Only GET/POST supported");
+    }
+    if (pathname === "/api/workhub/people") {
+      if (request.method !== "GET") return error(405, "method_not_allowed", "Only GET is available");
+      // Membership and discoverability are checked at request time. Do not
+      // accept a client-provided principal, role, or scope for this directory.
+      const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
+      if (!membership || !listWorkhubApps(membership.role).some(app =>
+        app.key === "directory" && app.availability === "available")) {
+        return error(403, "people_forbidden", "Directory is unavailable");
+      }
+      return json({ items: listWorkhubReferencePeople() });
     }
     if (pathname === "/api/workhub/apps") {
       if (request.method !== "GET") return error(405, "method_not_allowed", "Only GET is available");
