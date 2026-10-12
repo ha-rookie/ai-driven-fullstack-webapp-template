@@ -22,11 +22,11 @@ test("unknown role and absent membership cannot expose reference app names", () 
   assert.deepEqual(listWorkhubApps("superuser"), []);
 });
 
-test("unconnected reference apps have no launch path; live paths are internal-only", () => {
+test("all connected reference apps use bounded internal launch paths", () => {
   for (const role of ["newcomer", "employee", "manager", "accounting", "corporate", "system_admin"]) {
     const apps = listWorkhubApps(role);
     assert.ok(apps.some(app => app.key === "announcements"));
-    assert.equal(apps.find(app => app.key === "directory")?.availability, "unavailable");
+    assert.equal(apps.find(app => app.key === "directory")?.availability, "available");
     for (const app of apps) {
       if (app.availability === "unavailable") assert.equal(app.launchTarget, null);
       else assert.match(app.launchTarget ?? "", /^\/(?:#workhub-[a-z-]+|admin)$/u);
@@ -53,7 +53,7 @@ test("global Apps search reuses the current authorized catalog and routes only c
 
 test("global Apps search reveals neither unauthorized nor unconnected app launch targets", () => {
   for (const role of ["", "unexpected", "employee", "manager", "accounting", "system_admin"]) {
-    assert.deepEqual(searchWorkhubApps(role, "社員・組織"), [], "unconnected apps are not executable search hits");
+    assert.deepEqual(searchWorkhubApps(role, "社員・組織").map(x => x.actionTarget), role === "unexpected" || !role ? [] : ["/#workhub-people"]);
     assert.deepEqual(searchWorkhubApps(role, "　"), [], "empty terms must not enumerate applications");
     for (const result of searchWorkhubApps(role, "社内")) {
       assert.match(result.actionTarget, /^\/(?:#workhub-[a-z-]+|admin)$/u);
@@ -65,13 +65,13 @@ test("global Apps search reveals neither unauthorized nor unconnected app launch
 
 test("HOME shortcuts are the first four connected apps from the already authorized catalog", () => {
   const employee = selectWorkhubHomeShortcuts(listWorkhubApps("employee"));
-  assert.deepEqual(employee.map(app => app.key), ["travel-request", "expense-settlement", "announcements"]);
+  assert.deepEqual(employee.map(app => app.key), ["travel-request", "expense-settlement", "announcements", "directory"]);
   assert.ok(employee.every(app => app.availability === "available" && app.launchTarget.startsWith("/")));
   assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("manager")).map(app => app.key), [
-    "approval-tasks", "announcements",
+    "approval-tasks", "announcements", "directory",
   ]);
   assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("system_admin")).map(app => app.key), [
-    "announcements", "admin-portal",
+    "announcements", "directory", "admin-portal",
   ]);
   assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("unknown")), []);
 });
