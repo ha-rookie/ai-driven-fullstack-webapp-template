@@ -12,7 +12,7 @@ test("Stage3 unified search enforces facets and authorization on mobile without 
   const query = form.getByRole("textbox", { name: "WORKHUBを検索" });
   const category = form.getByRole("combobox", { name: "検索カテゴリ" });
   const button = form.getByRole("button", { name: "検索", exact: true });
-  const results = page.getByRole("region", { name: "検索結果" });
+  const results = page.getByRole("region", { name: "検索結果", exact: true });
 
   await query.fill("出張");
   await category.selectOption("documents");
