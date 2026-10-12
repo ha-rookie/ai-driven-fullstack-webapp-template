@@ -363,6 +363,17 @@
 .workhub-announcement-item h3 { margin: 0 0 7px; font-size: 16px; }
 .workhub-announcement-item p { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .workhub-announcement-item small { color: #526b77; }
+.workhub-announcement-view-toggle {
+  display: inline-flex;
+  margin: 4px 0 14px;
+  min-height: 44px;
+  align-items: center;
+}
+.workhub-announcement-view-toggle:focus-visible {
+  outline: 3px solid #176e72;
+  outline-offset: 3px;
+}
+
 
 /* Cross-domain MY REQUESTS read model. Each domain stays authoritative. */
 .workhub-my-request-item .workhub-request-kind {

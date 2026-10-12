@@ -135,7 +135,7 @@ function LoginScreen() {
 
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const isMei = user?.id === "workhub-demo-mei"; const canReviewTravel = isRen || isMei; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
-  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [showAllAnnouncements, setShowAllAnnouncements] = useState(false); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<"all" | "unread">("all");
   const notificationBellRef = useRef<HTMLButtonElement>(null);
@@ -251,6 +251,7 @@ function TravelWorkspace() {
       setAnnouncements(result.items);
       setAnnouncementLoad("ready");
     } catch {
+      setAnnouncements([]);
       setAnnouncementLoad("error");
     }
   }, []);
@@ -420,6 +421,7 @@ function TravelWorkspace() {
   const awaitingResubmission = selectedWorkflow?.state === "awaiting_resubmission";
   const pendingMyRequests = listActionRequiredMyRequests(myRequests);
   const centerNotifications = notificationFilter === "unread" ? notifications.filter(item => !item.readAt) : notifications;
+  const visibleAnnouncements = showAllAnnouncements ? announcements : announcements.slice(0, 3);
   const openNotificationCenter = () => { setNotificationFilter("all"); setShowNotificationCenter(true); };
   const leaveNotificationCenter = () => { restoreNotificationBellFocus.current = true; setShowNotificationCenter(false); };
   const homeWorkCount: number | null = canReviewTravel ? (myWorkState === "ready" ? myWork.length : null) : isAoi ? (myRequestsState === "ready" ? pendingMyRequests.length : null) : null;
@@ -566,6 +568,34 @@ function TravelWorkspace() {
             <small className="workhub-reference-note">Reference data / Adapter projection</small>
           </article>
         </section>
+        <section className="workhub-announcements" id="workhub-announcements" aria-labelledby="workhub-announcements-title">
+          <div className="workhub-section-heading">
+            <div><span className="workhub-card-label">COMPANY NEWS / ANNOUNCEMENTS</span><h2 id="workhub-announcements-title">社内お知らせ</h2></div>
+            <button type="button" className="workhub-secondary-button" onClick={() => void loadAnnouncements()} disabled={announcementLoad === "loading"}>お知らせを更新</button>
+          </div>
+          <p className="workhub-announcements-intro">会社からの公式連絡です。全社向けの最新情報を先に表示し、個人宛て通知や社内交流とは分けています。現在は重要度・部署別の配信指定には未対応です。</p>
+          {canPublishAnnouncements && <form className="workhub-announcement-compose" onSubmit={publishAnnouncement} aria-label="社内お知らせを登録">
+            <h3>お知らせを公開する（総務担当）</h3>
+            <label>件名<input aria-label="お知らせの件名" value={announcementTitle} maxLength={120} required onChange={(event) => setAnnouncementTitle(event.target.value)} /></label>
+            <label>本文<textarea aria-label="お知らせの本文" value={announcementBody} maxLength={2000} required rows={3} onChange={(event) => setAnnouncementBody(event.target.value)} /></label>
+            <button className="workhub-primary-button" type="submit" disabled={busy || !announcementTitle.trim() || !announcementBody.trim()}>お知らせを公開</button>
+          </form>}
+          {announcementLoad === "loading" ? <p role="status">お知らせを読み込んでいます…</p> :
+            announcementLoad === "error" ? <div role="alert">お知らせを読み込めませんでした。<button className="workhub-secondary-button" type="button" onClick={() => void loadAnnouncements()}>再読み込み</button></div> :
+              announcements.length === 0 ? <p className="workhub-empty-state">現在公開されているお知らせはありません。</p> :
+                <div className="workhub-announcement-list" id="workhub-announcement-list">{visibleAnnouncements.map((item) =>
+                  <article key={item.id} className="workhub-announcement-item">
+                    <h3>{item.title}</h3>
+                    <p>{item.body}</p>
+                    <small>全社向け · 公開日時：{new Date(item.publishedAt).toLocaleString("ja-JP")}</small>
+                  </article>
+                )}</div>}
+          {announcementLoad === "ready" && announcements.length > 3 &&
+            <button type="button" className="workhub-secondary-button workhub-announcement-view-toggle" aria-controls="workhub-announcement-list" aria-expanded={showAllAnnouncements} onClick={() => setShowAllAnnouncements(current => !current)}>
+              {showAllAnnouncements ? "最新3件に戻す" : "すべてのお知らせを見る"}
+            </button>}
+          <small className="workhub-reference-note">全社向けReferenceです。新着3件、展開時は最大10件の同一一覧を切り替えます。重要度は未設定のため、緊急・重要の順位として扱いません。</small>
+        </section>
         <section className="workhub-quick-actions" aria-labelledby="workhub-quick-actions-title">
           <div className="workhub-section-heading"><div><span className="workhub-card-label">QUICK ACTIONS</span><h2 id="workhub-quick-actions-title">何をしたいですか？</h2></div></div>
           <div className="workhub-quick-action-grid">
@@ -677,30 +707,6 @@ function TravelWorkspace() {
           {!isAoi && !isRen && <article className="workhub-home-card workhub-home-card-primary"><span className="workhub-card-label">あなたの優先エリア</span><h2>{reference?.hint ?? "MY WORK"}</h2><p>このReferenceではPersonaごとにHOMEの優先領域を変えます。</p></article>}
         </section>
         <ExpenseWorkspace principalId={user?.id ?? ""} selectedTravelRequestId={journeyTravelId} selectedExpense={expenseSelection} onChanged={() => void loadMyRequests()} />
-        <section className="workhub-announcements" id="workhub-announcements" aria-labelledby="workhub-announcements-title">
-          <div className="workhub-section-heading">
-            <div><span className="workhub-card-label">COMPANY ANNOUNCEMENTS</span><h2 id="workhub-announcements-title">社内お知らせ</h2></div>
-            <button type="button" className="workhub-secondary-button" onClick={() => void loadAnnouncements()} disabled={announcementLoad === "loading"}>お知らせを更新</button>
-          </div>
-          <p className="workhub-announcements-intro">会社からの公式連絡です。申請の状態変化を伝える個人宛て通知とは別に表示しています。</p>
-          {canPublishAnnouncements && <form className="workhub-announcement-compose" onSubmit={publishAnnouncement} aria-label="社内お知らせを登録">
-            <h3>お知らせを公開する（総務担当）</h3>
-            <label>件名<input aria-label="お知らせの件名" value={announcementTitle} maxLength={120} required onChange={(event) => setAnnouncementTitle(event.target.value)} /></label>
-            <label>本文<textarea aria-label="お知らせの本文" value={announcementBody} maxLength={2000} required rows={3} onChange={(event) => setAnnouncementBody(event.target.value)} /></label>
-            <button className="workhub-primary-button" type="submit" disabled={busy || !announcementTitle.trim() || !announcementBody.trim()}>お知らせを公開</button>
-          </form>}
-          {announcementLoad === "loading" ? <p role="status">お知らせを読み込んでいます…</p> :
-            announcementLoad === "error" ? <div role="alert">お知らせを読み込めませんでした。<button className="workhub-secondary-button" type="button" onClick={() => void loadAnnouncements()}>再読み込み</button></div> :
-              announcements.length === 0 ? <p className="workhub-empty-state">現在公開されているお知らせはありません。</p> :
-                <div className="workhub-announcement-list">{announcements.map((item) =>
-                  <article key={item.id} className="workhub-announcement-item">
-                    <h3>{item.title}</h3>
-                    <p>{item.body}</p>
-                    <small>公開日時：{new Date(item.publishedAt).toLocaleString("ja-JP")}</small>
-                  </article>
-                )}</div>}
-          <small className="workhub-reference-note">全社員向けのお知らせを新しい順に最大10件表示します。これはReference Applicationの最小実装です。</small>
-        </section>
         <section className="workhub-social" id="workhub-social" aria-labelledby="workhub-social-title" aria-label="社内交流フィード">
           <div className="workhub-section-heading">
             <div><span className="workhub-card-label">SOCIAL FEED / REFERENCE</span><h2 id="workhub-social-title">社内交流フィード</h2></div>
