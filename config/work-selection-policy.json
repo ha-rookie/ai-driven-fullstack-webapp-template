@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    346
+    347
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-12: Stage 1 #345/#352 completed. Stage 2 #346 is next per approved #343 WBS. No WBS or milestone change. Preview #521 remains open."
+  "notes": "2026-10-12: Explicit user approval to close Stage2 #346 (implementation/automated acceptance) and advance approved #343 WBS to Stage3 #347 (People / Documents / Unified Search). ST-WH2-01..08 physical/system tests deferred to the System Test phase, Not Run. Stage1 #345/#352 complete; #521 Preview auth and #632 Preview D1 Human Gate risks remain independent Open issues. No remote operations authorized by this policy."
 }
