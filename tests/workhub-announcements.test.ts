@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateAnnouncement, WorkhubAnnouncementError, canPublishWorkhubReferenceAnnouncement } from "../src/reference/workhub/announcements";
+import { validateAnnouncement, validateAnnouncementDelivery, WorkhubAnnouncementError, canPublishWorkhubReferenceAnnouncement } from "../src/reference/workhub/announcements";
 
 test("official announcements have bounded, non-empty title and body", () => {
   assert.deepEqual(validateAnnouncement("  部署からのお知らせ ", " 一行目\n二行目 "), {
@@ -29,5 +29,38 @@ test("reference publication requires the actual General Affairs principal and cu
     ["", "corporate"],
   ]) {
     assert.equal(canPublishWorkhubReferenceAnnouncement(principal, role), false, `${principal} / ${role}`);
+  }
+});
+
+test("announcement delivery defaults preserve existing company-wide normal posts", () => {
+  const now = new Date("2026-10-12T14:00:00.000Z");
+  assert.deepEqual(validateAnnouncementDelivery({}, now), {
+    importance: "normal", audienceRole: null,
+    visibleFrom: "2026-10-12T14:00:00.000Z", visibleUntil: null,
+  });
+  assert.deepEqual(validateAnnouncementDelivery({ importance: "critical", audienceRole: "manager",
+    visibleFrom: "2026-10-12T15:00:00.000Z", visibleUntil: "2026-10-12T16:00:00.000Z" }, now), {
+    importance: "critical", audienceRole: "manager",
+    visibleFrom: "2026-10-12T15:00:00.000Z", visibleUntil: "2026-10-12T16:00:00.000Z",
+  });
+  assert.equal(validateAnnouncementDelivery({ importance: "important", audienceRole: "" }).audienceRole, null);
+});
+
+test("announcement delivery validation fails closed on unsafe roles, severity or scheduling", () => {
+  const invalid = [
+    { importance: "emergency" }, { importance: 2 }, { audienceRole: "other-company" },
+    { audienceRole: ["manager"] }, { audienceRole: "root" },
+    { visibleFrom: "not-a-date" }, { visibleFrom: "2026-13-01T00:00:00.000Z" },
+    { visibleFrom: "2026-10-12" }, { visibleFrom: "2026-10-12T00:00:00Z" },
+    { visibleUntil: "tomorrow" },
+    { visibleFrom: "2026-10-12T12:00:00.000Z", visibleUntil: "2026-10-12T12:00:00.000Z" },
+    { visibleFrom: "2026-10-12T13:00:00.000Z", visibleUntil: "2026-10-12T12:00:00.000Z" },
+  ] as const;
+  for (const delivery of invalid) {
+    assert.throws(
+      () => validateAnnouncementDelivery(delivery),
+      (error: unknown) => error instanceof WorkhubAnnouncementError && error.code === "invalid_input",
+      JSON.stringify(delivery),
+    );
   }
 });
