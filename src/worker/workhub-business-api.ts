@@ -173,9 +173,12 @@ const canReadTravelResource = async (
   if (travel.requesterId === principalId) return true;
   if (!travel.workflowInstanceId) return false;
   const item = await services.workflowStore.getOpenWorkItem(travel.workflowInstanceId, environment);
-  return !!item && (item.assigneePrincipal === principalId || await services.delegation.mayAct({
-    actorId: principalId, action: "approve", instance: await services.workflowStore.getInstance(travel.workflowInstanceId, environment) as NonNullable<Awaited<ReturnType<typeof services.workflowStore.getInstance>>>, workItem: item, at: new Date(),
-  }));
+  if (!item) return false;
+  if (item.assigneePrincipal === principalId) return true;
+  const instance = await services.workflowStore.getInstance(travel.workflowInstanceId, environment);
+  return !!instance && services.delegation.mayAct({
+    actorId: principalId, action: "approve", instance, workItem: item, at: new Date(),
+  });
 };
 
 const refreshTravelSearchIndex = async (
