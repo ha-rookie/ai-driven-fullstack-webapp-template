@@ -44,9 +44,8 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   const firstTask = page.getByText(initialPurpose, { exact: true }).locator("..");
   await expect(firstTask).toBeVisible();
   // The actionable approval is already represented by MY WORK on HOME, so
-  // its separate Notification HOME preview is suppressed, never marked read.
-  await expect(page.locator("#workhub-notifications").getByRole("button",
-    { name: /出張申請の承認依頼が届きました/u })).toHaveCount(0);
+  // only the matching action's HOME projection is suppressed; other requests' notifications remain.
+  await expect(page.locator("#workhub-notifications")).toContainText("「今日対応すること」に");
   await page.getByRole("button", { name: /通知 未読\d+件/u }).click();
   await expect(page.locator("#workhub-notification-center").getByRole("button",
     { name: /出張申請の承認依頼が届きました/u })).toBeVisible();
@@ -64,8 +63,7 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
     { name: new RegExp(initialPurpose, "u") })).toContainText("差戻し・要修正");
   // Returned is actionable MY WORK: show the one HOME work card, while
   // retaining the unread notification in the full Notification Center.
-  await expect(page.locator("#workhub-notifications").getByRole("button",
-    { name: /出張申請が差し戻されました/u })).toHaveCount(0);
+  await expect(page.locator("#workhub-notifications")).toContainText("「今日対応すること」に");
   await page.getByRole("button", { name: /通知 未読\d+件/u }).click();
   await expect(page.locator("#workhub-notification-center").getByRole("button",
     { name: /出張申請が差し戻されました/u })).toBeVisible();
