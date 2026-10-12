@@ -17,7 +17,13 @@ test("Stage3 unified search enforces facets and authorization on mobile without 
   await query.fill("出張");
   await category.selectOption("documents");
   await button.click();
-  await expect(results.getByRole("link", { name: /^出張と経費精算の手順（デモ）/u })).toBeVisible();
+  const matchingDocument = results.getByRole("link", { name: /^出張と経費精算の手順（デモ）/u });
+  await expect(matchingDocument).toBeVisible();
+  await matchingDocument.click();
+  await expect(page).toHaveURL(/#workhub-document-travel-expense-current$/u);
+  const documentCard = page.getByRole("article", { name: "文書 出張と経費精算の手順（デモ）" });
+  await expect(documentCard).toBeInViewport();
+  await expect(documentCard).toHaveCSS("outline-style", "solid");
   await expect(results).toContainText("旧版・利用注意");
   await expect(results).not.toContainText("インシデント");
   await expect(results.getByRole("status")).toContainText("閲覧可能な結果");
@@ -36,7 +42,10 @@ test("Stage3 unified search enforces facets and authorization on mobile without 
   await expect(results.getByRole("link", { name: /Ren Manager/ })).toBeVisible();
   await expect(results.getByRole("link")).toHaveCount(1);
   await results.getByRole("link", { name: /Ren Manager/ }).click();
-  await expect(page).toHaveURL(/#workhub-people$/u);
+  await expect(page).toHaveURL(/#workhub-person-reference-person-3$/u);
+  const personCard = page.getByRole("article", { name: "社員 Ren Manager" });
+  await expect(personCard).toBeInViewport();
+  await expect(personCard).toHaveCSS("outline-style", "solid");
 
   await page.route("**/api/workhub/search?**", route => route.fulfill({
     status: 503, contentType: "application/json", body: '{"error":{"message":"unavailable"}}',
