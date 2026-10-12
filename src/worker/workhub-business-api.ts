@@ -510,7 +510,7 @@ export const handleWorkhubBusinessApi = async (
       }
       if (request.method === "GET") {
         const announcements = new D1WorkhubAnnouncementStore(env.DB, environment);
-        return json({ items: await announcements.list() });
+        return json({ items: await announcements.list(membership.role) });
       }
       // A stale Sora session without its corporate membership must not write.
       // The Store retains its independent publisher principal allowlist.
@@ -520,7 +520,12 @@ export const handleWorkhubBusinessApi = async (
       const body = await bodyRecord(request);
       if (body instanceof Response) return body;
       const announcements = new D1WorkhubAnnouncementStore(env.DB, environment);
-      const item = await announcements.publish(principalId, body.title, body.body);
+      const item = await announcements.publish(principalId, body.title, body.body, {
+        importance: body.importance,
+        audienceRole: body.audienceRole,
+        visibleFrom: body.visibleFrom,
+        visibleUntil: body.visibleUntil,
+      });
       return json({ item }, 201);
     }
 
