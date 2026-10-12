@@ -28,6 +28,7 @@ concurrency:
 
 jobs:
   preflight:
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
