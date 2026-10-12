@@ -196,3 +196,81 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh issue comment 132 --repo "$GITHUB_REPOSITORY" --body "⚠️ One-time owner-authorized Preview release FAILED/BLOCKED. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID | Target SHA: $TARGET_SHA | Review steps before further operations; D1 may already have been applied if failure occurred after the apply step. Do not run Preview deployment separately without confirming actual D1 state."
+
+  inspect-approved-preview-config:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 132 &&
+      github.event.comment.author_association == 'OWNER' &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/inspect-preview-config-0036 38866f4f8abe803a226f8266971c0be6ab75ebcc READ ONLY'
+    runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: 38866f4f8abe803a226f8266971c0be6ab75ebcc
+    steps:
+      - name: Checkout exact previously approved code
+        uses: actions/checkout@v4
+        with:
+          ref: 38866f4f8abe803a226f8266971c0be6ab75ebcc
+          fetch-depth: 0
+
+      - name: Require owner Issue command, current main ancestry, and unchanged application
+        env:
+          APPROVAL_COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$APPROVAL_COMMAND" = "/inspect-preview-config-0036 $TARGET_SHA READ ONLY"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          UNEXPECTED="$(git diff --name-only "$TARGET_SHA" origin/main | grep -Ev '^(\.github/workflows/preview-approved-release-0036\.yml|tests/preview-approved-release-0036\.test\.ts)$' || true)"
+          test -z "$UNEXPECTED"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Build but never deploy Preview Vite plugin output
+        run: CLOUDFLARE_ENV=preview npm run build
+
+      - name: Report safe generated target fields only
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const file = '.wrangler/deploy/config.json';
+          if (!fs.existsSync(file)) throw new Error('No generated Wrangler config to inspect');
+          const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const publicInfo = {
+            selectedBuildMode: 'CLOUDFLARE_ENV=preview',
+            worker: config.name ?? null,
+            topLevelKeys: Object.keys(config),
+            runtimeLabel: config.vars?.RUNTIME_ENVIRONMENT ?? null,
+            d1Bindings: (config.d1_databases ?? []).map(
+              item => ({binding: item.binding, database_id: item.database_id,
+                         preview_database_id: item.preview_database_id, database_name: item.database_name}),
+            ),
+          };
+          console.log(JSON.stringify(publicInfo, null, 2));
+          fs.writeFileSync('/tmp/preview-config-public-info.json', JSON.stringify(publicInfo));
+          JS
+
+      - name: Post read-only diagnostic result
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 132 --repo "$GITHUB_REPOSITORY" --body "🔎 Read-only Preview config inspection SUCCESS; no DB write/deploy. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID | Generated target fields: $(cat /tmp/preview-config-public-info.json)"
+
+      - name: Record diagnostic failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 132 --repo "$GITHUB_REPOSITORY" --body "⚠️ Read-only Preview config inspection failed; no DB write/deploy. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
