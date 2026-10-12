@@ -17,7 +17,7 @@ test("Stage3 role-filtered documents explain stale/old versions, are readable on
   await expect(region).toContainText("要再確認");
   await expect(region).toContainText("旧版・参照注意");
   await expect(region).toContainText("v3");
-  await expect(region).toContainText("確認日：2026-10-05");
+  await expect(region.getByRole("article", { name: "文書 出張と経費精算の手順（デモ）" })).toContainText("2026-10-05");
   await expect(region).toContainText("現行文書：出張と経費精算の手順（デモ）");
   await expect(region).not.toContainText("インシデント対応");
 
