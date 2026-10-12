@@ -20,9 +20,14 @@ test("Stage3 people directory is server-scoped, exposes only demo labels, and re
   await expect(people.getByText("CECIL WORKS株式会社（デモ）").first()).toBeVisible();
   await expect(people).toContainText("実際の人事情報・連絡先ではありません");
 
-  const api = await page.request.get("/api/workhub/people");
-  expect(api.status()).toBe(200);
-  const data = await api.json() as { items: Array<Record<string, unknown>> };
+  // Use the actual signed-in browser session, not the APIRequestContext's
+  // independent cookie jar, when verifying an authenticated backend result.
+  const api = await page.evaluate(async () => {
+    const response = await fetch("/api/workhub/people", { credentials: "same-origin" });
+    return { status: response.status, data: await response.json() };
+  });
+  expect(api.status).toBe(200);
+  const data = api.data as { items: Array<Record<string, unknown>> };
   expect(data.items).toHaveLength(6);
   for (const item of data.items) {
     expect(Object.keys(item).sort()).toEqual(["displayName", "organizationLabel", "roleLabel"]);
