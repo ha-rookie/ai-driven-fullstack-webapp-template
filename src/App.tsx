@@ -114,8 +114,15 @@ function LoginScreen() {
 }
 
 function TravelWorkspace() {
-  const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
+  const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const isMei = user?.id === "workhub-demo-mei"; const canReviewTravel = isRen || isMei; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
   const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const [delegation, setDelegation] = useState<{
+    validFrom: string; validUntil: string; revokedAt: string | null;
+  } | null>(null);
+  const [delegationState, setDelegationState] = useState<"loading" | "ready" | "error">("loading");
+  const activeDelegation = !!delegation && !delegation.revokedAt
+    && new Date(delegation.validFrom).getTime() <= Date.now()
+    && Date.now() < new Date(delegation.validUntil).getTime();
   const mutationInFlight = useRef(false);
   const pendingTravelDraft = useRef<TravelRequestRecord | null>(null);
   const loadNotifications = useCallback(async () => {
@@ -132,7 +139,18 @@ function TravelWorkspace() {
       setNotificationState("error");
     }
   }, []);
-  const loadMyWork = useCallback(async () => { if (!isRen) return; setMyWorkState("loading"); try { const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work"); setMyWork(result.items); setMyWorkState("ready"); } catch { setMyWorkState("error"); } }, [isRen]);
+  const loadMyWork = useCallback(async () => { if (!canReviewTravel) return; setMyWorkState("loading"); try { const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work"); setMyWork(result.items); setMyWorkState("ready"); } catch { setMyWorkState("error"); } }, [canReviewTravel]);
+  const loadDelegation = useCallback(async () => {
+    if (!canReviewTravel) return;
+    setDelegationState("loading");
+    try {
+      const status = await apiJson<{ grant: typeof delegation }>("/api/workhub/approval-delegation");
+      setDelegation(status.grant);
+      setDelegationState("ready");
+    } catch {
+      setDelegationState("error");
+    }
+  }, [canReviewTravel]);
   const loadAnnouncements = useCallback(async () => {
     setAnnouncementLoad("loading");
     try {
@@ -145,7 +163,7 @@ function TravelWorkspace() {
   }, []);
   const loadMyRequests = useCallback(async () => { if (!isAoi) return; setMyRequestsState("loading"); try { const result = await apiJson<{ items: UnifiedMyRequest[] }>("/api/workhub/my-requests"); setMyRequests(result.items); setMyRequestsState("ready"); } catch { setMyRequestsState("error"); } }, [isAoi]);
   const openRequest = useCallback(async (id: string) => { const detail = await apiJson<{ request: TravelRequestRecord; workflow: WorkflowRecord | null; returnComment: string | null }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}`); const history = await apiJson<{ items: TimelineActivity[] }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}/timeline`); setSelectedRequest(detail.request); setSelectedWorkflow(detail.workflow); setReturnComment(detail.workflow?.state === "awaiting_resubmission" ? detail.returnComment : null); setTimeline(history.items ?? []); setDestinationOfficeItemId(detail.request.destinationOfficeItemId); setStartDate(detail.request.startDate); setEndDate(detail.request.endDate); setPurpose(detail.request.purpose); return detail; }, []);
-  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements]);
+  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements(), loadDelegation()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements, loadDelegation]);
   const run = async (operation: () => Promise<void>) => {
     // A React state update does not synchronously block two rapid click events.
     if (mutationInFlight.current) return;
@@ -223,6 +241,13 @@ function TravelWorkspace() {
     setMessage("出張申請を提出しました。");
   });
   const updateAndResubmit = () => void run(async () => { if (!selectedRequest || !selectedWorkflow) return; const updated = await apiJson<{ request: TravelRequestRecord }>(`/api/workhub/travel-requests/${selectedRequest.id}`, { method: "PUT", body: JSON.stringify({ expectedVersion: selectedRequest.version, destinationOfficeItemId, startDate, endDate, purpose }) }); await apiJson(`/api/workhub/travel-requests/${selectedRequest.id}/resubmit`, { method: "POST", body: JSON.stringify({ expectedRequestVersion: updated.request.version, expectedWorkflowVersion: selectedWorkflow.version }) }); await openRequest(selectedRequest.id); await Promise.all([loadNotifications(), loadMyRequests()]); setMessage("出張申請を再申請しました。"); });
+  const toggleDelegation = () => void run(async () => {
+    await apiJson("/api/workhub/approval-delegation", {
+      method: "POST", body: JSON.stringify({ enabled: !activeDelegation }),
+    });
+    await Promise.all([loadDelegation(), loadMyWork()]);
+    setMessage(activeDelegation ? "代理承認を取り消しました。" : "Meiへの出張承認代理を24時間有効にしました。");
+  });
   const decide = (entry: MyWorkEntry, action: "approve" | "return") => { const comment = returnReasons[entry.workItem.id]?.trim() ?? ""; if (action === "return" && !comment) { setMessage("差戻し理由を入力してください。"); return; } void run(async () => { await apiJson(`/api/workhub/workflows/${entry.workflow.id}/${action}`, { method: "POST", body: JSON.stringify({ expectedInstanceVersion: entry.workflow.version, expectedWorkItemVersion: entry.workItem.version, ...(action === "return" ? { reasonCode: "correction_required", comment } : {}) }) }); await loadMyWork(); await loadNotifications(); setMessage(action === "approve" ? "承認しました。" : "差し戻しました。"); }); };
   const openNotification = (notification: NotificationRecord) => void run(async () => { if (!notification.readAt) await apiJson(`/api/workhub/notifications/${notification.id}/read`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version }) }); const target = notification.actionTarget?.match(/^resource:travel_request:(.+)$/u)?.[1]; if (target && isAoi) await openRequest(target); await loadNotifications(); });
   const search = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const query = searchText.trim(); if (!query || searching) return; setSearching(true); setMessage(null); try { const response = await apiJson<{ results: SearchResultRecord[] }>(`/api/workhub/search?q=${encodeURIComponent(query)}`); setSearchResults(response.results); } catch (caught) { setMessage(caught instanceof Error ? caught.message : "検索に失敗しました。"); } finally { setSearching(false); } };
@@ -257,7 +282,7 @@ function TravelWorkspace() {
   };
   const awaitingResubmission = selectedWorkflow?.state === "awaiting_resubmission";
   const pendingMyRequests = listActionRequiredMyRequests(myRequests);
-  const homeWorkCount: number | null = isRen ? (myWorkState === "ready" ? myWork.length : null) : isAoi ? (myRequestsState === "ready" ? pendingMyRequests.length : null) : null;
+  const homeWorkCount: number | null = canReviewTravel ? (myWorkState === "ready" ? myWork.length : null) : isAoi ? (myRequestsState === "ready" ? pendingMyRequests.length : null) : null;
   // Print the authoritative current request, not unsaved form fields.
   // This is a browser print/PDF-save view, NOT a historical approved artifact.
   const printTravelRequest = () => void run(async () => {
@@ -323,10 +348,19 @@ function TravelWorkspace() {
         <section className="workhub-dashboard-row" id="workhub-my-work" aria-label="今日の仕事">
           <article className="workhub-dashboard-card workhub-my-work-summary">
             <div className="workhub-section-heading"><div><span className="workhub-card-label">MY WORK</span><h2>今日対応すること</h2></div><span className="workhub-summary-count">{homeWorkCount ?? "—"}</span></div>
-            {isRen ? (
+            {isRen && <div className="workhub-task-list" aria-label="出張承認の委任（Reference）">
+              <p className="workhub-reference-note">出張申請の承認・差戻しのみ、Meiへ最長24時間の代理権限を付与します。実社員の権限は変更しません。</p>
+              {delegationState === "loading" ? <p role="status">委任状態を確認中…</p> :
+                delegationState === "error" ? <button type="button" className="workhub-secondary-button" onClick={() => void loadDelegation()}>委任状態を再確認</button> :
+                <><p role="status">{activeDelegation ? "Meiへ委任中（期限：" + new Date(delegation!.validUntil).toLocaleString("ja-JP") + "）" : "現在、代理承認は無効です"}</p>
+                  <button className="workhub-secondary-button" type="button" disabled={busy} onClick={toggleDelegation}>{activeDelegation ? "代理承認を取り消す" : "Meiへ24時間委任する"}</button></>}
+            </div>}
+            {isMei && <p className="workhub-reference-note">{delegationState === "error" ? "代理承認の権限を確認できません。" :
+              activeDelegation ? "Renからの代理承認が有効です。出張承認タスクを確認できます。" : "出張承認の代理権限はありません。"}</p>}
+            {canReviewTravel ? (
               myWorkState === "loading" ? <p role="status">承認タスクを読み込んでいます…</p>
               : myWorkState === "error" ? <div role="alert"><p>承認タスクを取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadMyWork()}>再読み込み</button></div>
-              : myWork.length === 0 ? <p className="workhub-empty-state">現在、対応が必要なタスクはありません。</p> : <div className="workhub-task-list">{myWork.slice(0, 3).map((entry) => <div className="workhub-task-item" key={entry.workItem.id}><strong>{entry.request.purpose}</strong><span>{entry.request.startDate} → {entry.request.endDate}</span><label className="workhub-return-reason-input">差戻し理由<textarea aria-label={`${entry.request.purpose}の差戻し理由`} value={returnReasons[entry.workItem.id] ?? ""} onChange={(event) => setReturnReasons((current) => ({ ...current, [entry.workItem.id]: event.target.value }))} maxLength={2000} rows={2} placeholder="修正してほしい箇所を具体的に入力" disabled={busy} /></label><div className="workhub-inline-actions"><button className="workhub-secondary-button" type="button" disabled={busy} onClick={() => decide(entry, "return")}>差し戻す</button><button className="workhub-primary-button" type="button" disabled={busy} onClick={() => decide(entry, "approve")}>承認する</button></div></div>)}</div>
+              : myWork.length === 0 ? <p className="workhub-empty-state">現在、対応が必要なタスクはありません。</p> : <div className="workhub-task-list">{myWork.slice(0, 3).map((entry) => <div className="workhub-task-item" key={entry.workItem.id}><strong>{entry.request.purpose}</strong>{entry.workItem && isMei && <small>Renの代理として操作・記録します</small>}<span>{entry.request.startDate} → {entry.request.endDate}</span><label className="workhub-return-reason-input">差戻し理由<textarea aria-label={`${entry.request.purpose}の差戻し理由`} value={returnReasons[entry.workItem.id] ?? ""} onChange={(event) => setReturnReasons((current) => ({ ...current, [entry.workItem.id]: event.target.value }))} maxLength={2000} rows={2} placeholder="修正してほしい箇所を具体的に入力" disabled={busy} /></label><div className="workhub-inline-actions"><button className="workhub-secondary-button" type="button" disabled={busy} onClick={() => decide(entry, "return")}>差し戻す</button><button className="workhub-primary-button" type="button" disabled={busy} onClick={() => decide(entry, "approve")}>承認する</button></div></div>)}</div>
             ) : isAoi ? (
               myRequestsState === "loading" ? <p role="status">対応が必要な申請を確認しています…</p>
               : myRequestsState === "error" ? <div role="alert"><p>申請状況を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadMyRequests()}>再読み込み</button></div>
@@ -337,8 +371,6 @@ function TravelWorkspace() {
                     <span>{request.returnReason?.trim() || "差戻し内容を確認して再申請してください"}</span>
                   </button>
                 )}<small className="workhub-reference-note">直近20件の申請から要対応を表示しています。すべての履歴の総件数ではありません。</small></div>
-            ) : user?.id === "workhub-demo-mei" ? (
-              <div className="workhub-task-list"><p>経費確認はこちらから行えます。処理待ち件数はHOMEでは取得していません。</p><a className="workhub-work-link" href="#workhub-expenses">経費確認画面を開く →</a></div>
             ) : canPublishAnnouncements ? (
               <div className="workhub-task-list"><p>社内お知らせの公開・確認はこちらから行えます。未処理件数の集計ではありません。</p><a className="workhub-work-link" href="#workhub-announcements">社内お知らせを管理する →</a></div>
             ) : user?.id === "workhub-demo-kai" ? (
