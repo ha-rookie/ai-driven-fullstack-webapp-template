@@ -35,3 +35,18 @@ test("one-off approved 0036 Preview release is bound to an exact owner command a
   assert.ok(yml.indexOf("gh issue comment 132") > yml.indexOf(deploy));
   assert.doesNotMatch(yml, /--env production|CLOUDFLARE_ENV=production|d1 migrations apply DB --remote --env production/u);
 });
+
+test("Preview generated target diagnostic never accesses Cloudflare secrets or performs remote changes", () => {
+  const yml = readFileSync(".github/workflows/preview-approved-release-0036.yml", "utf8");
+  const diagnostic = yml.split("  inspect-approved-preview-config:")[1];
+  assert.ok(diagnostic, "Diagnostic owner-only job missing");
+  for (const text of [
+    "github.event.issue.number == 132",
+    "github.actor == github.repository_owner",
+    "/inspect-preview-config-0036 38866f4f8abe803a226f8266971c0be6ab75ebcc READ ONLY",
+    "CLOUDFLARE_ENV=preview npm run build",
+    "Report safe generated target fields only",
+  ]) assert.ok(diagnostic.includes(text), "Missing read-only diagnostic guard: " + text);
+  assert.doesNotMatch(diagnostic, /secrets\.|npx wrangler deploy|migrations apply|d1 execute|CLOUDFLARE_API_TOKEN/u);
+  assert.match(yml, /^on:\s*\n\s+issue_comment:\s*\n\s+types: \[created\]/mu);
+});
