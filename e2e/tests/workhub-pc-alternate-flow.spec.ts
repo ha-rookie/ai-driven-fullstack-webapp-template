@@ -104,3 +104,57 @@ test("PC alternative: Corporate records simulated no-stock rejection, never real
   await expect(card).toContainText("実際の端末在庫を確認した結果ではありません");
   await expect(card.getByRole("button", { name: /デモステップを完了する|デモ再提出/u })).toHaveCount(0);
 });
+
+test("PC simulated shortage stays processing with mock ETA and resumes only after arrival", async ({ page }) => {
+  test.setTimeout(80_000);
+  await signIn(page, "aoi");
+  const id = await beginPc(page);
+  let card = page.locator(`[data-journey-id="${id}"]`);
+  await card.getByRole("button", { name: "現在のデモステップを完了する" }).click();
+  await expect(card).toContainText("1/4ステップ");
+
+  await signIn(page, "sora");
+  card = page.locator(`[data-journey-id="${id}"]`);
+  await card.getByRole("button", { name: "現在のデモステップを完了する" }).click();
+  await expect(card).toContainText("2/4ステップ");
+  await card.getByRole("button", { name: "デモ在庫不足・入荷待ちを登録" }).click();
+  await expect(card).toContainText("デモ入荷待ち・処理中");
+  await expect(card).toContainText("参考予定日（実在庫と無関係）");
+  await expect(card).toContainText("2/4ステップ");
+  await expect(card.getByRole("button", { name: "現在のデモステップを完了する" })).toHaveCount(0);
+
+  // Server-side checks also prevent bypassing the paused processing button.
+  const denied = await page.evaluate(async journeyId => {
+    const csrfResponse = await fetch("/api/auth/csrf", { credentials: "same-origin" });
+    const { csrfToken } = await csrfResponse.json() as { csrfToken: string };
+    const response = await fetch("/api/workhub/secondary-journeys", { credentials: "same-origin" });
+    const listed = await response.json() as { items: Array<{ id: string; version: number; workItemVersion: number }> };
+    const item = listed.items.find(x => x.id === journeyId);
+    return fetch(`/api/workhub/secondary-journeys/${journeyId}/advance`, {
+      method: "POST", credentials: "same-origin",
+      headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ expectedVersion: item?.version, expectedWorkItemVersion: item?.workItemVersion }),
+    }).then(x => x.status);
+  }, id);
+  expect(denied).toBe(409); // Business state is invalid while waiting.
+
+  await signIn(page, "aoi");
+  card = page.locator(`[data-journey-id="${id}"]`);
+  await expect(card).toContainText("デモ入荷待ち・処理中");
+  await expect(card).toContainText("2/4ステップ");
+
+  await signIn(page, "sora");
+  card = page.locator(`[data-journey-id="${id}"]`);
+  await card.getByRole("button", { name: "デモ入荷を確認・処理を再開" }).click();
+  await expect(card).toContainText("デモ入荷確認済み・処理再開可能");
+  await expect(card).toContainText("2/4ステップ");
+  await card.getByRole("button", { name: "現在のデモステップを完了する" }).click();
+  await expect(card).toHaveCount(0);
+
+  await signIn(page, "aoi");
+  card = page.locator(`[data-journey-id="${id}"]`);
+  await expect(card).toContainText("3/4ステップ");
+  await card.getByRole("button", { name: "現在のデモステップを完了する" }).click();
+  await expect(card).toContainText("デモ完了");
+  await expect(card).toContainText("4/4ステップ");
+});
