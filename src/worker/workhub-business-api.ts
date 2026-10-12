@@ -346,6 +346,15 @@ export const handleWorkhubBusinessApi = async (
         const body = await bodyRecord(request);
         if (body instanceof Response) return body;
         const action = stringField(body, "action");
+        if (action === "wait_for_stock" || action === "stock_arrived") {
+          const item = await journey.updatePcStockWait(
+            principalId, membership.role, decodeURIComponent(decisionMatch[1]),
+            action === "wait_for_stock" ? "wait" : "arrived",
+            intField(body, "expectedVersion"), intField(body, "expectedWorkItemVersion"),
+            action === "stock_arrived" ? intField(body, "expectedStockVersion") : undefined,
+          );
+          return json({ item });
+        }
         if (action !== "return" && action !== "reject" && action !== "resubmit") {
           return error(400, "invalid_pc_decision", "Unsupported PC demo action");
         }
