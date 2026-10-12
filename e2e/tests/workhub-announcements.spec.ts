@@ -1,11 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const login = async (page: Page, userId: "sora" | "aoi" | "ren") => {
+const login = async (page: Page, userId: "sora" | "aoi" | "ren" | "mei") => {
   await page.goto("/");
   await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill(userId);
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await expect(page.getByRole("heading", { name: userId === "sora" ? /Sora/u : userId === "ren" ? /Ren/u : /Aoi/u })).toBeVisible();
+  await expect(page.getByRole("heading", { name: userId === "sora" ? /Sora/u : userId === "ren" ? /Ren/u : userId === "mei" ? /Mei/u : /Aoi/u })).toBeVisible();
 };
 
 test("General Affairs publishes a company announcement; employees read but cannot publish", async ({ page }, testInfo) => {
@@ -125,4 +125,72 @@ test("Stage4 visibility windows are enforced in D1 before announcement records r
   await page.context().clearCookies();
   await login(page, "aoi");
   await expect(page.locator("#workhub-announcements")).not.toContainText(title);
+});
+
+test("Stage4 department is a current D1 membership audience, independent of role or forged query", async ({ page }, testInfo) => {
+  const departmentTitle = `開発部向け連絡 E2E ${testInfo.project.name} ${Date.now()}`;
+  const intersectionTitle = `開発部管理職向け E2E ${testInfo.project.name} ${Date.now()}`;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, "sora");
+  const form = page.locator("#workhub-announcements");
+  await form.getByLabel("お知らせの件名").fill(departmentTitle);
+  await form.getByLabel("お知らせの本文").fill("部署の所属に基づくお知らせ");
+  await form.getByLabel("お知らせの配信部署").selectOption("engineering");
+  await form.getByRole("button", { name: "お知らせを公開", exact: true }).click();
+  await expect(page.getByText("社内お知らせを公開しました。", { exact: true })).toBeVisible();
+  await form.getByLabel("お知らせの件名").fill(intersectionTitle);
+  await form.getByLabel("お知らせの本文").fill("同じ部署の管理職にのみ配信");
+  await form.getByLabel("お知らせの配信対象").selectOption("manager");
+  await form.getByLabel("お知らせの配信部署").selectOption("engineering");
+  await form.getByRole("button", { name: "お知らせを公開", exact: true }).click();
+  const currentPublisherItems = await page.evaluate(async () =>
+    (await fetch("/api/workhub/announcements")).json()
+  );
+  expect(JSON.stringify(currentPublisherItems)).not.toContain(departmentTitle);
+  expect(JSON.stringify(currentPublisherItems)).not.toContain(intersectionTitle);
+
+  await page.context().clearCookies();
+  await login(page, "aoi");
+  const employeeItems = await page.evaluate(async () =>
+    (await fetch("/api/workhub/announcements")).json()
+  );
+  expect(JSON.stringify(employeeItems)).toContain(departmentTitle);
+  expect(JSON.stringify(employeeItems)).not.toContain(intersectionTitle);
+
+  await page.context().clearCookies();
+  await login(page, "ren");
+  const managerItems = await page.evaluate(async () =>
+    (await fetch("/api/workhub/announcements")).json()
+  );
+  expect(JSON.stringify(managerItems)).toContain(departmentTitle);
+  expect(JSON.stringify(managerItems)).toContain(intersectionTitle);
+
+  await page.context().clearCookies();
+  await login(page, "mei");
+  const outside = await page.evaluate(async () => {
+    const response = await fetch("/api/workhub/announcements?audienceDepartment=engineering&role=manager");
+    return { status: response.status, result: await response.json() };
+  });
+  expect(outside.status).toBe(200);
+  expect(JSON.stringify(outside.result)).not.toContain(departmentTitle);
+  expect(JSON.stringify(outside.result)).not.toContain(intersectionTitle);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth))
+    .toBeLessThanOrEqual(1);
+});
+
+test("Stage4 department publisher rejects unsupported department identifiers", async ({ page }) => {
+  await login(page, "sora");
+  const outcome = await page.evaluate(async () => {
+    const csrf = await fetch("/api/auth/csrf", { credentials: "same-origin" });
+    const { csrfToken } = await csrf.json() as { csrfToken: string };
+    const response = await fetch("/api/workhub/announcements", {
+      method: "POST", credentials: "same-origin",
+      headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({
+        title: "hidden", body: "forged", audienceDepartment: "executive_secret",
+      }),
+    });
+    return response.status;
+  });
+  expect(outcome).toBe(400);
 });
