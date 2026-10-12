@@ -1,10 +1,16 @@
 /**
  * WORKHUB Reference: official company announcements.
  * This is deliberately separate from transactional notifications and social posts.
- * Initial audience is every authenticated employee; only the reference General
- * Affairs persona can publish. Product authorization must replace this allowlist.
+ * Initial audience is current WORKHUB-scope members with the announcement
+ * application, not any arbitrary signed-in session. The Worker enforces scope
+ * and role on every request. The Reference publisher allowlist is NOT product
+ * RBAC and must be replaced before business deployment.
  */
 export const WORKHUB_ANNOUNCEMENT_PUBLISHER_ID = "workhub-demo-sora";
+
+/** Extra publishing condition on top of current scope/app authorization. */
+export const canPublishWorkhubReferenceAnnouncement = (principalId: string, currentRole: string): boolean =>
+  principalId === WORKHUB_ANNOUNCEMENT_PUBLISHER_ID && currentRole === "corporate";
 
 export interface WorkhubAnnouncement {
   readonly id: string;
