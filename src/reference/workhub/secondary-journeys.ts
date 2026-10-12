@@ -32,6 +32,12 @@ export const SECONDARY_DEFINITIONS: readonly WorkflowDefinition[] = [
   },
 ];
 
+const STOCK_WAIT_RESOURCE_TYPE = "workhub_pc_stock_wait_mock";
+const STOCK_WAIT_DEFINITION: WorkflowDefinition = {
+  key: "workhub.pc_stock_wait.reference", version: 1,
+  steps: [{ key: "arrival", assigneeResolverKey: "corporate" }],
+};
+
 export type SecondaryIntent = "moving" | "pc-replacement";
 export interface SecondaryStep {
   readonly key: string;
@@ -52,6 +58,12 @@ export interface SecondaryJourneyView {
   readonly assignedToMe: boolean;
   readonly submissionKey: string;
   readonly steps: readonly SecondaryStep[];
+  readonly stockWait?: {
+    readonly state: "waiting" | "arrived";
+    readonly mockEta: string;
+    readonly version: number;
+    readonly workItemVersion: number | null;
+  } | null;
 }
 
 const CONFIG = {
@@ -120,7 +132,7 @@ export class WorkhubSecondaryJourneyService {
     this.workflow = new WorkflowService({
       environment,
       store: this.store,
-      definitions: new StaticWorkflowDefinitionRegistry([...SECONDARY_DEFINITIONS, ...MOVING_MOCK_DEFINITIONS]),
+      definitions: new StaticWorkflowDefinitionRegistry([...SECONDARY_DEFINITIONS, ...MOVING_MOCK_DEFINITIONS, STOCK_WAIT_DEFINITION]),
       assignees: {
         resolve: async (key, context) =>
           key === "requester" ? context.requesterId
@@ -149,6 +161,17 @@ export class WorkhubSecondaryJourneyService {
     return records;
   }
 
+  private async findStockWait(pcWorkflowId: string): Promise<WorkflowInstanceRecord | null> {
+    const row = await this.db.prepare(`
+      SELECT id FROM workflow_instances
+      WHERE environment = ? AND resource_type = ? AND resource_id = ?
+        AND requester_id = ?
+      LIMIT 1
+    `).bind(this.environment, STOCK_WAIT_RESOURCE_TYPE, pcWorkflowId, "workhub-demo-sora")
+      .first<{ id: string }>();
+    return row ? this.store.getInstance(row.id, this.environment) : null;
+  }
+
   /**
    * Workflow terminal rejection clears currentStepKey. The persisted
    * reject transition records which step stopped. Read only for rejections.
@@ -165,7 +188,23 @@ export class WorkhubSecondaryJourneyService {
       `).bind(this.environment, instance.id).first<{ from_step_key: string | null }>();
       rejectedStepKey = transition?.from_step_key ?? null;
     }
-    return projectSecondaryJourney(instance, item, principalId, rejectedStepKey);
+    const view = projectSecondaryJourney(instance, item, principalId, rejectedStepKey);
+    if (instance.definitionKey !== CONFIG["pc-replacement"].definitionKey
+      || instance.state === "rejected") return view;
+    const stock = await this.findStockWait(instance.id);
+    if (!stock) return view;
+    const stockItem = await this.store.getOpenWorkItem(stock.id, this.environment);
+    const eta = new Date(stock.createdAt);
+    eta.setUTCDate(eta.getUTCDate() + 7);
+    return {
+      ...view,
+      stockWait: {
+        state: stock.state === "completed" ? "arrived" : "waiting",
+        mockEta: eta.toISOString().slice(0, 10),
+        version: stock.version,
+        workItemVersion: stockItem?.version ?? null,
+      },
+    };
   }
 
   async list(principalId: string, role: string): Promise<readonly SecondaryJourneyView[]> {
@@ -284,6 +323,60 @@ export class WorkhubSecondaryJourneyService {
   }
 
   /**
+   * Simulated shortage is a separate persisted Workflow (not a terminal reject).
+   * The original PC remains in the processing step, with Corporate assignment.
+   */
+  async updatePcStockWait(
+    principalId: string, role: string, id: string,
+    action: "wait" | "arrived", expectedVersion: number,
+    expectedWorkItemVersion: number, stockVersion?: number,
+  ): Promise<SecondaryJourneyView> {
+    const instance = await this.store.getInstance(id, this.environment);
+    if (!instance || instance.resourceType !== SECONDARY_RESOURCE_TYPE
+      || instance.definitionKey !== CONFIG["pc-replacement"].definitionKey) {
+      throw new WorkflowError("not_found", "PC replacement demo unavailable");
+    }
+    const item = await this.store.getOpenWorkItem(id, this.environment);
+    if (role !== "corporate" || principalId !== "workhub-demo-sora"
+      || !item || item.assigneePrincipal !== principalId
+      || instance.state !== "active" || instance.currentStepKey !== "processing") {
+      throw new WorkflowError("not_found", "PC stock wait action unavailable");
+    }
+    if (instance.version !== expectedVersion || item.version !== expectedWorkItemVersion) {
+      throw new WorkflowError("conflict", "PC replacement version is stale");
+    }
+    const existing = await this.findStockWait(id);
+    if (action === "wait") {
+      if (!existing) {
+        try {
+          await this.workflow.start({
+            resourceType: STOCK_WAIT_RESOURCE_TYPE, resourceId: id,
+            requesterId: principalId,
+            definitionKey: STOCK_WAIT_DEFINITION.key, definitionVersion: 1,
+            submissionKey: `workhub-pc-stock-wait:${id}`,
+          });
+        } catch (caught) {
+          if (!(caught instanceof WorkflowError && caught.code === "conflict"
+            && await this.findStockWait(id))) throw caught;
+        }
+      }
+    } else {
+      if (!existing || existing.state !== "active" || stockVersion === undefined) {
+        throw new WorkflowError("invalid_state", "Stock arrival confirmation is unavailable");
+      }
+      const stockItem = await this.store.getOpenWorkItem(existing.id, this.environment);
+      if (!stockItem || stockItem.assigneePrincipal !== principalId) {
+        throw new WorkflowError("not_found", "Stock wait item unavailable");
+      }
+      await this.workflow.approve({
+        instanceId: existing.id, actorId: principalId,
+        expectedInstanceVersion: stockVersion, expectedWorkItemVersion: stockItem.version,
+      });
+    }
+    return this.projectInstance(instance, item, principalId);
+  }
+
+  /**
    * PC-only exception handling. The current Workflow work item and requester
    * are the authorization boundary; no simulated stock or device record exists.
    */
@@ -369,6 +462,13 @@ export class WorkhubSecondaryJourneyService {
     }
     if (role === "corporate" && principalId !== "workhub-demo-sora") {
       throw new WorkflowError("not_found", "Demo work item not available");
+    }
+    if (instance.definitionKey === CONFIG["pc-replacement"].definitionKey
+      && instance.currentStepKey === "processing") {
+      const stockWait = await this.findStockWait(instance.id);
+      if (stockWait && stockWait.state !== "completed") {
+        throw new WorkflowError("invalid_state", "Stock arrival demo must be confirmed first");
+      }
     }
     const result = await this.workflow.approve({
       instanceId: instance.id,
