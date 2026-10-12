@@ -234,7 +234,7 @@ export default function WorkhubSecondaryJourneys({ role }: {
                       <button type="button" className="workhub-secondary-button"
                         disabled={busy} onClick={() => pcDecision(item, "reject")}>
                         デモ在庫なしとして終了
-                      </button>
+                      </button>}
                   </div>}
               </>}
           </article>;
