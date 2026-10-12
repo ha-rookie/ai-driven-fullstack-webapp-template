@@ -85,7 +85,9 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(page.getByText("承認しました。", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(correctedPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
-  await expect(page.getByText("該当する検索結果はありません。", { exact: true })).toBeVisible();
+  // A zero-hit search now explains which query and category were searched.
+  await expect(page.getByRole("region", { name: "検索結果", exact: true })
+    .getByText("「" + correctedPurpose + "」に一致する結果はありません（カテゴリ：すべて）。")).toBeVisible();
 
   await switchPersona(page, "aoi");
   const approvedNotification = latestNotification(page, "出張申請が承認されました");

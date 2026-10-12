@@ -47,6 +47,23 @@ test("Stage3 unified search enforces facets and authorization on mobile without 
   await expect(personCard).toBeInViewport();
   await expect(personCard).toHaveCSS("outline-style", "solid");
 
+  // A valid zero-hit result is neither a 503 nor an authorization bypass:
+  // show the real search/facet and give a safe way back to a broader search.
+  // 'Ren' alone also matches the "Reference" substring of sample documents.
+  // Use the full person name to establish a true zero-hit documents query.
+  await query.fill("Ren Manager");
+  await category.selectOption("documents");
+  await button.click();
+  await expect(results.getByText("「Ren Manager」に一致する結果はありません（カテゴリ：文書）。")).toBeVisible();
+  await expect(results.getByRole("button", { name: "カテゴリを「すべて」に戻す" })).toBeVisible();
+  await results.getByRole("button", { name: "カテゴリを「すべて」に戻す" }).click();
+  await expect(category).toHaveValue("all");
+  await expect(query).toHaveValue("Ren Manager");
+  await expect(query).toBeFocused();
+  await expect(results).toHaveCount(0);
+  await button.click();
+  await expect(results.getByRole("link", { name: /Ren Manager/u })).toBeVisible();
+
   await page.route("**/api/workhub/search?**", route => route.fulfill({
     status: 503, contentType: "application/json", body: '{"error":{"message":"unavailable"}}',
   }));
