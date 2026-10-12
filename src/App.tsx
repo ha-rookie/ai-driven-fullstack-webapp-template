@@ -11,6 +11,12 @@ interface DemoPersona { readonly key: string; readonly userId: string; readonly 
 interface DemoConfig { readonly demoEnabled: boolean; readonly personas: DemoPersona[]; readonly demoPassword?: string; readonly authMode?: "google_oidc"; readonly oidcEnabled?: boolean; }
 interface OfficeOption { readonly itemId: string; readonly revisionId: string; readonly code: string; readonly label: string; }
 interface WorkhubDirectoryPerson { readonly displayName: string; readonly roleLabel: string; readonly organizationLabel: string; }
+interface WorkhubDocumentSummary {
+  readonly id: string; readonly title: string; readonly category: "公式" | "手順" | "FAQ";
+  readonly version: number; readonly ownerLabel: string; readonly reviewedAt: string;
+  readonly state: "current" | "stale" | "superseded";
+  readonly summary: string; readonly replacementTitle: string | null;
+}
 interface UnifiedMyRequest {
   readonly kind: "travel" | "expense";
   readonly id: string;
@@ -123,6 +129,8 @@ function TravelWorkspace() {
   const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
   const [people, setPeople] = useState<readonly WorkhubDirectoryPerson[]>([]);
   const [peopleState, setPeopleState] = useState<"loading" | "ready" | "error">("loading");
+  const [documents, setDocuments] = useState<readonly WorkhubDocumentSummary[]>([]);
+  const [documentsState, setDocumentsState] = useState<"loading" | "ready" | "error">("loading");
   const [delegation, setDelegation] = useState<ApprovalDelegationGrant | null>(null);
   const [delegationState, setDelegationState] = useState<"loading" | "ready" | "error">("loading");
   const activeDelegation = isActiveApprovalDelegation(delegation);
@@ -183,6 +191,19 @@ function TravelWorkspace() {
       setPeopleState("error");
     }
   }, []);
+  const loadDocuments = useCallback(async () => {
+    setDocumentsState("loading");
+    try {
+      const response = await apiJson<{ items: WorkhubDocumentSummary[] }>("/api/workhub/documents");
+      if (!Array.isArray(response.items)) throw new Error("invalid_documents_response");
+      setDocuments(response.items);
+      setDocumentsState("ready");
+    } catch {
+      // A failed authorized read must not leave a stale list pretending to be current.
+      setDocuments([]);
+      setDocumentsState("error");
+    }
+  }, []);
   const loadAnnouncements = useCallback(async () => {
     setAnnouncementLoad("loading");
     try {
@@ -195,7 +216,7 @@ function TravelWorkspace() {
   }, []);
   const loadMyRequests = useCallback(async () => { if (!isAoi) return; setMyRequestsState("loading"); try { const result = await apiJson<{ items: UnifiedMyRequest[] }>("/api/workhub/my-requests"); setMyRequests(result.items); setMyRequestsState("ready"); } catch { setMyRequestsState("error"); } }, [isAoi]);
   const openRequest = useCallback(async (id: string) => { const detail = await apiJson<{ request: TravelRequestRecord; workflow: WorkflowRecord | null; returnComment: string | null }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}`); const history = await apiJson<{ items: TimelineActivity[] }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}/timeline`); setSelectedRequest(detail.request); setSelectedWorkflow(detail.workflow); setReturnComment(detail.workflow?.state === "awaiting_resubmission" ? detail.returnComment : null); setTimeline(history.items ?? []); setDestinationOfficeItemId(detail.request.destinationOfficeItemId); setStartDate(detail.request.startDate); setEndDate(detail.request.endDate); setPurpose(detail.request.purpose); return detail; }, []);
-  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements(), loadDelegation(), loadPeople()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements, loadDelegation, loadPeople]);
+  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements(), loadDelegation(), loadPeople(), loadDocuments()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements, loadDelegation, loadPeople, loadDocuments]);
   const run = async (operation: () => Promise<void>) => {
     // A React state update does not synchronously block two rapid click events.
     if (mutationInFlight.current) return;
@@ -370,7 +391,7 @@ function TravelWorkspace() {
         {(isAoi || user?.id === "workhub-demo-mei") && <a href="#workhub-expenses"><span aria-hidden="true">¥</span>交通費・経費精算</a>}
         <a href="#workhub-apps"><span aria-hidden="true">▦</span>アプリ</a>
         <a href="#workhub-people"><span aria-hidden="true">♙</span>組織・人</a>
-        <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">▱</span>ナレッジ</span>
+        <a href="#workhub-documents"><span aria-hidden="true">▱</span>ナレッジ</a>
         <a href="#workhub-announcements"><span aria-hidden="true">◌</span>社内お知らせ</a>
         <div className="workhub-side-nav-spacer" />
         <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">?</span>サポート</span>
@@ -461,6 +482,26 @@ function TravelWorkspace() {
                 <div className="workhub-people-grid">{people.map(person =>
                   <article className="workhub-people-card" key={person.displayName} aria-label={`社員 ${person.displayName}`}>
                     <strong>{person.displayName}</strong><p>{person.roleLabel}</p><small>{person.organizationLabel}</small>
+                  </article>
+                )}</div>}
+        </section>
+        <section className="workhub-documents" id="workhub-documents" aria-labelledby="workhub-documents-title">
+          <div className="workhub-section-heading">
+            <div><span className="workhub-card-label">DOCUMENTS / KNOWLEDGE</span><h2 id="workhub-documents-title">ナレッジ</h2></div>
+            <button type="button" className="workhub-secondary-button" disabled={documentsState === "loading"} onClick={() => void loadDocuments()}>文書一覧を更新</button>
+          </div>
+          <p>業務文書の版と確認状況を判断するデモ一覧です。実際の社内規程や運用手順ではありません。</p>
+          {documentsState === "loading" ? <p role="status">文書一覧を読み込んでいます…</p> :
+            documentsState === "error" ? <div role="alert"><p>文書一覧を取得できません。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadDocuments()}>再読み込み</button></div> :
+              documents.length === 0 ? <p className="workhub-empty-state">閲覧できるデモ文書はありません。</p> :
+                <div className="workhub-document-grid">{documents.map(doc =>
+                  <article className="workhub-document-card" aria-label={`文書 ${doc.title}`} key={doc.id}>
+                    <div className="workhub-document-card-top"><span>{doc.category}</span><strong className={`workhub-document-state is-${doc.state}`}>{doc.state === "current" ? "現行" : doc.state === "stale" ? "要再確認" : "旧版・参照注意"}</strong></div>
+                    <strong className="workhub-document-title">{doc.title}</strong>
+                    <p>{doc.summary}</p>
+                    <dl><div><dt>版</dt><dd>v{doc.version}</dd></div><div><dt>管理者</dt><dd>{doc.ownerLabel}</dd></div><div><dt>確認日</dt><dd>{doc.reviewedAt}</dd></div></dl>
+                    {doc.state === "superseded" && <p className="workhub-document-warning">現行文書：{doc.replacementTitle ?? "管理者に確認してください"}</p>}
+                    {doc.state === "stale" && <p className="workhub-document-warning">この版は担当者の再確認が必要です。</p>}
                   </article>
                 )}</div>}
         </section>
