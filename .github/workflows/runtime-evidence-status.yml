@@ -87,7 +87,7 @@ jobs:
           NODE
 
       - name: Upload derived evidence view
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-evidence-status-${{ inputs.target_sha }}
           path: artifacts/runtime-evidence/status.json
