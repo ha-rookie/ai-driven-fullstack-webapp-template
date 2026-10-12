@@ -47,9 +47,9 @@ const REFERENCE_APPS: readonly ReferenceAppDefinition[] = [
     availability: "available", launchTarget: "/#workhub-announcements", allowedRoles: EVERY_ROLE,
   },
   {
-    key: "directory", displayName: "社員・組織", description: "社員や組織の情報を探す（未接続）",
-    category: "組織・人", sourceSystem: "Reference / not connected",
-    availability: "unavailable", launchTarget: null, allowedRoles: EVERY_ROLE,
+    key: "directory", displayName: "社員・組織", description: "デモ社員の名前と担当区分を確認する",
+    category: "組織・人", sourceSystem: "WORKHUB Reference",
+    availability: "available", launchTarget: "/#workhub-people", allowedRoles: EVERY_ROLE,
   },
   {
     key: "admin-portal", displayName: "管理ポータル", description: "システムの運用状況を確認する",
