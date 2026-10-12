@@ -437,7 +437,7 @@ function TravelWorkspace() {
         {searchState !== "idle" && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">
           {searchState === "loading" ? <p role="status">検索しています…</p> :
             searchState === "error" ? <div role="alert"><p>検索結果を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void search()}>再検索</button></div> :
-            searchResults.length === 0 ? <p>該当する検索結果はありません。検索語やカテゴリを変更してください。</p> : <div className="workhub-search-results">
+            searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">
             <p role="status">{searchResults.length}件の閲覧可能な結果を表示しています。</p>
             {searchResults.map(result => {
               const key = `${result.resourceType}:${result.resourceId}`;
