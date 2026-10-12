@@ -605,6 +605,13 @@ input:disabled {
   font-size: 23px;
 }
 
+/* This must win over the subsequent generic .workhub-home-card typography
+   while leaving dark text inside the white form controls. */
+.workhub-home-card.workhub-home-card-primary h2,
+.workhub-home-card.workhub-home-card-primary p {
+  color: #fff;
+}
+
 .workhub-home-card p {
   max-width: 670px;
   margin: 12px 0 0;
@@ -988,8 +995,9 @@ input:disabled {
 .workhub-reference-note {
   display: block;
   margin-top: 14px;
-  color: #93a0a6;
-  font-size: 10px;
+  color: #506873;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .workhub-quick-actions {
@@ -1242,7 +1250,10 @@ input:disabled {
 
 @media print {
   @page { size: A4; margin: 16mm; }
-  html, body, #root { min-height: 0; margin: 0; background: #fff !important; }
+  html, body, #root { min-height: 0; margin: 0; padding: 0; background: #fff !important; }
+  /* The screen shell's 100vh minimum can create a phantom blank PDF page
+     when its on-screen children are hidden for print. */
+  .workhub-home-shell { min-height: 0 !important; height: auto !important; margin: 0; padding: 0; background: #fff; }
   .workhub-home-shell > .workhub-home-header,
   .workhub-home-shell > .workhub-portal-layout { display: none !important; }
   .workhub-travel-print-sheet {
