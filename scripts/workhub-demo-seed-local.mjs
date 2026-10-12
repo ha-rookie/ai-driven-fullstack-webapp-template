@@ -15,6 +15,15 @@ const personas = [
   ["workhub-demo-kai", "Kai Admin", "kai", "system_admin", "scrypt$32768$8$3$VVZXWFlaW1xdXl9gYWJjZA$tqIvcsqFd8kO066uGOU-o_10yXja3EAiQsYmPGqqHbQ"],
 ];
 
+const demoDepartments = [
+  ["workhub-demo-haru", "engineering"],
+  ["workhub-demo-aoi", "engineering"],
+  ["workhub-demo-ren", "engineering"],
+  ["workhub-demo-mei", "finance"],
+  ["workhub-demo-sora", "people"],
+  ["workhub-demo-kai", "it"],
+];
+
 const offices = [
   ["workhub-office-nagoya", "workhub-office-nagoya-r1", "NAGOYA", "Nagoya Office", 10],
   ["workhub-office-tokyo", "workhub-office-tokyo-r1", "TOKYO", "Tokyo Office", 20],
@@ -57,6 +66,17 @@ INSERT INTO scope_memberships (scope_id, user_id, role, created_at, updated_at)
 VALUES (${quote(scopeId)}, ${quote(id)}, ${quote(role)}, ${quote(timestamp)}, ${quote(timestamp)})
 ON CONFLICT(scope_id, user_id) DO UPDATE SET
   role = excluded.role,
+  updated_at = excluded.updated_at;`).join("\n");
+
+// Explicit Reference department assignment, independent of business role.
+const departmentMembershipSql = demoDepartments.map(([id, department]) => `
+INSERT INTO workhub_department_memberships (
+  scope_id, user_id, department_code, updated_at
+) VALUES (
+  ${quote(scopeId)}, ${quote(id)}, ${quote(department)}, ${quote(timestamp)}
+)
+ON CONFLICT(scope_id, user_id) DO UPDATE SET
+  department_code = excluded.department_code,
   updated_at = excluded.updated_at;`).join("\n");
 
 const officeItemSql = referenceMasters.map(([itemId, , masterKey, code]) => `
@@ -119,6 +139,7 @@ ON CONFLICT(id) DO UPDATE SET
 ${userSql}
 ${credentialSql}
 ${membershipSql}
+${departmentMembershipSql}
 ${officeItemSql}
 ${officeRevisionSql}
 `;
