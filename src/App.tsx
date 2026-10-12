@@ -131,6 +131,9 @@ function TravelWorkspace() {
   const [peopleState, setPeopleState] = useState<"loading" | "ready" | "error">("loading");
   const [documents, setDocuments] = useState<readonly WorkhubDocumentSummary[]>([]);
   const [documentsState, setDocumentsState] = useState<"loading" | "ready" | "error">("loading");
+  const [searchCategory, setSearchCategory] = useState("all");
+  const [searchState, setSearchState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const searchRequestVersion = useRef(0);
   const [delegation, setDelegation] = useState<ApprovalDelegationGrant | null>(null);
   const [delegationState, setDelegationState] = useState<"loading" | "ready" | "error">("loading");
   const activeDelegation = isActiveApprovalDelegation(delegation);
@@ -325,7 +328,29 @@ function TravelWorkspace() {
   const decide = (entry: MyWorkEntry, action: "approve" | "return") => { const comment = returnReasons[entry.workItem.id]?.trim() ?? ""; if (action === "return" && !comment) { setMessage("差戻し理由を入力してください。"); return; } void run(async () => { await apiJson(`/api/workhub/workflows/${entry.workflow.id}/${action}`, { method: "POST", body: JSON.stringify({ expectedInstanceVersion: entry.workflow.version, expectedWorkItemVersion: entry.workItem.version, ...(action === "return" ? { reasonCode: "correction_required", comment } : {}) }) }); focusMyWorkAfterDecision.current = true; await loadMyWork(); await loadNotifications(); setMessage(action === "approve" ? "承認しました。" : "差し戻しました。"); }); };
   const retryDelegationRead = () => { focusDelegationAfterRead.current = true; void loadDelegation(); };
   const openNotification = (notification: NotificationRecord) => void run(async () => { if (!notification.readAt) await apiJson(`/api/workhub/notifications/${notification.id}/read`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version }) }); const target = notification.actionTarget?.match(/^resource:travel_request:(.+)$/u)?.[1]; if (target && isAoi) await openRequest(target); await loadNotifications(); });
-  const search = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const query = searchText.trim(); if (!query || searching) return; setSearching(true); setMessage(null); try { const response = await apiJson<{ results: SearchResultRecord[] }>(`/api/workhub/search?q=${encodeURIComponent(query)}`); setSearchResults(response.results); } catch (caught) { setMessage(caught instanceof Error ? caught.message : "検索に失敗しました。"); } finally { setSearching(false); } };
+  const search = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    const query = searchText.trim();
+    if (!query || searching) return;
+    const version = ++searchRequestVersion.current;
+    setSearching(true);
+    setSearchState("loading");
+    setSearchResults([]);
+    try {
+      const response = await apiJson<{ results: SearchResultRecord[] }>(
+        `/api/workhub/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(searchCategory)}`,
+      );
+      if (version !== searchRequestVersion.current) return;
+      setSearchResults(response.results);
+      setSearchState("ready");
+    } catch {
+      if (version !== searchRequestVersion.current) return;
+      setSearchResults([]);
+      setSearchState("error");
+    } finally {
+      if (version === searchRequestVersion.current) setSearching(false);
+    }
+  };
   const openSearchResult = (result: SearchResultRecord) => void run(async () => { if (result.resourceType === "travel_request") await openRequest(result.resourceId); });
   const selectMyRequest = (request: UnifiedMyRequest) => {
     if (request.kind === "expense") {
@@ -371,7 +396,10 @@ function TravelWorkspace() {
       <Brand />
       <form className="workhub-global-search" onSubmit={search} role="search">
         <label className="workhub-sr-only" htmlFor="workhub-global-search">WORKHUBを検索</label>
-        <input id="workhub-global-search" value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="社内の情報を検索" />
+        <input id="workhub-global-search" value={searchText} onChange={(event) => { ++searchRequestVersion.current; setSearchText(event.target.value); setSearchState("idle"); setSearchResults([]); setSearching(false); }} placeholder="社内の情報を検索" />
+        <select className="workhub-search-category" aria-label="検索カテゴリ" value={searchCategory} onChange={(event) => { ++searchRequestVersion.current; setSearchCategory(event.target.value); setSearchState("idle"); setSearchResults([]); setSearching(false); }}>
+          <option value="all">すべて</option><option value="requests">申請</option><option value="apps">アプリ</option><option value="documents">文書</option><option value="people">社員</option>
+        </select>
         <button type="submit" disabled={searching || !searchText.trim()} aria-label="検索">{searching ? "…" : "⌕"}</button>
       </form>
       <div className="workhub-header-actions" aria-label="グローバル操作">
@@ -406,11 +434,14 @@ function TravelWorkspace() {
           </div>
         </section>
         {message && <div className="workhub-demo-note" role="status"><strong>WORKHUB</strong><span>{message}</span></div>}
-        {searchText.trim() && !searching && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">
-          {searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">
+        {searchState !== "idle" && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">
+          {searchState === "loading" ? <p role="status">検索しています…</p> :
+            searchState === "error" ? <div role="alert"><p>検索結果を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void search()}>再検索</button></div> :
+            searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">
+            <p role="status">{searchResults.length}件の閲覧可能な結果を表示しています。</p>
             {searchResults.map(result => {
               const key = `${result.resourceType}:${result.resourceId}`;
-              const internalAppTarget = result.resourceType === "workhub_app"
+              const internalAppTarget = ["workhub_app", "workhub_person", "workhub_document"].includes(result.resourceType)
                 && /^\/(?:#workhub-[a-z-]+|admin)$/u.test(result.actionTarget ?? "")
                   ? result.actionTarget : null;
               const content = <><strong>{result.title}</strong>{result.snippet && <span>{result.snippet}</span>}<small>{result.category === "apps" ? "アプリ" : result.category}</small></>;
