@@ -21,7 +21,8 @@ import { WorkhubSecondaryJourneyService } from "../reference/workhub/secondary-j
 import { WorkhubTravelDelegation } from "../reference/workhub/approval-delegation";
 import { resolveApplicationSession } from "./auth";
 import { findScopeMembership } from "./authorization";
-import { listWorkhubApps, searchWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
+import { listWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
+import { isWorkhubUnifiedCategory, rankWorkhubUnifiedResults, searchWorkhubReferenceCatalog } from "../reference/workhub/unified-search";
 import { listWorkhubReferencePeople } from "../reference/workhub/people";
 import { listWorkhubReferenceDocuments } from "../reference/workhub/documents";
 import {
@@ -503,17 +504,35 @@ export const handleWorkhubBusinessApi = async (
 
     if (request.method === "GET" && pathname === "/api/workhub/search") {
       const text = url.searchParams.get("q") ?? "";
+      const category = url.searchParams.get("category") ?? "all";
+      if (!isWorkhubUnifiedCategory(category)) {
+        return error(400, "search_invalid_category", "Search category is invalid");
+      }
       const cursor = url.searchParams.get("cursor") ?? undefined;
-      const response = await createWorkhubSearch(principalId, services, environment).search(
-        { principalId, environment },
-        { text, categories: ["requests"], limit: 20, ...(cursor ? { cursor } : {}) },
-      );
-      // Resolve Apps from the SAME server-owned catalog as /api/workhub/apps.
-      // Missing membership does not grant catalog discovery; the existing
-      // requester-scoped travel search keeps its own resource authorization.
+      if (cursor && category !== "all" && category !== "requests") {
+        return error(400, "search_invalid_cursor", "Search cursor is invalid");
+      }
+      // #305 handles query bounds, current resource authorization and hydrated
+      // travel results. An index hit never grants access to a request.
+      const requestResults = category === "all" || category === "requests"
+        ? await createWorkhubSearch(principalId, services, environment).search(
+          { principalId, environment },
+          { text, categories: ["requests"], limit: 20, ...(cursor ? { cursor } : {}) },
+        )
+        : { results: [], nextCursor: null };
+      // The other categories are immutable Reference projections. Rehydrate
+      // only after resolving current server-side D1 scope/role. A missing
+      // membership must not reveal counts, titles, hints, or other facets.
       const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
-      const appResults = membership && !cursor ? searchWorkhubApps(membership.role, text) : [];
-      return json({ ...response, results: [...appResults, ...response.results] });
+      const references = membership && !cursor && category !== "requests"
+        ? await searchWorkhubReferenceCatalog(membership.role, principalId, environment, text, category)
+        : [];
+      return json({
+        ...requestResults,
+        results: rankWorkhubUnifiedResults(
+          [...references, ...requestResults.results], text,
+        ).slice(0, 20),
+      });
     }
 
     if (request.method === "GET" && pathname === "/api/workhub/offices") {
