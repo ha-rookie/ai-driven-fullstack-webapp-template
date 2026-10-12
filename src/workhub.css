@@ -752,6 +752,22 @@ input:disabled {
   background: transparent;
 }
 
+.workhub-search-category {
+  flex: 0 0 104px;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid #c7d9dc;
+  border-radius: 7px;
+  background: #fff;
+  color: #254452;
+  font: inherit;
+  font-size: 13px;
+}
+.workhub-search-category:focus-visible {
+  outline: 3px solid #176e72;
+  outline-offset: 2px;
+}
+
 .workhub-global-search button {
   width: 42px;
   align-self: stretch;
