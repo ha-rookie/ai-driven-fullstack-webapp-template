@@ -41,6 +41,14 @@ interface NotificationRecord { readonly id: string; readonly notificationType: s
 interface TimelineActivity { readonly id: string; readonly activityType: string; readonly occurredAt: string; }
 interface SearchResultRecord { readonly resourceType: string; readonly resourceId: string; readonly category: string; readonly title: string; readonly snippet?: string; readonly actionTarget?: string; }
 interface CompanyAnnouncement { readonly id: string; readonly title: string; readonly body: string; readonly authorId: string; readonly publishedAt: string; }
+interface WorkhubSocialPost {
+  readonly id: string; readonly category: "community" | "thanks" | "knowledge_share";
+  readonly title: string; readonly body: string; readonly authorLabel: string; readonly createdAt: string;
+  readonly reactionCount: number; readonly commentCount: number;
+}
+const SOCIAL_CATEGORY_LABELS: Record<WorkhubSocialPost["category"], string> = {
+  community: "コミュニティ", thanks: "ありがとう", knowledge_share: "ナレッジ共有",
+};
 
 const HOME_HINTS: Record<string, { role: string; hint: string }> = {
   "workhub-demo-haru": { role: "新入社員", hint: "Onboarding / 必須研修" },
@@ -145,6 +153,8 @@ function TravelWorkspace() {
   const [peopleState, setPeopleState] = useState<"loading" | "ready" | "error">("loading");
   const [documents, setDocuments] = useState<readonly WorkhubDocumentSummary[]>([]);
   const [documentsState, setDocumentsState] = useState<"loading" | "ready" | "error">("loading");
+  const [socialPosts, setSocialPosts] = useState<readonly WorkhubSocialPost[]>([]);
+  const [socialState, setSocialState] = useState<"loading" | "ready" | "error">("loading");
   const [searchCategory, setSearchCategory] = useState("all");
   const [searchState, setSearchState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const searchRequestVersion = useRef(0);
@@ -221,6 +231,19 @@ function TravelWorkspace() {
       setDocumentsState("error");
     }
   }, []);
+  const loadSocial = useCallback(async () => {
+    setSocialState("loading");
+    try {
+      const result = await apiJson<{ items: WorkhubSocialPost[] }>("/api/workhub/social");
+      if (!Array.isArray(result.items)) throw new Error("invalid_social_response");
+      setSocialPosts(result.items);
+      setSocialState("ready");
+    } catch {
+      // A failed refresh cannot leave a previous authorized feed on screen.
+      setSocialPosts([]);
+      setSocialState("error");
+    }
+  }, []);
   const loadAnnouncements = useCallback(async () => {
     setAnnouncementLoad("loading");
     try {
@@ -233,7 +256,7 @@ function TravelWorkspace() {
   }, []);
   const loadMyRequests = useCallback(async () => { if (!isAoi) return; setMyRequestsState("loading"); try { const result = await apiJson<{ items: UnifiedMyRequest[] }>("/api/workhub/my-requests"); setMyRequests(result.items); setMyRequestsState("ready"); } catch { setMyRequestsState("error"); } }, [isAoi]);
   const openRequest = useCallback(async (id: string) => { const detail = await apiJson<{ request: TravelRequestRecord; workflow: WorkflowRecord | null; returnComment: string | null }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}`); const history = await apiJson<{ items: TimelineActivity[] }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}/timeline`); setSelectedRequest(detail.request); setSelectedWorkflow(detail.workflow); setReturnComment(detail.workflow?.state === "awaiting_resubmission" ? detail.returnComment : null); setTimeline(history.items ?? []); setDestinationOfficeItemId(detail.request.destinationOfficeItemId); setStartDate(detail.request.startDate); setEndDate(detail.request.endDate); setPurpose(detail.request.purpose); return detail; }, []);
-  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements(), loadDelegation(), loadPeople(), loadDocuments()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements, loadDelegation, loadPeople, loadDocuments]);
+  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements(), loadDelegation(), loadPeople(), loadDocuments(), loadSocial()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements, loadDelegation, loadPeople, loadDocuments, loadSocial]);
   const run = async (operation: () => Promise<void>) => {
     // A React state update does not synchronously block two rapid click events.
     if (mutationInFlight.current) return;
@@ -461,6 +484,7 @@ function TravelWorkspace() {
         <a href="#workhub-people"><span aria-hidden="true">♙</span>組織・人</a>
         <a href="#workhub-documents"><span aria-hidden="true">▱</span>ナレッジ</a>
         <a href="#workhub-announcements"><span aria-hidden="true">◌</span>社内お知らせ</a>
+        <a href="#workhub-social"><span aria-hidden="true">♧</span>社内交流</a>
         <div className="workhub-side-nav-spacer" />
         <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">?</span>サポート</span>
       </nav>
@@ -635,6 +659,17 @@ function TravelWorkspace() {
           }
           <button className="workhub-secondary-button" type="button" onClick={openNotificationCenter}>すべての通知を見る</button>
           </article>
+          <section className="workhub-home-card workhub-social-preview" aria-label="社内交流プレビュー">
+            <span className="workhub-card-label">SOCIAL / COMMUNITY</span><h2>社内交流</h2>
+            {socialState === "loading" ? <p role="status">社内交流を読み込み中…</p> :
+              socialState === "error" ? <p>社内交流を取得できませんでした。0件とは限りません。</p> :
+                socialPosts.length === 0 ? <p className="workhub-empty-state">表示できる交流投稿はありません。</p> :
+                  socialPosts.slice(0, 2).map(post =>
+                    <article key={post.id} className="workhub-social-preview-item">
+                      <small>{SOCIAL_CATEGORY_LABELS[post.category]}・参考投稿</small><strong>{post.title}</strong>
+                    </article>)}
+            <a className="workhub-work-link" href="#workhub-social">社内交流フィードを見る</a>
+          </section>
           {selectedRequest && <article className="workhub-home-card" id="workhub-request-detail"><span className="workhub-card-label">MY REQUEST DETAIL</span><h2>{selectedRequest.purpose}</h2><p>{selectedRequest.startDate} → {selectedRequest.endDate}</p><p>Workflow: <strong>{selectedWorkflow?.state ?? selectedRequest.status}</strong></p>{isAoi && selectedRequest.status === "submitted" && <div className="workhub-travel-print-action">
               <button className="workhub-secondary-button" type="button" disabled={busy} onClick={printTravelRequest}>申請内容を印刷・PDF保存</button>
               <small>ブラウザの印刷画面からPDF保存できます。承認結果の履歴固定PDFではありません。</small>
@@ -665,6 +700,23 @@ function TravelWorkspace() {
                   </article>
                 )}</div>}
           <small className="workhub-reference-note">全社員向けのお知らせを新しい順に最大10件表示します。これはReference Applicationの最小実装です。</small>
+        </section>
+        <section className="workhub-social" id="workhub-social" aria-labelledby="workhub-social-title" aria-label="社内交流フィード">
+          <div className="workhub-section-heading">
+            <div><span className="workhub-card-label">SOCIAL FEED / REFERENCE</span><h2 id="workhub-social-title">社内交流フィード</h2></div>
+            <button className="workhub-secondary-button" type="button" disabled={socialState === "loading"} onClick={() => void loadSocial()}>フィードを更新</button>
+          </div>
+          <p>社内コミュニティの架空の参考投稿です。公式のお知らせや規程ではありません。実際のリアクションやコメントの操作はできません。</p>
+          {socialState === "loading" ? <p role="status">フィードを読み込んでいます…</p> :
+            socialState === "error" ? <div role="alert"><p>社内交流を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadSocial()}>再読み込み</button></div> :
+              socialPosts.length === 0 ? <p className="workhub-empty-state">表示できる交流投稿はありません。</p> :
+                <div className="workhub-social-list">{socialPosts.map(post =>
+                  <article className="workhub-social-item" key={post.id}>
+                    <span className="workhub-social-kind">{SOCIAL_CATEGORY_LABELS[post.category]}・デモ</span>
+                    <h3>{post.title}</h3><p>{post.body}</p>
+                    <small>{post.authorLabel} · {new Date(post.createdAt).toLocaleString("ja-JP")}</small>
+                    <p className="workhub-social-counts">リアクション {post.reactionCount}件 · コメント {post.commentCount}件（デモ・閲覧のみ）</p>
+                  </article>)}</div>}
         </section>
         <section className="workhub-showcase-strip" aria-label="Component Showcase">
           <div><span className="workhub-card-label">COMPONENT SHOWCASE</span><h2>共通部品を、実際の業務画面で検証する</h2><p>Authentication / Authorization / Workflow / Search / Notificationを、WORKHUBの一連の業務Scenarioで組み合わせています。</p></div>
