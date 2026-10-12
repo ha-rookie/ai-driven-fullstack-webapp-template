@@ -23,6 +23,7 @@ import { resolveApplicationSession } from "./auth";
 import { findScopeMembership } from "./authorization";
 import { listWorkhubApps, searchWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
 import { listWorkhubReferencePeople } from "../reference/workhub/people";
+import { listWorkhubReferenceDocuments } from "../reference/workhub/documents";
 import {
   BusinessActivityProjector,
   BusinessActivityTimelineService,
@@ -337,6 +338,17 @@ export const handleWorkhubBusinessApi = async (
         }
       }
       return error(405, "method_not_allowed", "Only GET/POST supported");
+    }
+    if (pathname === "/api/workhub/documents") {
+      if (request.method !== "GET") return error(405, "method_not_allowed", "Only GET is available");
+      // Resolve the current server-side membership before projecting the list.
+      // Authorization is done before counts, titles or replacement labels exist.
+      const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
+      if (!membership || !listWorkhubApps(membership.role).some(app =>
+        app.key === "knowledge" && app.availability === "available")) {
+        return error(403, "documents_forbidden", "Documents are unavailable");
+      }
+      return json({ items: listWorkhubReferenceDocuments(membership.role) });
     }
     if (pathname === "/api/workhub/people") {
       if (request.method !== "GET") return error(405, "method_not_allowed", "Only GET is available");
