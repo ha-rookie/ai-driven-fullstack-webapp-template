@@ -18,6 +18,7 @@ import { D1WorkhubExpenseStore, WorkhubExpenseError } from "../reference/workhub
 import { WORKHUB_EXPENSE_EMPLOYEE_ID } from "../reference/workhub/expenses";
 import { projectWorkhubMyRequests } from "../reference/workhub/my-requests";
 import { WorkhubSecondaryJourneyService } from "../reference/workhub/secondary-journeys";
+import { WorkhubTravelDelegation } from "../reference/workhub/approval-delegation";
 import { resolveApplicationSession } from "./auth";
 import { findScopeMembership } from "./authorization";
 import { listWorkhubApps, searchWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-catalog";
@@ -117,6 +118,7 @@ const searchCursorCodec = new InMemorySearchCursorCodec();
 
 const createServices = (db: D1Database, environment: string) => {
   const workflowStore = new D1WorkflowStore(db);
+  const delegation = new WorkhubTravelDelegation(db, environment);
   const travelStore = new D1TravelRequestStore(db);
   const masterData = new MasterDataService({
     environment,
@@ -142,6 +144,7 @@ const createServices = (db: D1Database, environment: string) => {
     store: workflowStore,
     definitions: new StaticWorkflowDefinitionRegistry([WORKHUB_TRAVEL_WORKFLOW_DEFINITION]),
     assignees: WORKHUB_TRAVEL_ASSIGNEE_RESOLVER,
+    delegatedActor: delegation,
     eventSink: new WorkhubWorkflowProjectionFanOut([workflowActivity, workflowNotification]),
   });
 
@@ -156,7 +159,7 @@ const createServices = (db: D1Database, environment: string) => {
   const searchIndex = new D1SearchIndexStore(db);
   const travelSearchProjector = new WorkhubTravelSearchProjector(travelStore);
 
-  return { db, workflowStore, travelStore, masterData, activityStore, notifications, workflow, travel, searchIndex, travelSearchProjector };
+  return { db, workflowStore, delegation, travelStore, masterData, activityStore, notifications, workflow, travel, searchIndex, travelSearchProjector };
 };
 
 const canReadTravelResource = async (
@@ -170,7 +173,9 @@ const canReadTravelResource = async (
   if (travel.requesterId === principalId) return true;
   if (!travel.workflowInstanceId) return false;
   const item = await services.workflowStore.getOpenWorkItem(travel.workflowInstanceId, environment);
-  return item?.assigneePrincipal === principalId;
+  return !!item && (item.assigneePrincipal === principalId || await services.delegation.mayAct({
+    actorId: principalId, action: "approve", instance: await services.workflowStore.getInstance(travel.workflowInstanceId, environment) as NonNullable<Awaited<ReturnType<typeof services.workflowStore.getInstance>>>, workItem: item, at: new Date(),
+  }));
 };
 
 const refreshTravelSearchIndex = async (
@@ -262,7 +267,10 @@ const requireApprovalAccess = async (
   const instance = await services.workflowStore.getInstance(instanceId, environment);
   if (!instance || instance.resourceType !== WORKHUB_TRAVEL_RESOURCE_TYPE) return null;
   const workItem = await services.workflowStore.getOpenWorkItem(instance.id, environment);
-  if (!workItem || workItem.assigneePrincipal !== principalId) return null;
+  if (!workItem || (workItem.assigneePrincipal !== principalId
+    && !await services.delegation.mayAct({
+      actorId: principalId, action: "approve", instance, workItem, at: new Date(),
+    }))) return null;
   const travel = await services.travelStore.get(instance.resourceId, environment);
   if (!travel) return null;
   return { instance, workItem, travel };
@@ -301,6 +309,31 @@ export const handleWorkhubBusinessApi = async (
   const pathname = url.pathname;
 
   try {
+    if (pathname === "/api/workhub/approval-delegation") {
+      if (request.method === "GET") {
+        const grant = await services.delegation.status(principalId);
+        if (principalId !== "workhub-demo-ren" && principalId !== "workhub-demo-mei") {
+          return error(403, "delegation_forbidden", "Delegation not available");
+        }
+        return json({ grant });
+      }
+      if (request.method === "POST") {
+        const body = await bodyRecord(request);
+        if (body instanceof Response) return body;
+        if (typeof body.enabled !== "boolean") {
+          return error(400, "delegation_invalid", "Expected enabled boolean");
+        }
+        try {
+          return json({ grant: await services.delegation.setEnabled(principalId, body.enabled) });
+        } catch (caught) {
+          if (caught instanceof Error && caught.message === "delegation_forbidden") {
+            return error(403, "delegation_forbidden", "Delegation not permitted");
+          }
+          throw caught;
+        }
+      }
+      return error(405, "method_not_allowed", "Only GET/POST supported");
+    }
     if (pathname === "/api/workhub/apps") {
       if (request.method !== "GET") return error(405, "method_not_allowed", "Only GET is available");
       // The caller's current DB membership, never a client-provided role/scope,
@@ -554,11 +587,18 @@ export const handleWorkhubBusinessApi = async (
     }
 
     if (request.method === "GET" && pathname === "/api/workhub/my-work") {
-      const items = await services.workflow.listMyOpenWorkItems(principalId, 50);
+      const assigned = await services.workflow.listMyOpenWorkItems(principalId, 50);
+      // A delegate sees only the original manager's currently authorized
+      // travel work items, never the manager's entire business queue.
+      const managerItems = principalId === "workhub-demo-mei"
+        ? await services.workflow.listMyOpenWorkItems("workhub-demo-ren", 50) : [];
       const enriched = [];
-      for (const item of items) {
+      for (const item of [...assigned, ...managerItems]) {
         const instance = await services.workflowStore.getInstance(item.workflowInstanceId, environment);
         if (!instance || instance.resourceType !== WORKHUB_TRAVEL_RESOURCE_TYPE) continue;
+        if (item.assigneePrincipal !== principalId && !await services.delegation.mayAct({
+          actorId: principalId, action: "approve", instance, workItem: item, at: new Date(),
+        })) continue;
         const travel = await services.travelStore.get(instance.resourceId, environment);
         if (!travel) continue;
         enriched.push({ workItem: item, workflow: instance, request: travel });
