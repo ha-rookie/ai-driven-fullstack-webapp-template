@@ -15,8 +15,8 @@ test("Stage3 people directory is server-scoped, exposes only demo labels, and re
   const navigation = page.getByRole("navigation", { name: "WORKHUB メインナビゲーション" });
   await navigation.getByRole("link", { name: "組織・人" }).click();
   await expect(people).toBeInViewport();
-  await expect(people.getByRole("heading", { level: 3 })).toHaveCount(6);
-  await expect(people.getByRole("heading", { level: 3, name: "Ren Manager" })).toBeVisible();
+  await expect(people.getByRole("article")).toHaveCount(6);
+  await expect(people.getByRole("article", { name: "社員 Ren Manager" })).toBeVisible();
   await expect(people.getByText("CECIL WORKS株式会社（デモ）").first()).toBeVisible();
   await expect(people).toContainText("実際の人事情報・連絡先ではありません");
 
@@ -41,11 +41,11 @@ test("Stage3 people directory is server-scoped, exposes only demo labels, and re
   }));
   await people.getByRole("button", { name: "社員一覧を更新" }).click();
   await expect(people.getByRole("alert")).toContainText("0件とは限りません");
-  await expect(people.getByRole("heading", { level: 3 })).toHaveCount(0);
+  await expect(people.getByRole("article")).toHaveCount(0);
 
   await page.unroute("**/api/workhub/people");
   await people.getByRole("button", { name: "再読み込み" }).click();
-  await expect(people.getByRole("heading", { level: 3 })).toHaveCount(6);
+  await expect(people.getByRole("article")).toHaveCount(6);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
