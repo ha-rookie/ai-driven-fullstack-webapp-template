@@ -12,6 +12,10 @@ test("General Affairs publishes a company announcement; employees read but canno
   const title = `社内お知らせ E2E ${testInfo.project.name} ${Date.now()}`;
   const body = "全社員へ：明日の朝会は10時からです。\n会議室は第2会議室です。";
 
+  // A session is necessary, but not sufficient: the Worker will also check
+  // active WORKHUB scope membership before returning official content.
+  await page.goto("/");
+  expect((await page.request.get("/api/workhub/announcements")).status()).toBe(401);
   await login(page, "sora");
   const section = page.locator("#workhub-announcements");
   await expect(section.getByRole("heading", { name: "社内お知らせ" })).toBeVisible();
@@ -24,6 +28,14 @@ test("General Affairs publishes a company announcement; employees read but canno
 
   await page.context().clearCookies();
   await login(page, "aoi");
+  const scopedList = await page.evaluate(async () => {
+    const response = await fetch("/api/workhub/announcements?role=corporate&scopeId=other-company", {
+      credentials: "same-origin",
+    });
+    return { status: response.status, data: await response.json() };
+  });
+  expect(scopedList.status).toBe(200);
+  expect(scopedList.data.items.some((entry: { title: string }) => entry.title === title)).toBe(true);
   const employeeSection = page.locator("#workhub-announcements");
   await expect(employeeSection.locator(".workhub-announcement-item").filter({ hasText: title })).toContainText(body);
   await expect(employeeSection.getByRole("button", { name: "お知らせを公開", exact: true })).toHaveCount(0);

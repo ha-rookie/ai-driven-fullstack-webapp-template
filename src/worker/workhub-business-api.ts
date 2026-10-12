@@ -13,7 +13,7 @@ import {
   WORKHUB_TRAVEL_NOTIFICATION_RECIPIENTS,
   WorkhubWorkflowProjectionFanOut,
 } from "../reference/workhub/travel-request/integration";
-import { D1WorkhubAnnouncementStore, WorkhubAnnouncementError } from "../reference/workhub/announcements";
+import { D1WorkhubAnnouncementStore, WorkhubAnnouncementError, canPublishWorkhubReferenceAnnouncement } from "../reference/workhub/announcements";
 import { D1WorkhubExpenseStore, WorkhubExpenseError } from "../reference/workhub/expenses";
 import { WORKHUB_EXPENSE_EMPLOYEE_ID } from "../reference/workhub/expenses";
 import { projectWorkhubMyRequests } from "../reference/workhub/my-requests";
@@ -498,12 +498,25 @@ export const handleWorkhubBusinessApi = async (
       ) });
     }
 
-    if (pathname === "/api/workhub/announcements" && request.method === "GET") {
-      const announcements = new D1WorkhubAnnouncementStore(env.DB, environment);
-      return json({ items: await announcements.list() });
-    }
-
-    if (pathname === "/api/workhub/announcements" && request.method === "POST") {
+    if (pathname === "/api/workhub/announcements"
+      && (request.method === "GET" || request.method === "POST")) {
+      // Whole-company Audience means CURRENT members of the WORKHUB scope,
+      // not every authenticated user. Resolve the DB membership on each read
+      // and write, before returning even the count or title of an announcement.
+      const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
+      if (!membership || !listWorkhubApps(membership.role).some(app =>
+        app.key === "announcements" && app.availability === "available")) {
+        return error(403, "announcements_forbidden", "Announcements are unavailable");
+      }
+      if (request.method === "GET") {
+        const announcements = new D1WorkhubAnnouncementStore(env.DB, environment);
+        return json({ items: await announcements.list() });
+      }
+      // A stale Sora session without its corporate membership must not write.
+      // The Store retains its independent publisher principal allowlist.
+      if (!canPublishWorkhubReferenceAnnouncement(principalId, membership.role)) {
+        return error(403, "announcement_publish_forbidden", "Only General Affairs can publish announcements");
+      }
       const body = await bodyRecord(request);
       if (body instanceof Response) return body;
       const announcements = new D1WorkhubAnnouncementStore(env.DB, environment);
