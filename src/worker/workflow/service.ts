@@ -144,6 +144,15 @@ export interface WorkflowServiceOptions {
   readonly store: WorkflowStore;
   readonly definitions: WorkflowDefinitionResolver;
   readonly assignees: WorkflowAssigneeResolver;
+  readonly delegatedActor?: {
+    mayAct(input: {
+      readonly actorId: string;
+      readonly action: "approve" | "return" | "reject";
+      readonly instance: WorkflowInstanceRecord;
+      readonly workItem: WorkflowWorkItemRecord;
+      readonly at: Date;
+    }): Promise<boolean>;
+  };
   readonly mutationGate?: WorkflowMutationGate;
   readonly eventSink?: WorkflowEventSink;
   readonly onEventFailure?: (event: WorkflowTransitionRecord) => void;
@@ -310,8 +319,10 @@ export class WorkflowService {
     if (workItem.version !== command.expectedWorkItemVersion) {
       throw new WorkflowError("conflict", "workflow work item version is stale");
     }
-    if (workItem.assigneePrincipal !== actorId) {
-      throw new WorkflowError("forbidden", "actor is not the current assignee");
+    if (workItem.assigneePrincipal !== actorId && !await this.options.delegatedActor?.mayAct({
+      actorId, action, instance, workItem, at: this.now(),
+    })) {
+      throw new WorkflowError("forbidden", "actor is not the current assignee or an authorized delegate");
     }
 
     const definition = this.getDefinition(instance.definitionKey, instance.definitionVersion);

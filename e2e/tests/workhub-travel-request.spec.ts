@@ -101,11 +101,11 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
 
   // A linked expense advances the same trip's journey, without changing the
   // source travel workflow or inferring anything about payment execution.
-  const tripCard = page.locator("#workhub-my-requests .workhub-my-request-item")
+  const tripCard = page.locator("#workhub-my-requests .workhub-journey-entry")
     .filter({ hasText: correctedPurpose });
   await expect(tripCard).toContainText("① 出張申請：承認済み");
   await expect(tripCard).toContainText("② 紐づく経費精算：紐づいた精算は未登録");
-  await page.getByRole("button", { name: "この出張の経費精算を始める" }).click();
+  await tripCard.getByRole("button", { name: "この出張の経費精算を始める" }).click();
   const expenseArea = page.locator("#workhub-expenses");
   await expect(expenseArea.getByLabel("紐づける出張申請")).toHaveValue(
     await expenseArea.getByLabel("紐づける出張申請").locator("option", { hasText: correctedPurpose }).getAttribute("value") ?? "",

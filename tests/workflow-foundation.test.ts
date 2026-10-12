@@ -47,6 +47,7 @@ const createFixture = (options?: {
   assignees?: Record<string, string | null>;
   eventSink?: { emit(event: WorkflowTransitionRecord): Promise<void> | void };
   mutationGate?: { assertMutationAllowed(): Promise<void> | void };
+  delegatedActor?: { mayAct(input: { actorId: string; action: "approve" | "return" | "reject" }): Promise<boolean> };
 }) => {
   const store = new InMemoryWorkflowStore();
   const assigneeValues = options?.assignees ?? { reviewer_1: "principal-a", reviewer_2: "principal-b" };
@@ -63,6 +64,7 @@ const createFixture = (options?: {
     assignees,
     eventSink: options?.eventSink,
     mutationGate: options?.mutationGate,
+    delegatedActor: options?.delegatedActor,
     now: () => new Date("2026-10-04T03:00:00.000Z"),
     generateId: () => `id-${++counter}`,
   });
@@ -288,4 +290,34 @@ test("MY WORK query returns only open work items for the effective assignee", as
   const others = await service.listMyOpenWorkItems("principal-b");
   assert.equal(mine.length, 1);
   assert.equal(others.length, 0);
+});
+
+test("explicit delegate retains original assignee and records actual actor", async () => {
+  const { service, store } = createFixture({
+    delegatedActor: {
+      async mayAct(input) {
+        return input.actorId === "delegate" && input.action === "approve";
+      },
+    },
+  });
+  const started = await start(service, "single_step");
+  const decision = await service.approve({
+    instanceId: started.instance.id, actorId: "delegate",
+    expectedInstanceVersion: 1, expectedWorkItemVersion: 1,
+  });
+  assert.equal(decision.transition.actorId, "delegate");
+  assert.equal(started.currentWorkItem?.assigneePrincipal, "principal-a");
+  assert.equal(decision.instance.state, "completed");
+  assert.equal((await store.listOpenWorkItems("principal-a", "test")).length, 0);
+});
+
+test("delegation is default-deny when absent, and never authorizes rejection implicitly", async () => {
+  const { service } = createFixture({
+    delegatedActor: { async mayAct(input) { return input.action === "approve"; } },
+  });
+  const started = await start(service, "single_step");
+  await assert.rejects(() => service.reject({
+    instanceId: started.instance.id, actorId: "delegate",
+    expectedInstanceVersion: 1, expectedWorkItemVersion: 1,
+  }), (error: unknown) => error instanceof WorkflowError && error.code === "forbidden");
 });

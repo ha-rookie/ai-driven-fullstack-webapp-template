@@ -16,7 +16,11 @@ for (const [persona, screenName, linkName, target] of [
     const link = myWork.getByRole("link", { name: linkName });
     await expect(link).toHaveAttribute("href", target);
     await expect(myWork.getByText("このデモ利用者向けのMY WORKは未接続です。")).toHaveCount(0);
-    await expect(myWork.getByText("—")).toBeVisible();
+    if (persona === "Mei Accounting") {
+      await expect(myWork.locator(".workhub-summary-count")).toHaveText(/\d+/u);
+    } else {
+      await expect(myWork.getByText("—")).toBeVisible();
+    }
   });
 }
 
