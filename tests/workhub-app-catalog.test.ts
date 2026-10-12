@@ -68,10 +68,10 @@ test("HOME shortcuts are the first four connected apps from the already authoriz
   assert.deepEqual(employee.map(app => app.key), ["travel-request", "expense-settlement", "announcements", "directory"]);
   assert.ok(employee.every(app => app.availability === "available" && app.launchTarget.startsWith("/")));
   assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("manager")).map(app => app.key), [
-    "approval-tasks", "announcements", "directory",
+    "approval-tasks", "announcements", "directory", "knowledge",
   ]);
   assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("system_admin")).map(app => app.key), [
-    "announcements", "directory", "admin-portal",
+    "announcements", "directory", "knowledge", "admin-portal",
   ]);
   assert.deepEqual(selectWorkhubHomeShortcuts(listWorkhubApps("unknown")), []);
 });

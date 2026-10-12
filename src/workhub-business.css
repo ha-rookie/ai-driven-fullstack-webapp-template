@@ -444,3 +444,43 @@
   .workhub-people { padding: 16px; }
   .workhub-people-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Stage 3: document-governance Reference; never style stale or superseded
+   records as approved instructions, especially in high-contrast/mobile views. */
+.workhub-documents {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid #dce6e8;
+  border-radius: 14px;
+  background: #fff;
+  scroll-margin-top: 16px;
+}
+.workhub-documents > p { color: #4a6470; font-size: 14px; line-height: 1.6; }
+.workhub-document-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.workhub-document-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #d9e5e7;
+  border-radius: 11px;
+  background: #f8fbfa;
+}
+.workhub-document-card-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; color: #426071; font-size: 13px; }
+.workhub-document-state { padding: 3px 9px; border-radius: 7px; font-size: 12px; font-weight: 750; color: #1c554d; background: #dcf1eb; }
+.workhub-document-state.is-stale { color: #704d13; background: #fff1ca; }
+.workhub-document-state.is-superseded { color: #782d30; background: #f9e1e1; }
+.workhub-document-title { display: block; font-size: 16px; color: #173b51; overflow-wrap: anywhere; }
+.workhub-document-card > p { margin: 10px 0; color: #36515e; font-size: 13px; line-height: 1.6; }
+.workhub-document-card dl { display: grid; gap: 5px; margin: 12px 0 0; font-size: 13px; color: #3b5662; }
+.workhub-document-card dl > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.workhub-document-card dt { min-width: 56px; font-weight: 700; }
+.workhub-document-card dd { margin: 0; overflow-wrap: anywhere; }
+.workhub-document-card .workhub-document-warning { padding: 10px; border-left: 3px solid #97683e; border-radius: 4px; color: #643c23; background: #fff4de; font-weight: 700; }
+@media (max-width: 600px) {
+  .workhub-documents { padding: 16px; }
+  .workhub-document-grid { grid-template-columns: minmax(0, 1fr); }
+}

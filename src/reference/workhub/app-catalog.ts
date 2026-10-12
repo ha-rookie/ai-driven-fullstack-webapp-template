@@ -6,7 +6,7 @@
 export const WORKHUB_APP_SCOPE_ID = "workhub-company";
 
 export type WorkhubAppAvailability = "available" | "unavailable";
-export type WorkhubAppCategory = "申請・手続き" | "経理・財務" | "コミュニケーション" | "組織・人" | "システム";
+export type WorkhubAppCategory = "申請・手続き" | "経理・財務" | "コミュニケーション" | "組織・人" | "ナレッジ" | "システム";
 
 export interface WorkhubAppEntry {
   readonly key: string;
@@ -50,6 +50,11 @@ const REFERENCE_APPS: readonly ReferenceAppDefinition[] = [
     key: "directory", displayName: "社員・組織", description: "デモ社員の名前と担当区分を確認する",
     category: "組織・人", sourceSystem: "WORKHUB Reference",
     availability: "available", launchTarget: "/#workhub-people", allowedRoles: EVERY_ROLE,
+  },
+  {
+    key: "knowledge", displayName: "文書・ナレッジ", description: "版数と確認日を見て業務文書を探す",
+    category: "ナレッジ", sourceSystem: "WORKHUB Reference",
+    availability: "available", launchTarget: "/#workhub-documents", allowedRoles: EVERY_ROLE,
   },
   {
     key: "admin-portal", displayName: "管理ポータル", description: "システムの運用状況を確認する",
