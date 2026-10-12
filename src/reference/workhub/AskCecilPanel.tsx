@@ -38,12 +38,19 @@ export default function AskCecilPanel({ onClose }: AskCecilPanelProps) {
     };
   }, []);
 
-  const onPanelKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape") {
+  // Async result replacement may remove the focused Retry button and send
+  // keyboard focus to <body>. Escape must still close the dialog in that state.
+  useEffect(() => {
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
       event.preventDefault();
       onClose();
-      return;
-    }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  const onPanelKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab") return;
     const candidates = panelRef.current?.querySelectorAll<HTMLElement>(
       'button:not([disabled]), input:not([disabled]), a[href]'
