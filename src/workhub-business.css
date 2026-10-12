@@ -344,6 +344,45 @@
   font: inherit;
 }
 
+.workhub-announcement-compose select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cbd7dc;
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: #173243;
+  background: white;
+  font: inherit;
+}
+.workhub-announcement-delivery-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+}
+.workhub-announcement-delivery-controls input { min-width: 0; }
+.workhub-announcement-importance {
+  display: inline-block;
+  margin-right: 8px;
+  border-radius: 6px;
+  padding: 3px 7px;
+  background: #fff1d3;
+  color: #744800;
+  font-size: 12px;
+  font-weight: 800;
+}
+.workhub-global-banner {
+  margin: 20px 0;
+  padding: 18px 20px;
+  border: 2px solid #b43b29;
+  border-radius: 12px;
+  background: #fff7f3;
+  color: #69271f;
+  overflow-wrap: anywhere;
+}
+.workhub-global-banner-kicker { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 800; }
+.workhub-global-banner h2 { margin: 0 0 8px; font-size: clamp(17px, 2vw, 22px); }
+.workhub-global-banner p { margin: 0 0 10px; white-space: pre-wrap; }
+.workhub-global-banner small { display: block; font-size: 12px; }
 .workhub-announcement-compose textarea { resize: vertical; }
 .workhub-announcement-compose button { justify-self: start; }
 
