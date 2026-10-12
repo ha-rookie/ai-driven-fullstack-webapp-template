@@ -43,7 +43,7 @@ const catalogForRole = (role: string): readonly CatalogEntry[] => {
         snippet: (doc.state === "superseded" ? "旧版・利用注意｜" :
           doc.state === "stale" ? "要再確認｜" : "現行｜") + doc.summary
           + (doc.replacementTitle ? ` 現行文書：${doc.replacementTitle}` : ""),
-        actionTarget: "/#workhub-documents",
+        actionTarget: `/#workhub-document-${doc.id}`,
         officiality: doc.category === "公式" ? "official" : doc.category === "手順" ? "procedure" : "faq",
         sourceUpdatedAt: `${doc.reviewedAt}T00:00:00.000Z`,
       },
@@ -57,7 +57,7 @@ const catalogForRole = (role: string): readonly CatalogEntry[] => {
         resourceType: "workhub_person", resourceId: `reference-person-${index + 1}`,
         category: "people", title: person.displayName,
         snippet: `${person.roleLabel}｜${person.organizationLabel}`,
-        actionTarget: "/#workhub-people",
+        actionTarget: `/#workhub-person-reference-person-${index + 1}`,
         officiality: "reference",
       },
     }))

@@ -19,12 +19,13 @@ test("WORKHUB #305 search reuses current role-authorized sources, never hidden d
 test("facet returns only the selected category and safe navigation targets", async () => {
   const documents = await search("employee", "出張", "documents");
   assert.ok(documents.length > 0);
-  assert.ok(documents.every(item => item.category === "documents" && item.actionTarget === "/#workhub-documents"));
+  assert.ok(documents.every(item => item.category === "documents"
+    && item.actionTarget === `/#workhub-document-${item.resourceId}`));
   assert.ok(documents.some(item => item.snippet?.startsWith("旧版・")));
   assert.deepEqual(await search("employee", "出張", "people"), []);
   const person = await search("employee", "Ren", "people");
   assert.equal(person.length, 1);
-  assert.equal(person[0]?.actionTarget, "/#workhub-people");
+  assert.equal(person[0]?.actionTarget, "/#workhub-person-reference-person-3");
   const raw = JSON.stringify(person);
   assert.doesNotMatch(raw, /workhub-demo-|Workhub-Demo-2026!|password|email|phone|userId/iu);
   const apps = await search("employee", "出張", "apps");
