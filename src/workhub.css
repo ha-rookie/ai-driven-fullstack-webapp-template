@@ -1216,8 +1216,13 @@ input:disabled {
     margin-left: auto;
   }
 
-  .workhub-header-action:first-child {
-    display: none;
+  /* Ask CECIL is a real global navigation entry on mobile too. */
+  .workhub-header-actions > .workhub-header-action:first-child {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    padding-inline: 8px;
+    font-size: 12px;
   }
 
   .workhub-home-hero {
