@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import {
   createCecilGuide,
   type CecilDocument,
@@ -38,7 +38,7 @@ export default function AskCecilPanel({ onClose }: AskCecilPanelProps) {
     };
   }, []);
 
-  const onPanelKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+  const onPanelKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();
