@@ -8,8 +8,14 @@
   display: grid;
   gap: 6px;
   color: #405764;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
+}
+
+/* The travel request card uses a dark gradient. Never inherit dark form
+   labels there: the form fields remain light with their own dark text. */
+.workhub-home-card-primary .workhub-business-form label {
+  color: #fff;
 }
 
 .workhub-business-form input,
