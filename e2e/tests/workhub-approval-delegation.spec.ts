@@ -22,6 +22,8 @@ const submitTravel = async (page: Page, purpose: string) => {
 };
 
 test("explicit manager delegation shows travel work only within grant, and revocation restores deny", async ({ page }, info) => {
+  // This scenario mutates one named Reference grant; run only once per CI run.
+  test.skip(info.project.name !== "desktop-chromium", "single shared grant is tested at 390px in desktop project");
   test.setTimeout(100_000);
   await page.setViewportSize({ width: 390, height: 844 });
   const first = "出張代理承認 " + info.project.name + " " + Date.now();
