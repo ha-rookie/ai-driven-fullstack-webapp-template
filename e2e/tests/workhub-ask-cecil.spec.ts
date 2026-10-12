@@ -19,7 +19,6 @@ test("Stage5 Ask CECIL L0/L1 uses current authorized evidence, degrades safely, 
   await expect(panel.getByRole("region", { name: "根拠となる文書" })).toContainText("v3");
   await expect(panel.getByRole("region", { name: "根拠となる文書" })).toContainText("2026-10-05");
   await expect(panel).not.toContainText("管理者向けインシデント対応");
-  await expect(panel.getByText("旧版", { exact: true }).count()).resolves.toBeGreaterThanOrEqual(0);
 
   const query = panel.getByRole("textbox", { name: "質問・探していること" });
   await query.fill("インシデント");
