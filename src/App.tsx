@@ -10,6 +10,7 @@ import "./workhub.css";
 interface DemoPersona { readonly key: string; readonly userId: string; readonly displayName: string; readonly roleLabel: string; readonly homeHint: string; }
 interface DemoConfig { readonly demoEnabled: boolean; readonly personas: DemoPersona[]; readonly demoPassword?: string; readonly authMode?: "google_oidc"; readonly oidcEnabled?: boolean; }
 interface OfficeOption { readonly itemId: string; readonly revisionId: string; readonly code: string; readonly label: string; }
+interface WorkhubDirectoryPerson { readonly displayName: string; readonly roleLabel: string; readonly organizationLabel: string; }
 interface UnifiedMyRequest {
   readonly kind: "travel" | "expense";
   readonly id: string;
@@ -120,6 +121,8 @@ function LoginScreen() {
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const isMei = user?.id === "workhub-demo-mei"; const canReviewTravel = isRen || isMei; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
   const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const [people, setPeople] = useState<readonly WorkhubDirectoryPerson[]>([]);
+  const [peopleState, setPeopleState] = useState<"loading" | "ready" | "error">("loading");
   const [delegation, setDelegation] = useState<ApprovalDelegationGrant | null>(null);
   const [delegationState, setDelegationState] = useState<"loading" | "ready" | "error">("loading");
   const activeDelegation = isActiveApprovalDelegation(delegation);
@@ -168,6 +171,18 @@ function TravelWorkspace() {
       return null;
     }
   }, [canReviewTravel]);
+  const loadPeople = useCallback(async () => {
+    setPeopleState("loading");
+    try {
+      const response = await apiJson<{ items: WorkhubDirectoryPerson[] }>("/api/workhub/people");
+      if (!Array.isArray(response.items)) throw new Error("invalid_directory_response");
+      setPeople(response.items);
+      setPeopleState("ready");
+    } catch {
+      setPeople([]);
+      setPeopleState("error");
+    }
+  }, []);
   const loadAnnouncements = useCallback(async () => {
     setAnnouncementLoad("loading");
     try {
@@ -180,7 +195,7 @@ function TravelWorkspace() {
   }, []);
   const loadMyRequests = useCallback(async () => { if (!isAoi) return; setMyRequestsState("loading"); try { const result = await apiJson<{ items: UnifiedMyRequest[] }>("/api/workhub/my-requests"); setMyRequests(result.items); setMyRequestsState("ready"); } catch { setMyRequestsState("error"); } }, [isAoi]);
   const openRequest = useCallback(async (id: string) => { const detail = await apiJson<{ request: TravelRequestRecord; workflow: WorkflowRecord | null; returnComment: string | null }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}`); const history = await apiJson<{ items: TimelineActivity[] }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}/timeline`); setSelectedRequest(detail.request); setSelectedWorkflow(detail.workflow); setReturnComment(detail.workflow?.state === "awaiting_resubmission" ? detail.returnComment : null); setTimeline(history.items ?? []); setDestinationOfficeItemId(detail.request.destinationOfficeItemId); setStartDate(detail.request.startDate); setEndDate(detail.request.endDate); setPurpose(detail.request.purpose); return detail; }, []);
-  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements(), loadDelegation()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements, loadDelegation]);
+  useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements(), loadDelegation(), loadPeople()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements, loadDelegation, loadPeople]);
   const run = async (operation: () => Promise<void>) => {
     // A React state update does not synchronously block two rapid click events.
     if (mutationInFlight.current) return;
@@ -354,7 +369,7 @@ function TravelWorkspace() {
         {isAoi && <a href="#workhub-my-requests"><span aria-hidden="true">☷</span>自分の申請一覧</a>}
         {(isAoi || user?.id === "workhub-demo-mei") && <a href="#workhub-expenses"><span aria-hidden="true">¥</span>交通費・経費精算</a>}
         <a href="#workhub-apps"><span aria-hidden="true">▦</span>アプリ</a>
-        <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">♙</span>組織・人</span>
+        <a href="#workhub-people"><span aria-hidden="true">♙</span>組織・人</a>
         <span className="workhub-nav-coming" aria-disabled="true"><span aria-hidden="true">▱</span>ナレッジ</span>
         <a href="#workhub-announcements"><span aria-hidden="true">◌</span>社内お知らせ</a>
         <div className="workhub-side-nav-spacer" />
@@ -434,6 +449,21 @@ function TravelWorkspace() {
           </div>
         </section>
         <WorkhubAppLauncher />
+        <section className="workhub-people" id="workhub-people" aria-labelledby="workhub-people-title">
+          <div className="workhub-section-heading">
+            <div><span className="workhub-card-label">PEOPLE / ORGANIZATION</span><h2 id="workhub-people-title">社員・組織</h2></div>
+            <button className="workhub-secondary-button" type="button" disabled={peopleState === "loading"} onClick={() => void loadPeople()}>社員一覧を更新</button>
+          </div>
+          <p>誰に何を相談できるかを確認するためのデモ社員一覧です。実際の人事情報・連絡先ではありません。</p>
+          {peopleState === "loading" ? <p role="status">社員一覧を読み込んでいます…</p> :
+            peopleState === "error" ? <div role="alert"><p>社員一覧を取得できません。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadPeople()}>再読み込み</button></div> :
+              people.length === 0 ? <p className="workhub-empty-state">表示できる社員データはありません。</p> :
+                <div className="workhub-people-grid">{people.map(person =>
+                  <article className="workhub-people-card" key={person.displayName}>
+                    <h3>{person.displayName}</h3><p>{person.roleLabel}</p><small>{person.organizationLabel}</small>
+                  </article>
+                )}</div>}
+        </section>
         {isAoi && <section className="workhub-my-requests" id="workhub-my-requests" aria-labelledby="workhub-my-requests-title">
           <div className="workhub-section-heading">
             <div><span className="workhub-card-label">MY REQUESTS</span><h2 id="workhub-my-requests-title">自分の申請一覧</h2></div>
