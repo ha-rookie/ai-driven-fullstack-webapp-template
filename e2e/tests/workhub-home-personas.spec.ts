@@ -37,10 +37,10 @@ test("HOME notifications report failed fetch separately from zero and offer a re
   const notice = page.locator("#workhub-notifications");
   await expect(notice.getByRole("alert")).toContainText("0件とは限りません");
   await expect(notice.getByText("通知はありません。")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "通知 取得状況を確認" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "通知 取得状況を確認" })).toBeVisible();
 
   await page.unroute("**/api/workhub/notifications");
   await notice.getByRole("button", { name: "通知を再読み込み" }).click();
   await expect(notice.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /通知 未読\d+件/u })).toBeVisible();
+  await expect(page.getByRole("button", { name: /通知 未読\d+件/u })).toBeVisible();
 });
