@@ -190,3 +190,82 @@ test("moving mock adapters keep independently completed steps after one adapter 
   await expect(restored).toContainText("3/3ステップ");
   await expect(restored).toContainText("デモ完了");
 });
+
+test("390px secondary journey blocks actions on failed GET and resolves external stale changes", async ({ page }) => {
+  test.setTimeout(70_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  let unavailable = true;
+  await page.route("**/api/workhub/secondary-journeys", async route => {
+    if (route.request().method() !== "GET" || !unavailable) {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+  await login(page, "aoi");
+  const section = page.locator("#workhub-secondary-journeys");
+  await expect(section.getByRole("alert")).toContainText("進捗を取得できませんでした");
+  await expect(section.getByRole("button", { name: "引っ越し手続きをデモ開始" })).toBeDisabled();
+  await expect(section.getByRole("button", { name: "PC交換をデモ依頼" })).toBeDisabled();
+
+  // Read-only recovery must succeed before a fresh mutation is available.
+  unavailable = false;
+  await section.getByRole("button", { name: "最新状態を確認" }).click();
+  await expect(section.getByRole("button", { name: "引っ越し手続きをデモ開始" })).toBeEnabled();
+
+  let requestKey = "";
+  page.on("request", request => {
+    if (request.url().endsWith("/api/workhub/secondary-journeys") && request.method() === "POST") {
+      const body = request.postDataJSON() as { intent?: string; key?: string };
+      if (body.intent === "moving") requestKey = body.key ?? "";
+    }
+  });
+  await section.getByRole("button", { name: "引っ越し手続きをデモ開始" }).click();
+  await expect.poll(() => requestKey).not.toBe("");
+
+  // Find this test's freshly created resource, never a previous demo row.
+  let journeyId = "";
+  await expect.poll(async () => {
+    journeyId = await page.evaluate(async key => {
+      const response = await fetch("/api/workhub/secondary-journeys", { credentials: "same-origin" });
+      if (!response.ok) return "";
+      const data = await response.json() as { items: Array<{ id: string; submissionKey: string }> };
+      return data.items.find(item => item.submissionKey.endsWith(key))?.id ?? "";
+    }, requestKey);
+    return journeyId;
+  }).not.toBe("");
+  const moving = section.locator('[data-journey-id="' + journeyId + '"]');
+  await expect(moving).toContainText("0/3ステップ");
+  await expect(moving.getByRole("list", { name: "引っ越したの手続き進捗" })).toBeVisible();
+
+  // A separate client advances the independent mock step before this screen acts.
+  const externalStatus = await page.evaluate(async id => {
+    const response = await fetch("/api/workhub/secondary-journeys", { credentials: "same-origin" });
+    if (!response.ok) throw new Error("journey read failed");
+    const data = await response.json() as {
+      items: Array<{ id: string; steps: Array<{
+        key: string; version: number | null; workItemVersion: number | null;
+      }> }>
+    };
+    const address = data.items.find(item => item.id === id)?.steps.find(step => step.key === "address");
+    if (address?.version == null || address.workItemVersion == null) throw new Error("address not active");
+    const tokenResponse = await fetch("/api/auth/csrf", { credentials: "same-origin" });
+    const { csrfToken } = await tokenResponse.json() as { csrfToken: string };
+    const updated = await fetch("/api/workhub/secondary-journeys/" + id + "/advance", {
+      method: "POST", credentials: "same-origin",
+      headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({
+        stepKey: "address", expectedVersion: address.version,
+        expectedWorkItemVersion: address.workItemVersion,
+      }),
+    });
+    return updated.status;
+  }, journeyId);
+  expect(externalStatus).toBe(200);
+  await moving.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" }).click();
+  await expect(section.getByRole("alert")).toContainText("手続きの状態が変更されています");
+  await section.getByRole("button", { name: "最新状態を確認" }).click();
+  await expect(moving).toContainText("1/3ステップ");
+  await expect(moving.getByRole("button", { name: "住所変更の確認（デモ）をデモ完了する" }))
+    .toHaveCount(0);
+});
