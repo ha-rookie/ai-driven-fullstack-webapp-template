@@ -26,6 +26,10 @@ interface TravelRequestRecord { readonly id: string; readonly destinationOfficeI
 interface WorkflowRecord { readonly id: string; readonly state: string; readonly version: number; }
 interface WorkItemRecord { readonly id: string; readonly workflowInstanceId: string; readonly version: number; }
 interface MyWorkEntry { readonly workItem: WorkItemRecord; readonly workflow: WorkflowRecord; readonly request: TravelRequestRecord; }
+interface ApprovalDelegationGrant { readonly validFrom: string; readonly validUntil: string; readonly revokedAt: string | null; }
+const isActiveApprovalDelegation = (grant: ApprovalDelegationGrant | null): boolean =>
+  !!grant && grant.revokedAt === null
+  && Date.parse(grant.validFrom) <= Date.now() && Date.now() < Date.parse(grant.validUntil);
 interface NotificationRecord { readonly id: string; readonly notificationType: string; readonly actionTarget: string | null; readonly version: number; readonly readAt: string | null; readonly createdAt: string; }
 interface TimelineActivity { readonly id: string; readonly activityType: string; readonly occurredAt: string; }
 interface SearchResultRecord { readonly resourceType: string; readonly resourceId: string; readonly category: string; readonly title: string; readonly snippet?: string; readonly actionTarget?: string; }
@@ -116,13 +120,9 @@ function LoginScreen() {
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const isMei = user?.id === "workhub-demo-mei"; const canReviewTravel = isRen || isMei; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
   const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
-  const [delegation, setDelegation] = useState<{
-    validFrom: string; validUntil: string; revokedAt: string | null;
-  } | null>(null);
+  const [delegation, setDelegation] = useState<ApprovalDelegationGrant | null>(null);
   const [delegationState, setDelegationState] = useState<"loading" | "ready" | "error">("loading");
-  const activeDelegation = !!delegation && !delegation.revokedAt
-    && new Date(delegation.validFrom).getTime() <= Date.now()
-    && Date.now() < new Date(delegation.validUntil).getTime();
+  const activeDelegation = isActiveApprovalDelegation(delegation);
   const mutationInFlight = useRef(false);
   const pendingTravelDraft = useRef<TravelRequestRecord | null>(null);
   const loadNotifications = useCallback(async () => {
@@ -140,15 +140,18 @@ function TravelWorkspace() {
     }
   }, []);
   const loadMyWork = useCallback(async () => { if (!canReviewTravel) return; setMyWorkState("loading"); try { const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work"); setMyWork(result.items); setMyWorkState("ready"); } catch { setMyWorkState("error"); } }, [canReviewTravel]);
-  const loadDelegation = useCallback(async () => {
-    if (!canReviewTravel) return;
+  const loadDelegation = useCallback(async (): Promise<{ grant: ApprovalDelegationGrant | null } | null> => {
+    if (!canReviewTravel) return null;
     setDelegationState("loading");
     try {
-      const status = await apiJson<{ grant: typeof delegation }>("/api/workhub/approval-delegation");
+      const status = await apiJson<{ grant: ApprovalDelegationGrant | null }>("/api/workhub/approval-delegation");
       setDelegation(status.grant);
       setDelegationState("ready");
+      return status;
     } catch {
+      // Keep the previous value only as historical client state, never actionable.
       setDelegationState("error");
+      return null;
     }
   }, [canReviewTravel]);
   const loadAnnouncements = useCallback(async () => {
@@ -242,11 +245,31 @@ function TravelWorkspace() {
   });
   const updateAndResubmit = () => void run(async () => { if (!selectedRequest || !selectedWorkflow) return; const updated = await apiJson<{ request: TravelRequestRecord }>(`/api/workhub/travel-requests/${selectedRequest.id}`, { method: "PUT", body: JSON.stringify({ expectedVersion: selectedRequest.version, destinationOfficeItemId, startDate, endDate, purpose }) }); await apiJson(`/api/workhub/travel-requests/${selectedRequest.id}/resubmit`, { method: "POST", body: JSON.stringify({ expectedRequestVersion: updated.request.version, expectedWorkflowVersion: selectedWorkflow.version }) }); await openRequest(selectedRequest.id); await Promise.all([loadNotifications(), loadMyRequests()]); setMessage("出張申請を再申請しました。"); });
   const toggleDelegation = () => void run(async () => {
-    await apiJson("/api/workhub/approval-delegation", {
-      method: "POST", body: JSON.stringify({ enabled: !activeDelegation }),
-    });
-    await Promise.all([loadDelegation(), loadMyWork()]);
-    setMessage(activeDelegation ? "代理承認を取り消しました。" : "Meiへの出張承認代理を24時間有効にしました。");
+    if (delegationState !== "ready") return;
+    const requestedEnabled = !activeDelegation;
+    // Fail closed before POST. A lost response is not proof that the server
+    // rejected the mutation. Do not enable another POST until GET resolves.
+    setDelegationState("loading");
+    let acknowledged = false;
+    try {
+      await apiJson("/api/workhub/approval-delegation", {
+        method: "POST", body: JSON.stringify({ enabled: requestedEnabled }),
+      });
+      acknowledged = true;
+    } catch {
+      // The write may have committed. Never automatically retry the mutation.
+    }
+    const current = await loadDelegation();
+    await loadMyWork();
+    if (!current) {
+      setMessage("委任処理の結果を確認できません。再送信せず、委任状態を再確認してください。");
+    } else if (!acknowledged) {
+      setMessage(`委任処理の応答を確認できませんでした。再取得した現在の状態は${isActiveApprovalDelegation(current.grant) ? "有効" : "無効"}です。自動再送信はしていません。`);
+    } else if (isActiveApprovalDelegation(current.grant) !== requestedEnabled) {
+      setMessage("委任の状態が操作後に変化しました。表示されている現在の状態を確認してください。");
+    } else {
+      setMessage(requestedEnabled ? "Meiへの出張承認代理を24時間有効にしました。" : "代理承認を取り消しました。");
+    }
   });
   const decide = (entry: MyWorkEntry, action: "approve" | "return") => { const comment = returnReasons[entry.workItem.id]?.trim() ?? ""; if (action === "return" && !comment) { setMessage("差戻し理由を入力してください。"); return; } void run(async () => { await apiJson(`/api/workhub/workflows/${entry.workflow.id}/${action}`, { method: "POST", body: JSON.stringify({ expectedInstanceVersion: entry.workflow.version, expectedWorkItemVersion: entry.workItem.version, ...(action === "return" ? { reasonCode: "correction_required", comment } : {}) }) }); await loadMyWork(); await loadNotifications(); setMessage(action === "approve" ? "承認しました。" : "差し戻しました。"); }); };
   const openNotification = (notification: NotificationRecord) => void run(async () => { if (!notification.readAt) await apiJson(`/api/workhub/notifications/${notification.id}/read`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version }) }); const target = notification.actionTarget?.match(/^resource:travel_request:(.+)$/u)?.[1]; if (target && isAoi) await openRequest(target); await loadNotifications(); });
@@ -353,7 +376,7 @@ function TravelWorkspace() {
               {delegationState === "loading" ? <p role="status">委任状態を確認中…</p> :
                 delegationState === "error" ? <button type="button" className="workhub-secondary-button" onClick={() => void loadDelegation()}>委任状態を再確認</button> :
                 <><p role="status">{activeDelegation ? "Meiへ委任中（期限：" + new Date(delegation!.validUntil).toLocaleString("ja-JP") + "）" : "現在、代理承認は無効です"}</p>
-                  <button className="workhub-secondary-button" type="button" disabled={busy} onClick={toggleDelegation}>{activeDelegation ? "代理承認を取り消す" : "Meiへ24時間委任する"}</button></>}
+                  <button className="workhub-secondary-button" type="button" disabled={busy || delegationState !== "ready"} onClick={toggleDelegation}>{activeDelegation ? "代理承認を取り消す" : "Meiへ24時間委任する"}</button></>}
             </div>}
             {isMei && <div className="workhub-task-list"><p>経費確認はこちらから行えます。処理待ち件数はHOMEでは取得していません。</p><a className="workhub-work-link" href="#workhub-expenses">経費確認画面を開く →</a></div>}
             {isMei && <p className="workhub-reference-note">{delegationState === "error" ? "代理承認の権限を確認できません。" :
