@@ -10,6 +10,7 @@ test("Stage4 company news has one latest-three or full-list view, not duplicate 
     publishedAt: new Date(Date.UTC(2026, 9, 12 - i, 4)).toISOString(),
     importance: "normal",
     audienceRole: null,
+    audienceDepartment: null,
     visibleFrom: new Date(Date.UTC(2026, 9, 12 - i, 4)).toISOString(),
     visibleUntil: null,
   }));
@@ -34,8 +35,7 @@ test("Stage4 company news has one latest-three or full-list view, not duplicate 
   const articles = list.locator(".workhub-announcement-item");
   await expect(articles).toHaveCount(3);
   await expect(articles.first()).toContainText("公式お知らせ 1");
-  await expect(section).toContainText("現在の所属ロールと掲載期間で配信対象を判定");
-  await expect(section).toContainText("部署単位の指定は未対応です");
+  await expect(section).toContainText("現在の所属ロール・部署と掲載期間で配信対象を判定");
   await expect(section).toContainText("重要度順で最新3件");
   await expect(section.getByRole("button", { name: "お知らせを公開" })).toHaveCount(0);
   const summary = section.getByRole("button", { name: "すべてのお知らせを見る" });
