@@ -32,7 +32,7 @@ jobs:
           [[ "$TARGET_SHA" =~ ^[a-f0-9]{40}$ ]]
 
       - name: Checkout exact SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 2
