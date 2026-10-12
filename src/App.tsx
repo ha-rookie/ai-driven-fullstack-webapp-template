@@ -355,6 +355,7 @@ function TravelWorkspace() {
                 <><p role="status">{activeDelegation ? "Meiへ委任中（期限：" + new Date(delegation!.validUntil).toLocaleString("ja-JP") + "）" : "現在、代理承認は無効です"}</p>
                   <button className="workhub-secondary-button" type="button" disabled={busy} onClick={toggleDelegation}>{activeDelegation ? "代理承認を取り消す" : "Meiへ24時間委任する"}</button></>}
             </div>}
+            {isMei && <div className="workhub-task-list"><p>経費確認はこちらから行えます。処理待ち件数はHOMEでは取得していません。</p><a className="workhub-work-link" href="#workhub-expenses">経費確認画面を開く →</a></div>}
             {isMei && <p className="workhub-reference-note">{delegationState === "error" ? "代理承認の権限を確認できません。" :
               activeDelegation ? "Renからの代理承認が有効です。出張承認タスクを確認できます。" : "出張承認の代理権限はありません。"}</p>}
             {canReviewTravel ? (
