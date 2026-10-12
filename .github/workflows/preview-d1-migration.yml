@@ -1,13 +1,23 @@
 name: Preview D1 migration
 
+# #632: No push / PR / scheduled remote migration. Even a code PR merge
+# cannot authorize a remote D1 write. Only the repository owner explicitly
+# dispatches an exact, independently reviewed plan and SHA.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "migrations/**"
-      - "wrangler.jsonc"
-      - ".github/workflows/preview-d1-migration.yml"
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact 40-character commit SHA at the current main HEAD
+        required: true
+        type: string
+      expected_pending_migrations:
+        description: Exact ordered comma-separated pending SQL basenames (nonempty)
+        required: true
+        type: string
+      confirmation:
+        description: Type MIGRATE PREVIEW D1 exactly after separate human authorization
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,65 +27,126 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  migrate-preview:
+  preflight:
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      EXPECTED_PENDING: ${{ inputs.expected_pending_migrations }}
+    steps:
+      - name: Checkout exact requested SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+
+      - name: Require exact current main HEAD before executing repository scripts
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$TARGET_SHA"
+
+      - name: Fail closed unless repository owner explicitly dispatched from main
+        run: node scripts/preview-d1-migration-guard.mjs --check-request
+
+      - name: Validate fixed Preview D1 binding and database identity
+        run: node scripts/preview-d1-migration-guard.mjs --check-config
+
+      - name: Check fail-closed guard contract offline
+        run: node scripts/preview-d1-migration-guard.mjs --self-test
+
+  migrate-preview:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: preview
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      EXPECTED_PENDING: ${{ inputs.expected_pending_migrations }}
       PREVIEW_DATABASE_NAME: ai-driven-webapp-template-preview
       PREVIEW_DATABASE_ID: f1ce1268-2be2-4a20-ab10-a94c32feee64
     steps:
-      - name: Checkout
+      - name: Checkout exact requested SHA after the Human Gate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+
+      - name: Revalidate owner request and exact current main SHA
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$TARGET_SHA"
+          node scripts/preview-d1-migration-guard.mjs --check-request
+          node scripts/preview-d1-migration-guard.mjs --check-config
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Install locked dependencies
+      - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
 
-      - name: Validate Preview target
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'JS'
-          import fs from "node:fs";
-          const text = fs.readFileSync("wrangler.jsonc", "utf8");
-          if (!text.includes(process.env.PREVIEW_DATABASE_NAME)) throw new Error("Preview database name mismatch");
-          if (!text.includes(process.env.PREVIEW_DATABASE_ID)) throw new Error("Preview database ID mismatch");
-          JS
-
-      - name: Diagnose Cloudflare authentication
+      - name: Confirm token and exact Cloudflare Preview D1 target
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
           const token = process.env.CLOUDFLARE_API_TOKEN;
           const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-          if (!token) throw new Error("CLOUDFLARE_API_TOKEN is missing");
-          if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID is missing");
-
+          const expectedId = process.env.PREVIEW_DATABASE_ID;
+          const expectedName = process.env.PREVIEW_DATABASE_NAME;
+          if (!token || !accountId) throw new Error("Missing dedicated migration token/account");
           const headers = { Authorization: `Bearer ${token}` };
-          const verify = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", { headers });
-          const verifyBody = await verify.json();
-          console.log("Token verification:", verify.status, verifyBody?.result?.status ?? "unknown");
-          if (!verify.ok || !verifyBody?.success) throw new Error("Cloudflare API token verification failed");
-
-          const db = await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${process.env.PREVIEW_DATABASE_ID}`,
-            { headers }
+          const verified = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", { headers });
+          const verifyBody = await verified.json();
+          if (!verified.ok || !verifyBody?.success) throw new Error("Migration token verification failed");
+          const response = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${expectedId}`,
+            { headers },
           );
-          const dbBody = await db.json();
-          console.log("Preview D1 access:", db.status, dbBody?.success === true ? "accessible" : "denied");
-          if (!db.ok || !dbBody?.success) {
-            const codes = Array.isArray(dbBody?.errors) ? dbBody.errors.map((e) => e.code).filter(Boolean) : [];
-            console.log("Cloudflare error codes:", codes.length ? codes.join(",") : "unknown");
-            throw new Error("Configured token/account cannot access the pinned Preview D1 database");
+          const body = await response.json();
+          if (!response.ok || body?.success !== true
+            || body?.result?.uuid !== expectedId || body?.result?.name !== expectedName) {
+            throw new Error("Cloudflare remote database identity mismatch; refusing migration");
           }
+          console.log("Dedicated migration token and exact pinned Preview D1 identity verified");
           JS
 
-      - name: Show pending migrations
-        run: npx wrangler d1 migrations list DB --remote --preview
+      - name: Read pending migrations from remote Preview D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx wrangler d1 migrations list DB --remote --preview | tee preview-d1-pending.txt
 
-      - name: Apply migrations to Preview D1
-        run: npx wrangler d1 migrations apply DB --remote --preview
+      - name: Require pending list equals owner's explicit ordered approval
+        run: node scripts/preview-d1-migration-guard.mjs --check-plan preview-d1-pending.txt
+
+      - name: Recheck pending list immediately before explicitly authorized apply
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx wrangler d1 migrations list DB --remote --preview | tee preview-d1-pending-final.txt
+          node scripts/preview-d1-migration-guard.mjs --check-plan preview-d1-pending-final.txt
+          npx wrangler d1 migrations apply DB --remote --preview
+
+      - name: Record execution evidence without secrets
+        run: |
+          {
+            echo "### Preview D1 Migration (manual owner dispatch only)"
+            echo "- target main SHA: $TARGET_SHA"
+            echo "- pinned Preview database ID: $PREVIEW_DATABASE_ID"
+            echo "- exact approved pending migrations: $EXPECTED_PENDING"
+            echo "- Run: $GITHUB_RUN_ID"
+            echo "- Result: application step completed"
+          } >> "$GITHUB_STEP_SUMMARY"
