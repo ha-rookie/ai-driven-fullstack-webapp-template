@@ -43,7 +43,13 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await switchPersona(page, "ren");
   const firstTask = page.getByText(initialPurpose, { exact: true }).locator("..");
   await expect(firstTask).toBeVisible();
-  await expect(latestNotification(page, "出張申請の承認依頼が届きました")).toBeVisible();
+  // The actionable approval is already represented by MY WORK on HOME, so
+  // only the matching action's HOME projection is suppressed; other requests' notifications remain.
+  await expect(page.locator("#workhub-notifications")).toContainText("「今日対応すること」に");
+  await page.getByRole("button", { name: /通知 未読\d+件/u }).click();
+  await expect(page.locator("#workhub-notification-center").getByRole("button",
+    { name: /出張申請の承認依頼が届きました/u }).first()).toBeVisible();
+  await page.getByRole("button", { name: "ホームへ戻る" }).click();
   await page.getByRole("textbox", { name: "WORKHUBを検索" }).fill(initialPurpose);
   await page.getByRole("button", { name: "検索", exact: true }).click();
   await expect(page.locator(".workhub-global-search-results").getByRole("button", { name: new RegExp(initialPurpose, "u") })).toBeVisible();
@@ -53,10 +59,15 @@ test("Aoi and Ren complete submit-return-resubmit-approve with notifications and
   await expect(page.getByText("差し戻しました。", { exact: true })).toBeVisible();
 
   await switchPersona(page, "aoi");
-  const returnedNotification = latestNotification(page, "出張申請が差し戻されました");
-  await expect(returnedNotification).toBeVisible();
   await expect(page.locator(".workhub-my-requests").getByRole("button",
     { name: new RegExp(initialPurpose, "u") })).toContainText("差戻し・要修正");
+  // Returned is actionable MY WORK: show the one HOME work card, while
+  // retaining the unread notification in the full Notification Center.
+  await expect(page.locator("#workhub-notifications")).toContainText("「今日対応すること」に");
+  await page.getByRole("button", { name: /通知 未読\d+件/u }).click();
+  await expect(page.locator("#workhub-notification-center").getByRole("button",
+    { name: /出張申請が差し戻されました/u }).first()).toBeVisible();
+  await page.getByRole("button", { name: "ホームへ戻る" }).click();
   // A returned request can be corrected directly from MY REQUESTS,
   // without first opening the notification or navigating to details.
   const returnedItem = page.locator(".workhub-my-requests").getByRole("button",

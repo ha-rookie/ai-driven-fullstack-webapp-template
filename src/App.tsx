@@ -422,6 +422,25 @@ function TravelWorkspace() {
   const pendingMyRequests = listActionRequiredMyRequests(myRequests);
   const centerNotifications = notificationFilter === "unread" ? notifications.filter(item => !item.readAt) : notifications;
   const visibleAnnouncements = showAllAnnouncements ? announcements : announcements.slice(0, 3);
+  // Hide only HOME projections whose *visible* MY WORK item already
+  // represents the same required action. Never mutate Notification state,
+  // the unread Bell count, or the full Notification Center.
+  const representedHomeActions = new Set<string>();
+  if (canReviewTravel && myWorkState === "ready") {
+    for (const entry of myWork.slice(0, 3)) {
+      representedHomeActions.add(`workflow.approval_requested:resource:travel_request:${entry.request.id}`);
+    }
+  } else if (isAoi && myRequestsState === "ready") {
+    for (const request of pendingMyRequests.slice(0, 3)) {
+      if (request.kind === "travel") {
+        representedHomeActions.add(`workflow.returned:resource:travel_request:${request.id}`);
+      }
+    }
+  }
+  const isRepresentedInHomeWork = (notice: NotificationRecord): boolean =>
+    representedHomeActions.has(`${notice.notificationType}:${notice.actionTarget ?? ""}`);
+  const homeNotifications = notifications.filter(notice => !isRepresentedInHomeWork(notice)).slice(0, 4);
+  const homeSuppressedNotification = notifications.some(isRepresentedInHomeWork);
   const openNotificationCenter = () => { setNotificationFilter("all"); setShowNotificationCenter(true); };
   const leaveNotificationCenter = () => { restoreNotificationBellFocus.current = true; setShowNotificationCenter(false); };
   const homeWorkCount: number | null = canReviewTravel ? (myWorkState === "ready" ? myWork.length : null) : isAoi ? (myRequestsState === "ready" ? pendingMyRequests.length : null) : null;
@@ -680,13 +699,16 @@ function TravelWorkspace() {
             notificationState === "loading" ? <p role="status">通知を確認しています…</p>
             : notificationState === "error" ? <div role="alert"><p>通知を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadNotifications()}>通知を再読み込み</button></div>
             : notifications.length === 0 ? <p className="workhub-empty-state">通知はありません。</p>
-            : <div className="workhub-notification-list">{notifications.slice(0, 4).map(notification =>
+            : homeNotifications.length === 0 ? <p className="workhub-empty-state">この通知は「今日対応すること」に代表表示しています。通知センターではすべて確認できます。</p>
+            : <div className="workhub-notification-list">{homeNotifications.map(notification =>
               <button key={notification.id} type="button" className={`workhub-notification-item ${notification.readAt ? "is-read" : ""}`} onClick={() => openNotification(notification)}>
                 <strong>{NOTIFICATION_LABELS[notification.notificationType] ?? notification.notificationType}</strong>
                 <small>{new Date(notification.createdAt).toLocaleString("ja-JP")}</small>
               </button>
             )}</div>
           }
+          {notificationState === "ready" && homeSuppressedNotification && homeNotifications.length > 0 &&
+            <small className="workhub-reference-note">対応が必要な同じ申請は「今日対応すること」に表示しています。通知そのものは消していません。</small>}
           <button className="workhub-secondary-button" type="button" onClick={openNotificationCenter}>すべての通知を見る</button>
           </article>
           <section className="workhub-home-card workhub-social-preview" aria-label="社内交流プレビュー">
