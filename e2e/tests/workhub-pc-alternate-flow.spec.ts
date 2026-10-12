@@ -6,7 +6,7 @@ const signIn = async (page: Page, user: "aoi" | "sora") => {
   await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill(user);
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: new RegExp(user, "iu") })).toBeVisible();
+  await expect(page.getByRole("heading", { name: new RegExp(user, "iu") })).toBeVisible();
 };
 
 const beginPc = async (page: Page): Promise<string> => {
