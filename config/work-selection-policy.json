@@ -10,11 +10,15 @@
     {
       "issue": 597,
       "reason": "User explicitly requested a guard against work-selection drift before resuming ordinary roadmap execution."
+    },
+    {
+      "issue": 632,
+      "reason": "User explicitly approved temporarily unblocking Stage4 #348 by fixing unsafe Preview D1 migration auto-run #632 before completing Stage4; exception expires after #632 CI/merge."
     }
   ],
   "governanceChangeIssues": [
     597,
     521
   ],
-  "notes": "2026-10-12: User approved Stage3 #347 development completion and advancement of the existing #343 WBS to Stage4 #348 (Notification / Announcement / Social). Stage3 PRs #638–#642 merged; Browser E2E 62/62 and required CI passed. Stage2 ST-WH2-01..08 and Stage3 physical-device, accessibility and authenticated Preview System Tests remain Not Run in a later phase. #350, #521 and #632 remain independently Open. No remote operations authorized."
+  "notes": "2026-10-12: User approved Stage3 #347 development completion and advancement of the existing #343 WBS to Stage4 #348 (Notification / Announcement / Social). Stage3 PRs #638–#642 merged; Browser E2E 62/62 and required CI passed. Stage2 ST-WH2-01..08 and Stage3 physical-device, accessibility and authenticated Preview System Tests remain Not Run in a later phase. #350, #521 and #632 remain independently Open. No remote operations authorized. 2026-10-12: Stage4 dependency #632 is temporarily authorized by user's '続けて' after explicit recommendation, per pre-work #132/#632/Notion decision. Focus #348 and WBS are unchanged; return to #348 by removing exception after #632 remediation."
 }
