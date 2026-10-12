@@ -143,9 +143,9 @@ jobs:
         run: |
           {
             echo "### Preview D1 Migration (manual owner dispatch only)"
-            echo "- target main SHA: `$TARGET_SHA`"
-            echo "- pinned Preview database ID: `$PREVIEW_DATABASE_ID`"
-            echo "- exact approved pending migrations: `$EXPECTED_PENDING`"
-            echo "- Run: `$GITHUB_RUN_ID`"
+            echo "- target main SHA: $TARGET_SHA"
+            echo "- pinned Preview database ID: $PREVIEW_DATABASE_ID"
+            echo "- exact approved pending migrations: $EXPECTED_PENDING"
+            echo "- Run: $GITHUB_RUN_ID"
             echo "- Result: application step completed"
           } >> "$GITHUB_STEP_SUMMARY"
