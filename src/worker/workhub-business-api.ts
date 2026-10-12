@@ -25,6 +25,7 @@ import { listWorkhubApps, WORKHUB_APP_SCOPE_ID } from "../reference/workhub/app-
 import { isWorkhubUnifiedCategory, rankWorkhubUnifiedResults, searchWorkhubReferenceCatalog } from "../reference/workhub/unified-search";
 import { listWorkhubReferencePeople } from "../reference/workhub/people";
 import { listWorkhubReferenceDocuments } from "../reference/workhub/documents";
+import { listWorkhubSocialReference } from "../reference/workhub/social";
 import {
   BusinessActivityProjector,
   BusinessActivityTimelineService,
@@ -361,6 +362,14 @@ export const handleWorkhubBusinessApi = async (
         return error(403, "people_forbidden", "Directory is unavailable");
       }
       return json({ items: listWorkhubReferencePeople() });
+    }
+    if (pathname === "/api/workhub/social") {
+      if (request.method !== "GET") return error(405, "method_not_allowed", "Only GET is available");
+      // Never trust requested role/scope. Social is a demo-only authorized
+      // projection, not a public feed or an authoritative company notice.
+      const membership = await findScopeMembership(env.DB, principalId, WORKHUB_APP_SCOPE_ID);
+      if (!membership) return error(403, "social_forbidden", "Social feed is unavailable");
+      return json({ items: listWorkhubSocialReference(membership.role) });
     }
     if (pathname === "/api/workhub/apps") {
       if (request.method !== "GET") return error(405, "method_not_allowed", "Only GET is available");
