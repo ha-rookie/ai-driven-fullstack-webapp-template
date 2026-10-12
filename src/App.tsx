@@ -427,7 +427,7 @@ function TravelWorkspace() {
         <AccountSwitchButton />
       </div>
     </header>
-    {showNotificationCenter && <main className="workhub-notification-center" id="workhub-notification-center" aria-labelledby="workhub-notification-center-title">
+    <main hidden={!showNotificationCenter} className="workhub-notification-center" id="workhub-notification-center" aria-labelledby="workhub-notification-center-title">
       <div className="workhub-notification-center-heading">
         <div><span className="workhub-card-label">NOTIFICATION CENTER</span><h1 id="workhub-notification-center-title" ref={notificationTitleRef} tabIndex={-1}>通知センター</h1></div>
         <button type="button" className="workhub-secondary-button" onClick={leaveNotificationCenter}>ホームへ戻る</button>
@@ -449,7 +449,7 @@ function TravelWorkspace() {
               </button></li>,
             )}</ul>}
       <small className="workhub-reference-note">最新50件の取得済み通知を表示します。未読の絞り込みは取得済みの範囲内です。通知の既読化は業務タスクの完了を意味しません。</small>
-    </main>}
+    </main>
     <div className="workhub-portal-layout" hidden={showNotificationCenter}>
       <nav className="workhub-side-nav" aria-label="WORKHUB メインナビゲーション">
         <a className="is-active" href="#workhub-home" aria-current="page"><span aria-hidden="true">⌂</span>ホーム</a>
