@@ -40,15 +40,15 @@ jobs:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
 
-      - name: Fail closed unless repository owner explicitly dispatched from main
-        run: node scripts/preview-d1-migration-guard.mjs --check-request
-
-      - name: Require exact current main HEAD, not an unreviewed branch or stale SHA
+      - name: Require exact current main HEAD before executing repository scripts
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$TARGET_SHA"
+
+      - name: Fail closed unless repository owner explicitly dispatched from main
+        run: node scripts/preview-d1-migration-guard.mjs --check-request
 
       - name: Validate fixed Preview D1 binding and database identity
         run: node scripts/preview-d1-migration-guard.mjs --check-config
@@ -76,10 +76,10 @@ jobs:
       - name: Revalidate owner request and exact current main SHA
         run: |
           set -euo pipefail
-          node scripts/preview-d1-migration-guard.mjs --check-request
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$TARGET_SHA"
+          node scripts/preview-d1-migration-guard.mjs --check-request
           node scripts/preview-d1-migration-guard.mjs --check-config
 
       - name: Setup Node
