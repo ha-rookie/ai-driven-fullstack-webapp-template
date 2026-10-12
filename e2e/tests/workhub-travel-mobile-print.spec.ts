@@ -15,7 +15,7 @@ test("390px travel form stays readable and short submitted request prints on exa
   const formCard = page.locator("#workhub-travel-form");
   await expect(formCard).toBeVisible();
   for (const label of ["行先", "開始日", "終了日", "目的"]) {
-    const field = formCard.getByText(label, { exact: true });
+    const field = formCard.getByLabel(label, { exact: true }).locator("..");
     await expect(field).toHaveCSS("color", "rgb(255, 255, 255)");
     await expect(field).toHaveCSS("font-size", "14px");
   }
