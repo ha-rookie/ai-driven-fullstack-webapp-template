@@ -499,7 +499,7 @@ function TravelWorkspace() {
                     <div className="workhub-document-card-top"><span>{doc.category}</span><strong className={`workhub-document-state is-${doc.state}`}>{doc.state === "current" ? "現行" : doc.state === "stale" ? "要再確認" : "旧版・参照注意"}</strong></div>
                     <strong className="workhub-document-title">{doc.title}</strong>
                     <p>{doc.summary}</p>
-                    <dl><div><dt>版</dt><dd>v{doc.version}</dd></div><div><dt>管理者</dt><dd>{doc.ownerLabel}</dd></div><div><dt>確認日</dt><dd>{doc.reviewedAt}</dd></div></dl>
+                    <dl><div><dt>版</dt><dd>v{doc.version}</dd></div><div><dt>管理者</dt><dd>{doc.ownerLabel}</dd></div><div><dt>確認日：</dt><dd>{doc.reviewedAt}</dd></div></dl>
                     {doc.state === "superseded" && <p className="workhub-document-warning">現行文書：{doc.replacementTitle ?? "管理者に確認してください"}</p>}
                     {doc.state === "stale" && <p className="workhub-document-warning">この版は担当者の再確認が必要です。</p>}
                   </article>
