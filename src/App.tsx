@@ -459,8 +459,8 @@ function TravelWorkspace() {
             peopleState === "error" ? <div role="alert"><p>社員一覧を取得できません。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadPeople()}>再読み込み</button></div> :
               people.length === 0 ? <p className="workhub-empty-state">表示できる社員データはありません。</p> :
                 <div className="workhub-people-grid">{people.map(person =>
-                  <article className="workhub-people-card" key={person.displayName}>
-                    <h3>{person.displayName}</h3><p>{person.roleLabel}</p><small>{person.organizationLabel}</small>
+                  <article className="workhub-people-card" key={person.displayName} aria-label={`社員 ${person.displayName}`}>
+                    <strong>{person.displayName}</strong><p>{person.roleLabel}</p><small>{person.organizationLabel}</small>
                   </article>
                 )}</div>}
         </section>
