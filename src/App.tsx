@@ -128,6 +128,19 @@ function LoginScreen() {
 function TravelWorkspace() {
   const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const isMei = user?.id === "workhub-demo-mei"; const canReviewTravel = isRen || isMei; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
   const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
+  const [showNotificationCenter, setShowNotificationCenter] = useState(false);
+  const [notificationFilter, setNotificationFilter] = useState<"all" | "unread">("all");
+  const notificationBellRef = useRef<HTMLButtonElement>(null);
+  const notificationTitleRef = useRef<HTMLHeadingElement>(null);
+  const restoreNotificationBellFocus = useRef(false);
+  useEffect(() => {
+    if (showNotificationCenter) {
+      notificationTitleRef.current?.focus({ preventScroll: true });
+    } else if (restoreNotificationBellFocus.current) {
+      restoreNotificationBellFocus.current = false;
+      notificationBellRef.current?.focus({ preventScroll: true });
+    }
+  }, [showNotificationCenter]);
   const [people, setPeople] = useState<readonly WorkhubDirectoryPerson[]>([]);
   const [peopleState, setPeopleState] = useState<"loading" | "ready" | "error">("loading");
   const [documents, setDocuments] = useState<readonly WorkhubDocumentSummary[]>([]);
@@ -383,6 +396,9 @@ function TravelWorkspace() {
   };
   const awaitingResubmission = selectedWorkflow?.state === "awaiting_resubmission";
   const pendingMyRequests = listActionRequiredMyRequests(myRequests);
+  const centerNotifications = notificationFilter === "unread" ? notifications.filter(item => !item.readAt) : notifications;
+  const openNotificationCenter = () => { setNotificationFilter("all"); setShowNotificationCenter(true); };
+  const leaveNotificationCenter = () => { restoreNotificationBellFocus.current = true; setShowNotificationCenter(false); };
   const homeWorkCount: number | null = canReviewTravel ? (myWorkState === "ready" ? myWork.length : null) : isAoi ? (myRequestsState === "ready" ? pendingMyRequests.length : null) : null;
   // Print the authoritative current request, not unsaved form fields.
   // This is a browser print/PDF-save view, NOT a historical approved artifact.
@@ -405,13 +421,36 @@ function TravelWorkspace() {
       </form>
       <div className="workhub-header-actions" aria-label="グローバル操作">
         <button className="workhub-header-action" type="button" aria-label="Ask CECIL">Ask CECIL</button>
-        <a className="workhub-header-action workhub-header-icon" href="#workhub-notifications" aria-label={notificationState === "ready" ? `通知 未読${unreadCount}件` : "通知 取得状況を確認"}>🔔{notificationState === "ready" && <span className="workhub-notification-badge">{unreadCount}</span>}</a>
+        <button ref={notificationBellRef} className="workhub-header-action workhub-header-icon" type="button" aria-controls="workhub-notification-center" aria-expanded={showNotificationCenter} onClick={openNotificationCenter} aria-label={notificationState === "ready" ? `通知 未読${unreadCount}件` : "通知 取得状況を確認"}>🔔{notificationState === "ready" && <span className="workhub-notification-badge">{unreadCount}</span>}</button>
         <a className="workhub-header-action workhub-header-icon" href="#workhub-apps" aria-label="アプリ一覧">▦</a>
         <div className="workhub-user-chip"><span className="workhub-user-dot" aria-hidden="true" /><span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span></div>
         <AccountSwitchButton />
       </div>
     </header>
-    <div className="workhub-portal-layout">
+    {showNotificationCenter && <main className="workhub-notification-center" id="workhub-notification-center" aria-labelledby="workhub-notification-center-title">
+      <div className="workhub-notification-center-heading">
+        <div><span className="workhub-card-label">NOTIFICATION CENTER</span><h1 id="workhub-notification-center-title" ref={notificationTitleRef} tabIndex={-1}>通知センター</h1></div>
+        <button type="button" className="workhub-secondary-button" onClick={leaveNotificationCenter}>ホームへ戻る</button>
+      </div>
+      <p>自分に関係する状態変化を確認できます。未読は対応が必要な仕事の件数ではありません。</p>
+      <div className="workhub-notification-center-controls" role="group" aria-label="通知の表示条件">
+        <button type="button" className="workhub-secondary-button" aria-pressed={notificationFilter === "all"} onClick={() => setNotificationFilter("all")}>すべて</button>
+        <button type="button" className="workhub-secondary-button" aria-pressed={notificationFilter === "unread"} onClick={() => setNotificationFilter("unread")}>未読のみ</button>
+        <button type="button" className="workhub-secondary-button" onClick={() => void loadNotifications()} disabled={notificationState === "loading"}>通知を更新</button>
+      </div>
+      {notificationState === "loading" ? <p role="status">通知を読み込んでいます…</p> :
+        notificationState === "error" ? <div role="alert"><p>通知を取得できませんでした。0件とは限りません。</p><button type="button" className="workhub-secondary-button" onClick={() => void loadNotifications()}>再読み込み</button></div> :
+          centerNotifications.length === 0 ? <p className="workhub-empty-state">{notificationFilter === "unread" ? "取得した通知に未読はありません。" : "通知はありません。"}</p> :
+            <ul className="workhub-notification-center-list">{centerNotifications.map(notification =>
+              <li key={notification.id}><button type="button" className="workhub-notification-center-item" onClick={() => { setShowNotificationCenter(false); openNotification(notification); }}>
+                <span className="workhub-center-read-label">{notification.readAt ? "既読" : "未読"}</span>
+                <strong>{NOTIFICATION_LABELS[notification.notificationType] ?? notification.notificationType}</strong>
+                <time dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleString("ja-JP")}</time>
+              </button></li>,
+            )}</ul>}
+      <small className="workhub-reference-note">最新50件の取得済み通知を表示します。未読の絞り込みは取得済みの範囲内です。通知の既読化は業務タスクの完了を意味しません。</small>
+    </main>}
+    <div className="workhub-portal-layout" hidden={showNotificationCenter}>
       <nav className="workhub-side-nav" aria-label="WORKHUB メインナビゲーション">
         <a className="is-active" href="#workhub-home" aria-current="page"><span aria-hidden="true">⌂</span>ホーム</a>
         <a href="#workhub-my-work"><span aria-hidden="true">✓</span>MY WORK</a>
@@ -593,7 +632,9 @@ function TravelWorkspace() {
                 <small>{new Date(notification.createdAt).toLocaleString("ja-JP")}</small>
               </button>
             )}</div>
-          }</article>
+          }
+          <button className="workhub-secondary-button" type="button" onClick={openNotificationCenter}>すべての通知を見る</button>
+          </article>
           {selectedRequest && <article className="workhub-home-card" id="workhub-request-detail"><span className="workhub-card-label">MY REQUEST DETAIL</span><h2>{selectedRequest.purpose}</h2><p>{selectedRequest.startDate} → {selectedRequest.endDate}</p><p>Workflow: <strong>{selectedWorkflow?.state ?? selectedRequest.status}</strong></p>{isAoi && selectedRequest.status === "submitted" && <div className="workhub-travel-print-action">
               <button className="workhub-secondary-button" type="button" disabled={busy} onClick={printTravelRequest}>申請内容を印刷・PDF保存</button>
               <small>ブラウザの印刷画面からPDF保存できます。承認結果の履歴固定PDFではありません。</small>
