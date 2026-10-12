@@ -462,6 +462,14 @@
   gap: 12px;
   margin-top: 16px;
 }
+/* Native anchor navigation should identify the exact searched result. */
+.workhub-people-card:target,
+.workhub-document-card:target {
+  outline: 3px solid #217b83;
+  outline-offset: 3px;
+  scroll-margin-top: 24px;
+}
+
 .workhub-document-card {
   min-width: 0;
   padding: 16px;
