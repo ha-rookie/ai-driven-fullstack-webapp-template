@@ -12,12 +12,31 @@ export const WORKHUB_ANNOUNCEMENT_PUBLISHER_ID = "workhub-demo-sora";
 export const canPublishWorkhubReferenceAnnouncement = (principalId: string, currentRole: string): boolean =>
   principalId === WORKHUB_ANNOUNCEMENT_PUBLISHER_ID && currentRole === "corporate";
 
+export const ANNOUNCEMENT_IMPORTANCES = ["normal", "important", "critical"] as const;
+export type AnnouncementImportance = typeof ANNOUNCEMENT_IMPORTANCES[number];
+
+export const ANNOUNCEMENT_AUDIENCE_ROLES = [
+  "newcomer", "employee", "manager", "accounting", "corporate", "system_admin",
+] as const;
+export type AnnouncementAudienceRole = typeof ANNOUNCEMENT_AUDIENCE_ROLES[number];
+
+export interface AnnouncementDeliveryInput {
+  readonly importance?: unknown;
+  readonly audienceRole?: unknown;
+  readonly visibleFrom?: unknown;
+  readonly visibleUntil?: unknown;
+}
+
 export interface WorkhubAnnouncement {
   readonly id: string;
   readonly title: string;
   readonly body: string;
   readonly authorId: string;
   readonly publishedAt: string;
+  readonly importance: AnnouncementImportance;
+  readonly audienceRole: AnnouncementAudienceRole | null;
+  readonly visibleFrom: string;
+  readonly visibleUntil: string | null;
 }
 
 export class WorkhubAnnouncementError extends Error {
@@ -51,12 +70,50 @@ export const validateAnnouncement = (title: unknown, body: unknown) => ({
   body: normalize(body, "body", 2000, true),
 });
 
+export const validateAnnouncementDelivery = (
+  input: AnnouncementDeliveryInput,
+  now = new Date(),
+): Pick<WorkhubAnnouncement, "importance" | "audienceRole" | "visibleFrom" | "visibleUntil"> => {
+  const importance = input.importance ?? "normal";
+  if (!ANNOUNCEMENT_IMPORTANCES.some(value => value === importance)) {
+    throw new WorkhubAnnouncementError("invalid_input", "Invalid announcement importance");
+  }
+  const requestedRole = input.audienceRole === "" ? null : input.audienceRole ?? null;
+  if (requestedRole !== null && !ANNOUNCEMENT_AUDIENCE_ROLES.some(value => value === requestedRole)) {
+    throw new WorkhubAnnouncementError("invalid_input", "Invalid announcement audience role");
+  }
+  const canonicalTimestamp = (value: unknown, label: string): string => {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)
+      || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString() !== value) {
+      throw new WorkhubAnnouncementError("invalid_input", `${label} must be an ISO UTC timestamp`);
+    }
+    return value;
+  };
+  const visibleFrom = input.visibleFrom === undefined || input.visibleFrom === null || input.visibleFrom === ""
+    ? now.toISOString() : canonicalTimestamp(input.visibleFrom, "visibleFrom");
+  const visibleUntil = input.visibleUntil === undefined || input.visibleUntil === null || input.visibleUntil === ""
+    ? null : canonicalTimestamp(input.visibleUntil, "visibleUntil");
+  if (visibleUntil !== null && visibleUntil <= visibleFrom) {
+    throw new WorkhubAnnouncementError("invalid_input", "visibleUntil must follow visibleFrom");
+  }
+  return {
+    importance: importance as AnnouncementImportance,
+    audienceRole: requestedRole as AnnouncementAudienceRole | null,
+    visibleFrom,
+    visibleUntil,
+  };
+};
+
 interface AnnouncementRow {
   id: string;
   title: string;
   body: string;
   author_id: string;
   published_at: string;
+  importance: AnnouncementImportance;
+  audience_role: AnnouncementAudienceRole | null;
+  visible_from: string;
+  visible_until: string | null;
 }
 
 const fromRow = (row: AnnouncementRow): WorkhubAnnouncement => ({
@@ -65,19 +122,36 @@ const fromRow = (row: AnnouncementRow): WorkhubAnnouncement => ({
   body: row.body,
   authorId: row.author_id,
   publishedAt: row.published_at,
+  importance: row.importance,
+  audienceRole: row.audience_role,
+  visibleFrom: row.visible_from,
+  visibleUntil: row.visible_until,
 });
 
 export class D1WorkhubAnnouncementStore {
   constructor(private readonly db: D1Database, private readonly environment: string) {}
 
-  async list(limit = 10): Promise<readonly WorkhubAnnouncement[]> {
+  async list(
+    currentRole: string, limit = 10, now = new Date(),
+  ): Promise<readonly WorkhubAnnouncement[]> {
+    // Fail closed on missing/unknown roles. Authorization is checked again
+    // by the Worker against the current D1 WORKHUB scope membership.
+    if (!ANNOUNCEMENT_AUDIENCE_ROLES.some(role => role === currentRole)) {
+      return [];
+    }
+    const time = now.toISOString();
     const rows = await this.db.prepare(`
-      SELECT id, title, body, author_id, published_at
+      SELECT id, title, body, author_id, published_at,
+             importance, audience_role, visible_from, visible_until
       FROM workhub_announcements
       WHERE environment = ?
-      ORDER BY published_at DESC, id DESC
+        AND (audience_role IS NULL OR audience_role = ?)
+        AND visible_from <= ?
+        AND (visible_until IS NULL OR visible_until > ?)
+      ORDER BY CASE importance WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
+               published_at DESC, id DESC
       LIMIT ?
-    `).bind(this.environment, limit).all<AnnouncementRow>();
+    `).bind(this.environment, currentRole, time, time, limit).all<AnnouncementRow>();
     return (rows.results ?? []).map(fromRow);
   }
 
@@ -85,25 +159,30 @@ export class D1WorkhubAnnouncementStore {
     principalId: string,
     titleValue: unknown,
     bodyValue: unknown,
+    delivery: AnnouncementDeliveryInput = {},
   ): Promise<WorkhubAnnouncement> {
     if (principalId !== WORKHUB_ANNOUNCEMENT_PUBLISHER_ID) {
       throw new WorkhubAnnouncementError("forbidden", "Only General Affairs can publish announcements");
     }
     const { title, body } = validateAnnouncement(titleValue, bodyValue);
+    const now = new Date();
     const item: WorkhubAnnouncement = {
       id: crypto.randomUUID(),
       title,
       body,
       authorId: principalId,
-      publishedAt: new Date().toISOString(),
+      publishedAt: now.toISOString(),
+      ...validateAnnouncementDelivery(delivery, now),
     };
     const result = await this.db.prepare(`
       INSERT INTO workhub_announcements (
-        id, environment, title, body, author_id, published_at
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        id, environment, title, body, author_id, published_at,
+        importance, audience_role, visible_from, visible_until
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       item.id, this.environment, item.title, item.body,
-      item.authorId, item.publishedAt,
+      item.authorId, item.publishedAt, item.importance, item.audienceRole,
+      item.visibleFrom, item.visibleUntil,
     ).run();
     if (result.meta?.changes !== 1) {
       throw new WorkhubAnnouncementError("storage_failure", "Announcement could not be published");
