@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    347
+    348
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-12: Explicit user approval to close Stage2 #346 (implementation/automated acceptance) and advance approved #343 WBS to Stage3 #347 (People / Documents / Unified Search). ST-WH2-01..08 physical/system tests deferred to the System Test phase, Not Run. Stage1 #345/#352 complete; #521 Preview auth and #632 Preview D1 Human Gate risks remain independent Open issues. No remote operations authorized by this policy."
+  "notes": "2026-10-12: User approved Stage3 #347 development completion and advancement of the existing #343 WBS to Stage4 #348 (Notification / Announcement / Social). Stage3 PRs #638–#642 merged; Browser E2E 62/62 and required CI passed. Stage2 ST-WH2-01..08 and Stage3 physical-device, accessibility and authenticated Preview System Tests remain Not Run in a later phase. #350, #521 and #632 remain independently Open. No remote operations authorized."
 }
