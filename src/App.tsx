@@ -50,6 +50,7 @@ const HOME_HINTS: Record<string, { role: string; hint: string }> = {
   "workhub-demo-sora": { role: "人事 / 総務", hint: "人事・総務Task" },
   "workhub-demo-kai": { role: "System Admin", hint: "System Administration" },
 };
+const SEARCH_CATEGORY_LABELS: Readonly<Record<string, string>> = { all: "すべて", requests: "申請", apps: "アプリ", documents: "文書", people: "社員" };
 const NOTIFICATION_LABELS: Record<string, string> = { "workflow.approval_requested": "出張申請の承認依頼が届きました", "workflow.returned": "出張申請が差し戻されました", "workflow.approved": "出張申請が承認されました", "workflow.rejected": "出張申請が却下されました" };
 const TIMELINE_LABELS: Record<string, string> = { "workflow.submitted": "申請しました", "workflow.returned": "差し戻されました", "workflow.resubmitted": "再申請しました", "workflow.approved": "承認されました", "workflow.rejected": "却下されました", "workflow.withdrawn": "取り下げました" };
 const REMEMBERED_USER_ID_KEY = "workhub.rememberedUserId";
@@ -437,7 +438,18 @@ function TravelWorkspace() {
         {searchState !== "idle" && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">
           {searchState === "loading" ? <p role="status">検索しています…</p> :
             searchState === "error" ? <div role="alert"><p>検索結果を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void search()}>再検索</button></div> :
-            searchResults.length === 0 ? <p>該当する検索結果はありません。</p> : <div className="workhub-search-results">
+            searchResults.length === 0 ? <div className="workhub-search-empty">
+              <p>「{searchText.trim()}」に一致する結果はありません（カテゴリ：{SEARCH_CATEGORY_LABELS[searchCategory] ?? "未指定"}）。</p>
+              <p>検索語やカテゴリを変えて、もう一度検索してください。</p>
+              {searchCategory !== "all" && <button className="workhub-secondary-button" type="button" onClick={() => {
+                ++searchRequestVersion.current;
+                setSearchCategory("all");
+                setSearchState("idle");
+                setSearchResults([]);
+                setSearching(false);
+                document.getElementById("workhub-global-search")?.focus();
+              }}>カテゴリを「すべて」に戻す</button>}
+            </div> : <div className="workhub-search-results">
             <p role="status">{searchResults.length}件の閲覧可能な結果を表示しています。</p>
             {searchResults.map(result => {
               const key = `${result.resourceType}:${result.resourceId}`;
