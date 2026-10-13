@@ -266,7 +266,7 @@ export default function AskCecilPanel({ onClose, onTravelHandoff }: AskCecilPane
               id="workhub-ask-query"
               value={query}
               maxLength={100}
-              onChange={(event) => { setQuery(event.target.value); setEscalationNote(null); setEscalationState("idle"); }}
+              onChange={(event) => { setQuery(event.target.value); setLookupQuery(""); setGuide(null); setState("idle"); setEscalationNote(null); setEscalationState("idle"); }}
               placeholder="例: 出張について"
             />
             <button className="workhub-primary-button" disabled={!query.trim() || state === "loading"} type="submit">探す</button>
