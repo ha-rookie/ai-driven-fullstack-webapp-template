@@ -5,10 +5,13 @@ import {
   type CecilGuide,
   type CecilSearchResult,
 } from "./ask-cecil";
+import CecilTravelDraftCard from "./CecilTravelDraftCard";
+import type { CecilTravelDraft } from "./travel-draft";
 import "./ask-cecil.css";
 
 interface AskCecilPanelProps {
   readonly onClose: () => void;
+  readonly onTravelHandoff: (draft: CecilTravelDraft) => boolean;
 }
 
 const SUGGESTIONS = ["出張", "経費", "入社", "ナレッジ"] as const;
@@ -19,8 +22,9 @@ type LookupState = "idle" | "loading" | "ready" | "error";
  * It shares the existing authenticated server APIs with WORKHUB Search;
  * it does not run LLM tools, trust client roles or mutate business records.
  */
-export default function AskCecilPanel({ onClose }: AskCecilPanelProps) {
+export default function AskCecilPanel({ onClose, onTravelHandoff }: AskCecilPanelProps) {
   const [query, setQuery] = useState("");
+  const [showTravelDraft, setShowTravelDraft] = useState(false);
   const [state, setState] = useState<LookupState>("idle");
   const [guide, setGuide] = useState<CecilGuide | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -79,6 +83,7 @@ export default function AskCecilPanel({ onClose }: AskCecilPanelProps) {
     requestRef.current = controller;
     const version = ++requestVersion.current;
     setQuery(trimmed);
+    setShowTravelDraft(false);
     setState("loading");
     setGuide(null);
     setWarning(null);
@@ -149,19 +154,20 @@ export default function AskCecilPanel({ onClose }: AskCecilPanelProps) {
         </header>
         <div className="workhub-ask-scroll">
           <p className="workhub-ask-disclaimer">
-            現在は参照情報による案内（L0・L1）です。AI生成の規程回答や申請の自動実行はしません。
+            現在は参照情報による案内（L0・L1）と、出張申請の入力準備（L2）です。AI生成の規程回答や申請の自動実行はしません。
           </p>
-          <div className="workhub-ask-prompts" aria-label="質問例">
+          {!showTravelDraft && <div className="workhub-ask-prompts" aria-label="質問例">
             {SUGGESTIONS.map(item => (
               <button key={item} type="button" onClick={() => void lookup(item)} disabled={state === "loading"}>{item}について</button>
             ))}
-          </div>
-          {state === "loading" && <p role="status">現在の閲覧権限で資料を確認しています…</p>}
-          {state === "error" && <div className="workhub-ask-warning" role="alert">
+          </div>}
+          {showTravelDraft && <CecilTravelDraftCard onCancel={() => setShowTravelDraft(false)} onHandoff={onTravelHandoff} />}
+          {!showTravelDraft && state === "loading" && <p role="status">現在の閲覧権限で資料を確認しています…</p>}
+          {!showTravelDraft && state === "error" && <div className="workhub-ask-warning" role="alert">
             <p>{errorMessage}</p>
             <button className="workhub-secondary-button" type="button" onClick={() => void lookup(query)}>再試行</button>
           </div>}
-          {state === "ready" && guide && (
+          {!showTravelDraft && state === "ready" && guide && (
             <div className="workhub-ask-result" aria-live="polite">
               <div className="workhub-ask-summary">
                 <span className="workhub-card-label">
@@ -193,11 +199,14 @@ export default function AskCecilPanel({ onClose }: AskCecilPanelProps) {
                   ))}</ul>
                 </section>
               )}
+              {guide.destinations.some(item => item.key === "workhub_app:travel-request") && (
+                <button type="button" className="workhub-primary-button" onClick={() => setShowTravelDraft(true)}>出張申請の下書きを準備する</button>
+              )}
               {guide.status === "insufficient" && <a href="#workhub-documents" onClick={onClose}>ナレッジ一覧から探す</a>}
             </div>
           )}
         </div>
-        <form className="workhub-ask-form" onSubmit={submit} role="search">
+        {!showTravelDraft && <form className="workhub-ask-form" onSubmit={submit} role="search">
           <label htmlFor="workhub-ask-query">質問・探していること</label>
           <div className="workhub-ask-input-row">
             <input
@@ -211,7 +220,7 @@ export default function AskCecilPanel({ onClose }: AskCecilPanelProps) {
             <button className="workhub-primary-button" disabled={!query.trim() || state === "loading"} type="submit">探す</button>
           </div>
           <small>回答は現在アクセス可能なデモ資料の要約です。実際の就業規則の代わりにはなりません。</small>
-        </form>
+        </form>}
       </section>
     </div>
   );
