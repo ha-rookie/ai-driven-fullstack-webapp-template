@@ -39,6 +39,20 @@ Master / External / Mock Adapter (接続先の契約)
 | `newcomer-onboarding` | Catalog-only | ガイド内では端から端までの動く導線を保証しない |
 | `ai-access-request` | Catalog-only | 構想。権限付与や申請の実装済機能ではない |
 
+## Screen Catalog / Adapter Map と実装済み範囲
+
+Developer Mode の「全体ガイド」には現在のWORKHUBで実装された13画面領域を登録しています。画面を選ぶと、Source・Docs・実装状況・制約・Authorizationの概要を確認できます。
+
+- 出張申請、承認、経費精算はそれぞれ異なる正本・ワークフロー。経費精算は出張申請を提出するだけでは完了しない
+- 社内お知らせはReference用の公開者・配信範囲を持つが、実運用の権限設計とは異なる
+- 社内交流は架空投稿・読み取り専用。人事ディレクトリも架空人物の表示用Projection
+- 引っ越しとPC交換はWorkhubSecondaryJourneysの**模擬Workflow**。D1に模擬進捗は保存できても、実際の住所・PC資産を変更しない
+- 外部SaaS/人事/IT資産連携は未接続のAdapter。表示カタログだけで実SaaSの権限が付くことはない
+
+**Source of TruthとProjectionの区分は再利用判断の出発点**です。特定の行や秘密情報をDeveloper Modeから表示したり、Developer Modeを開いてBusiness Dataの閲覧権限を増やしたりする設計ではありません。
+
+[Stage6開発受入マトリクス](WORKHUB_STAGE6_DEVELOPER_MODE_ACCEPTANCE.md)には、検証済みの範囲と後工程のシステムテストで確認する範囲を分けて記録します。
+
 ## コピーして使うときのチェック
 
 - Business Domainの正本は何か、どのAPI/Workflowが最終更新するか
