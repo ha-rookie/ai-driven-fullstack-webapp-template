@@ -54,7 +54,7 @@ export const developerGuideScenarios: readonly DeveloperGuideScenario[] = [
     en: "Travel request and approval (expense claim is separate)",
     kind: "implemented-reference",
     personaJa: "申請者・承認者", personaEn: "Requester and approver",
-    screens: ["requests", "my-work", "notifications", "expenses", "ask-cecil"],
+    screens: ["requests", "request-detail", "my-work", "notifications", "expenses", "ask-cecil"],
     noteJa: "本人による申請、承認担当者の確認、通知・履歴まで。旅費精算の完全自動化は行わない",
     noteEn: "Human submission, assigned approval, notifications and timeline; not automatic full travel settlement",
   },
