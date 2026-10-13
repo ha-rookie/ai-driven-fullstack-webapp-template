@@ -37,7 +37,7 @@ test("Stage6 Screen Catalog correctly maps four implemented WORKHUB sections, sa
       await panel.getByRole("button", { name: "全体ガイド" }).click();
       await expect(panel.getByRole("heading", { name: "Screen Catalog" })).toBeVisible();
       await expect(panel.getByRole("heading", { name: "Adapter / Integration Map" })).toBeVisible();
-      await expect(panel).toContainText("Mock moving steps");
+      await expect(panel).toContainText("Real address and PC asset records");
       await panel.getByRole("combobox", { name: "Scenario Catalog" }).selectOption("pc-replacement-reference");
       await expect(panel).toContainText("模擬Workflowのみ");
     }
