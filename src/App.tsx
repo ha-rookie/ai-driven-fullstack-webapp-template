@@ -3,7 +3,8 @@ import { useAuth } from "./frontend/auth";
 import AdminPortal from "./reference/admin/AdminPortal";
 import AccountSwitchButton from "./reference/workhub/AccountSwitchButton";
 import AskCecilPanel from "./reference/workhub/AskCecilPanel";
-import { validateCecilTravelDraft, type CecilTravelDraft } from "./reference/workhub/travel-draft";
+import CecilTravelReview from "./reference/workhub/CecilTravelReview";
+import { isAuthorizedCecilTravelApp, matchesCecilTravelReview, validateCecilTravelDraft, type CecilTravelDraft } from "./reference/workhub/travel-draft";
 import { ANNOUNCEMENT_AUDIENCE_DEPARTMENTS } from "./reference/workhub/announcements";
 import ExpenseWorkspace from "./reference/workhub/ExpenseWorkspace";
 import { listActionRequiredMyRequests } from "./reference/workhub/my-requests";
@@ -165,6 +166,9 @@ function TravelWorkspace() {
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [showAskCecil, setShowAskCecil] = useState(false);
   const [cecilDraftPrepared, setCecilDraftPrepared] = useState(false);
+  const [cecilTravelReview, setCecilTravelReview] = useState<CecilTravelDraft | null>(null);
+  const cecilSubmitButtonRef = useRef<HTMLButtonElement>(null);
+  const cecilConfirmationPending = useRef(false);
   const askCecilButtonRef = useRef<HTMLButtonElement>(null);
   const restoreAskCecilFocus = useRef(false);
   const closeAskCecil = () => { restoreAskCecilFocus.current = true; setShowAskCecil(false); };
@@ -331,7 +335,35 @@ function TravelWorkspace() {
       setMessage("社内お知らせを公開しました。");
     });
   };
-  const createAndSubmit = () => void run(async () => {
+  const createAndSubmit = (humanConfirmed?: CecilTravelDraft) => {
+    const liveDraft: CecilTravelDraft = { destinationOfficeItemId, startDate, endDate, purpose };
+    if (cecilDraftPrepared && (
+      !isAoi || !humanConfirmed || !cecilTravelReview ||
+      !matchesCecilTravelReview(humanConfirmed, liveDraft) ||
+      !matchesCecilTravelReview(cecilTravelReview, liveDraft) ||
+      validateCecilTravelDraft(liveDraft, offices) ||
+      selectedRequest || awaitingResubmission
+    )) {
+      setCecilTravelReview(null);
+      setMessage("下書きの確認内容が変更されたか申請状態が更新されました。再度確認してください。");
+      return;
+    }
+    if (cecilDraftPrepared && cecilConfirmationPending.current) return;
+    if (cecilDraftPrepared) cecilConfirmationPending.current = true;
+    void run(async () => {
+      if (cecilDraftPrepared) {
+        // Revalidate the current server-authorized app and selectable master
+        // immediately before the first business write, not only during L2.
+        const [apps, currentOffices] = await Promise.all([
+          apiJson<{ items: unknown }>("/api/workhub/apps"),
+          apiJson<{ items: OfficeOption[] }>("/api/workhub/offices"),
+        ]);
+        if (!isAuthorizedCecilTravelApp(apps.items) || !humanConfirmed ||
+          !Array.isArray(currentOffices.items) ||
+          validateCecilTravelDraft(humanConfirmed, currentOffices.items)) {
+          throw new Error("出張申請の権限または出張先が更新されています。提出せずに確認をやり直してください。");
+        }
+      }
     // The create and submit calls are separate business mutations. If submit's
     // response is lost, reuse the owner-authorized draft instead of creating
     // another request. Never retry a mutation automatically.
@@ -381,8 +413,11 @@ function TravelWorkspace() {
     }
     await Promise.all([loadNotifications(), loadMyRequests()]);
     pendingTravelDraft.current = null;
+    setCecilDraftPrepared(false);
+    setCecilTravelReview(null);
     setMessage("出張申請を提出しました。");
-  });
+    }).finally(() => { cecilConfirmationPending.current = false; });
+  };
   const updateAndResubmit = () => void run(async () => { if (!selectedRequest || !selectedWorkflow) return; const updated = await apiJson<{ request: TravelRequestRecord }>(`/api/workhub/travel-requests/${selectedRequest.id}`, { method: "PUT", body: JSON.stringify({ expectedVersion: selectedRequest.version, destinationOfficeItemId, startDate, endDate, purpose }) }); await apiJson(`/api/workhub/travel-requests/${selectedRequest.id}/resubmit`, { method: "POST", body: JSON.stringify({ expectedRequestVersion: updated.request.version, expectedWorkflowVersion: selectedWorkflow.version }) }); await openRequest(selectedRequest.id); await Promise.all([loadNotifications(), loadMyRequests()]); setMessage("出張申請を再申請しました。"); });
   const toggleDelegation = () => void run(async () => {
     if (delegationState !== "ready") return;
@@ -505,6 +540,20 @@ function TravelWorkspace() {
     if (detail.request.status !== "submitted") throw new Error("提出済みの申請だけ印刷できます。");
     requestAnimationFrame(() => window.print());
   });
+  const prepareCecilSubmissionReview = () => {
+    const current: CecilTravelDraft = { destinationOfficeItemId, startDate, endDate, purpose };
+    const validation = validateCecilTravelDraft(current, offices);
+    if (!isAoi || busy || selectedRequest || awaitingResubmission || !cecilDraftPrepared || validation) {
+      setMessage(validation ?? "この申請は確認できません。申請状態を再確認してください。");
+      return;
+    }
+    setMessage(null);
+    setCecilTravelReview({ ...current });
+  };
+  const cancelCecilSubmissionReview = () => {
+    setCecilTravelReview(null);
+    requestAnimationFrame(() => cecilSubmitButtonRef.current?.focus({ preventScroll: true }));
+  };
   const handoffCecilTravel = (draft: CecilTravelDraft): boolean => {
     // Only accepted while currently showing an eligible employee\u0027s new request form.
     // Never overwrite an unresolved POST draft or an existing returned request.
@@ -515,6 +564,7 @@ function TravelWorkspace() {
     setEndDate(draft.endDate);
     setPurpose(draft.purpose);
     setCecilDraftPrepared(true);
+    setCecilTravelReview(null);
     setMessage(null);
     restoreAskCecilFocus.current = false;
     setShowAskCecil(false);
