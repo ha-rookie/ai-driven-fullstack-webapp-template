@@ -21,7 +21,7 @@ test("Stage6 guide maps architecture, capabilities and a real scenario back to s
   const overview = panel.locator(".workhub-developer-overview");
   await expect(overview.getByRole("heading", { name: "Architecture Map" })).toBeVisible();
   await expect(overview).toContainText("Business Domain / Workflow");
-  await expect(overview).toContainText("表示用");
+  await expect(overview).toContainText("参照用表示。正本ではない");
   await expect(overview.getByRole("heading", { name: "Capability Map" })).toBeVisible();
   await expect(overview).toContainText("Human Workflow");
   await expect(overview.getByRole("heading", { name: "Scenario Catalog" })).toBeVisible();
