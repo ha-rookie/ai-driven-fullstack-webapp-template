@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  developerArchitectureLayers, developerCapabilityMap, developerGuideLinkableScreen, developerGuideScenarios,
+  developerArchitectureLayers, developerCapabilityMap, developerGuideLinkableScreen, developerGuideScenarios, developerAdapterMap,
 } from "../src/reference/workhub/developer-guide";
 import { developerScreens, developerSourceUrl } from "../src/reference/workhub/developer-reference";
 
@@ -31,7 +31,7 @@ test("Scenario Guide marks non-working catalog examples explicitly and links onl
   assert.equal(new Set(developerGuideScenarios.map(x => x.id)).size, developerGuideScenarios.length);
   const request = developerGuideScenarios.find(x => x.id === "travel-request-settlement");
   assert.equal(request?.kind, "implemented-reference");
-  assert.deepEqual(request?.screens, ["requests", "my-work", "notifications", "ask-cecil"]);
+  assert.deepEqual(request?.screens, ["requests", "my-work", "notifications", "expenses", "ask-cecil"]);
   const conceptual = developerGuideScenarios.filter(x => x.kind === "catalog-only");
   assert.ok(conceptual.length > 0);
   assert.ok(conceptual.every(x => x.screens.length === 0));
@@ -40,4 +40,13 @@ test("Scenario Guide marks non-working catalog examples explicitly and links onl
     assert.ok(scenario.screens.every(developerGuideLinkableScreen));
   }
   assert.match(developerSourceUrl("docs/reference/WORKHUB_DEVELOPER_GUIDE.md") ?? "", /^https:\/\/github.com\/ha-rookie\//);
+});
+
+test("Adapter catalog links to screens and mock journeys are not marked production-ready", () => {
+  const adapterMap = developerAdapterMap();
+  assert.ok(adapterMap.length >= 2);
+  assert.ok(adapterMap.every(x => developerGuideLinkableScreen(x.screen) && x.view && x.owner));
+  const mock = developerGuideScenarios.filter(x => x.kind === "reference-mock");
+  assert.deepEqual(mock.map(x => x.id), ["moving-reference", "pc-replacement-reference"]);
+  assert.ok(mock.every(x => x.screens.includes("secondary-journeys") && x.noteJa.includes("実") || x.noteJa.includes("デモ")));
 });
