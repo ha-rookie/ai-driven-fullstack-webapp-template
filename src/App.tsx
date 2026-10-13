@@ -602,7 +602,7 @@ function TravelWorkspace() {
         {developerReferenceEnabled && <button type="button" className="workhub-header-action workhub-developer-entry"
           ref={developerEntryRef} aria-label="Developer Mode — この画面の実装情報"
           aria-haspopup="dialog" aria-controls="workhub-developer-panel" aria-expanded={showDeveloperReference}
-          onClick={() => setShowDeveloperReference(true)}>{"</>"} 実装情報</button>}
+          onClick={() => setShowDeveloperReference(true)}><span aria-hidden="true">{"</>"}</span><span className="workhub-developer-entry-label">実装情報</span></button>}
         <AccountSwitchButton />
       </div>
     </header>
