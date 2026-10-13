@@ -1564,3 +1564,10 @@ input:disabled {
   .workhub-cecil-review dl > div { grid-template-columns: 1fr; gap: 3px; }
   .workhub-cecil-review-actions button { flex: 1 1 140px; }
 }
+
+/* Stage6 #351: utility entry only; never override primary business actions. */
+.workhub-developer-entry { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+@media (max-width: 560px) {
+  .workhub-developer-entry { width: 38px; min-width: 38px; justify-content: center; padding-inline: 0; }
+  .workhub-developer-entry-label { display: none; }
+}
