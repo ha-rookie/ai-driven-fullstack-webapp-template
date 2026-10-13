@@ -27,7 +27,7 @@ test("Stage6 guide maps architecture, capabilities and a real scenario back to s
   await expect(overview.getByRole("heading", { name: "Scenario Catalog" })).toBeVisible();
   await overview.getByRole("combobox", { name: "Scenario Catalog" }).selectOption("ai-access-request");
   await expect(overview).toContainText("構想・ガイド例のみ");
-  await expect(overview).toContainText("このガイドに連動する完成済み");
+  await expect(overview).toContainText("ガイドと連動する完成画面はまだありません");
   await overview.getByRole("combobox", { name: "Scenario Catalog" }).selectOption("travel-request-settlement");
   await expect(overview).toContainText("Reference実装の導線あり");
   await overview.locator(".workhub-developer-scenario").getByRole("button", { name: /この画面の詳細を開く: 出張申請・手続き/u }).click();
