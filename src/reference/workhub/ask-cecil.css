@@ -66,3 +66,23 @@
 @media (prefers-color-scheme: dark) {
   .workhub-ask-draft-card { border-color: #668aab; }
 }
+
+/* Stage5 escalation: user-led handoff preparation; this never sends a ticket. */
+.workhub-ask-escalation {
+  display: grid; gap: 10px; border: 1px solid #a8bfce; border-radius: 10px;
+  padding: 14px; margin-top: 16px;
+}
+.workhub-ask-escalation h3, .workhub-ask-escalation p { margin: 0; line-height: 1.5; }
+.workhub-ask-escalation button { justify-self: start; }
+.workhub-ask-escalation-note { display: grid; gap: 10px; min-width: 0; }
+.workhub-ask-escalation-note label { font-weight: 600; }
+.workhub-ask-escalation-note textarea {
+  box-sizing: border-box; display: block; width: 100%; min-width: 0;
+  padding: 10px; border: 1px solid #879bad; border-radius: 7px;
+  color: #1b2f44; background: #fff; resize: vertical; font: inherit; line-height: 1.45;
+}
+.workhub-ask-escalation-note small { line-height: 1.55; }
+.workhub-ask-panel textarea:focus-visible { outline: 3px solid #386ead; outline-offset: 2px; }
+@media (prefers-color-scheme: dark) {
+  .workhub-ask-escalation { border-color: #7290af; }
+}
