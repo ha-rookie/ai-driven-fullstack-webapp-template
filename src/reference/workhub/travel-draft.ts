@@ -29,7 +29,11 @@ export const validateCecilTravelDraft = (
     return "開始日と終了日を正しい日付で入力してください。";
   }
   if (draft.startDate > draft.endDate) return "終了日は開始日以降にしてください。";
-  if (!draft.purpose.trim() || draft.purpose.trim().length > 2_000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(draft.purpose)) {
+  const hasInvalidControls = [...draft.purpose].some(character => {
+    const code = character.charCodeAt(0);
+    return ((code >= 0 && code <= 31) || code === 127) && ![9, 10, 13].includes(code);
+  });
+  if (!draft.purpose.trim() || draft.purpose.trim().length > 2_000 || hasInvalidControls) {
     return "目的は1〜2000文字で入力してください。";
   }
   return null;
