@@ -23,7 +23,7 @@ export default function WorkhubNotFound() {
         </div>
         <img
           className="workhub-not-found-illustration"
-          src="/images/workhub/not-found-desk.svg"
+          src="/images/workhub/not-found-desk.webp"
           width="800"
           height="390"
           alt="席を外したページを探す、小さな書類のキャラクターと静かなオフィス"
