@@ -46,8 +46,30 @@
   background: linear-gradient(145deg, #173851, #176e72);
 }
 
+/* Preserve intrinsic image space; the entire recovery UI works if the
+   optional image cannot be loaded (e.g. blocked static assets). */
+.workhub-not-found-illustration {
+  display: block;
+  width: min(100%, 530px);
+  height: auto;
+  aspect-ratio: 800 / 390;
+  margin: 8px auto 10px;
+}
+
+.workhub-not-found-illustration[hidden] {
+  display: none;
+}
+
+.workhub-not-found-whisper {
+  margin: 8px 0 12px;
+  color: #476e77;
+  font-size: clamp(15px, 2.7vw, 18px);
+  font-weight: 700;
+  line-height: 1.65;
+}
+
 .workhub-not-found-code {
-  margin: clamp(44px, 7vw, 66px) 0 12px;
+  margin: 4px 0 12px;
   color: #24747a;
   font-size: 12px;
   font-weight: 800;

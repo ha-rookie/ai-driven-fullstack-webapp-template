@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="390" viewBox="0 0 800 390" role="img" aria-labelledby="title desc">
+  <title id="title">WORKHUBの余白</title>
+  <desc id="desc">席を外したページを探す、小さな書類のキャラクターと静かなオフィス</desc>
+  <defs>
+    <linearGradient id="room" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#eaf7f7"/>
+      <stop offset="1" stop-color="#f9fbf8"/>
+    </linearGradient>
+    <linearGradient id="character" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#fffdf2"/>
+      <stop offset="1" stop-color="#fff1d9"/>
+    </linearGradient>
+    <linearGradient id="window" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#d0ebf5"/>
+      <stop offset="1" stop-color="#f5fbf8"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="405" cy="349" rx="338" ry="24" fill="#d3e8e7" opacity=".55"/>
+  <rect x="113" y="45" width="559" height="288" rx="28" fill="url(#room)"/>
+  <path d="M142 307H643" stroke="#c5e0df" stroke-width="3" stroke-linecap="round"/>
+  <!-- Small office window -->
+  <rect x="143" y="78" width="166" height="129" rx="15" fill="#fff" stroke="#c6e4e4" stroke-width="4"/>
+  <rect x="153" y="88" width="146" height="109" rx="9" fill="url(#window)"/>
+  <path d="M153 151L176 125 203 150 230 118 263 159 299 132V197H153Z" fill="#d6ebe7" opacity=".85"/>
+  <path d="M226 88v109M153 143h146" stroke="#fff" stroke-width="7"/>
+  <!-- A little office lamp and a tidy desk -->
+  <path d="M237 246l20-53m-11 11 38 13" stroke="#759ea2" stroke-width="8" stroke-linecap="round"/>
+  <path d="M268 188l37 17-10 19-41-12Z" fill="#6caaa9"/>
+  <circle cx="255" cy="194" r="7" fill="#427d84"/>
+  <rect x="201" y="239" width="263" height="23" rx="10" fill="#aed6d0"/>
+  <rect x="214" y="258" width="12" height="66" rx="5" fill="#6faaa8"/>
+  <rect x="444" y="258" width="12" height="66" rx="5" fill="#6faaa8"/>
+  <rect x="309" y="212" width="45" height="27" rx="5" fill="#e1a7a0"/>
+  <path d="M317 220h29M317 226h21" stroke="#fff9ef" stroke-width="3" stroke-linecap="round"/>
+  <rect x="360" y="218" width="32" height="21" rx="4" fill="#fff8e8" stroke="#e0cdc2" stroke-width="2"/>
+  <path d="M368 226h16M368 231h10" stroke="#aac5c1" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M406 235h22" stroke="#c3d7d6" stroke-width="5" stroke-linecap="round"/>
+  <!-- Empty chair hints the missing page has stepped away -->
+  <rect x="337" y="278" width="71" height="19" rx="9" fill="#789ea9"/>
+  <rect x="345" y="262" width="55" height="26" rx="12" fill="#8ab9bd"/>
+  <path d="M372 297v27m-27 0h54" stroke="#547b86" stroke-width="7" stroke-linecap="round"/>
+  <!-- Potted plant -->
+  <rect x="154" y="282" width="49" height="34" rx="7" fill="#daa995"/>
+  <path d="M158 286h41l-5 30h-30Z" fill="#dfb5a1"/>
+  <path d="M180 285c-8-24-22-30-24-45 21 0 29 15 24 45Zm0 0c-1-29 11-44 26-49 2 18-7 34-26 49Zm0 0c-13-13-13-32-4-45 13 11 17 28 4 45Z" fill="#79b4a5"/>
+  <path d="M180 284v-39" stroke="#4d9186" stroke-width="3" stroke-linecap="round"/>
+  <!-- A friendly filing character searches for the missing page -->
+  <ellipse cx="566" cy="329" rx="80" ry="13" fill="#b3d8d5" opacity=".58"/>
+  <path d="M515 194l-6-37 39 19Z" fill="#ffedcf" stroke="#b4b6a5" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M607 190l20-30 8 44Z" fill="#ffedcf" stroke="#b4b6a5" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="499" y="177" width="143" height="134" rx="48" fill="url(#character)" stroke="#90adb0" stroke-width="4"/>
+  <rect x="517" y="185" width="41" height="13" rx="6" fill="#b7d8d4"/>
+  <path d="M528 254q-19-13-28 3" fill="none" stroke="#8da5a2" stroke-width="6" stroke-linecap="round"/>
+  <path d="M616 254q20-13 28 0" fill="none" stroke="#8da5a2" stroke-width="6" stroke-linecap="round"/>
+  <ellipse cx="536" cy="267" rx="12" ry="7" fill="#f3b4aa" opacity=".8"/>
+  <ellipse cx="604" cy="267" rx="12" ry="7" fill="#f3b4aa" opacity=".8"/>
+  <circle cx="545" cy="247" r="5" fill="#284955"/>
+  <circle cx="589" cy="247" r="5" fill="#284955"/>
+  <path d="M560 264q9 9 18 0" fill="none" stroke="#284955" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M530 307l-8 16M603 308l9 15" stroke="#7c999d" stroke-width="7" stroke-linecap="round"/>
+  <!-- Magnifying glass with a small lost sheet -->
+  <circle cx="661" cy="222" r="29" fill="#fff" stroke="#4b9297" stroke-width="8"/>
+  <path d="M681 244l28 28" stroke="#4b9297" stroke-width="10" stroke-linecap="round"/>
+  <rect x="650" y="207" width="21" height="25" rx="4" fill="#fbf0d7" stroke="#9fc3bd" stroke-width="2"/>
+  <path d="M654 215h12m-12 5h9" stroke="#9fc3bd" stroke-width="2" stroke-linecap="round"/>
+  <!-- Curious thought bubble -->
+  <path d="M658 133q0-20 23-20h21q22 0 22 19v16q0 20-22 20h-12l-12 12-2-12q-18-3-18-20Z" fill="#fff" stroke="#c5dfdf" stroke-width="3"/>
+  <text x="690" y="151" font-size="33" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="#689d9e">?</text>
+  <!-- Small friendly sparkles -->
+  <path d="M114 128v-11m-6 5h12M685 88v-14m-7 7h14M468 133v-10m-5 5h10" stroke="#81b9b5" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="454" cy="81" r="5" fill="#ecc9a5"/>
+  <circle cx="741" cy="200" r="4" fill="#abd6ce"/>
+</svg>
