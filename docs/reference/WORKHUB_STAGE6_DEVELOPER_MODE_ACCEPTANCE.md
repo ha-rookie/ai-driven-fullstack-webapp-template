@@ -8,7 +8,7 @@
 
 ## What is actually implemented
 
-- Screen-to-Source with stable IDs for HOME, REQUESTS, MY WORK, SEARCH, APPS, PEOPLE, DOCUMENTS, NOTIFICATIONS, Ask CECIL, EXPENSES, ANNOUNCEMENTS, SOCIAL and SECONDARY JOURNEY DEMOS
+- Screen-to-Source with stable IDs for HOME, REQUESTS, REQUEST DETAIL, MY WORK, SEARCH, APPS, PEOPLE, DOCUMENTS, NOTIFICATIONS, Ask CECIL, EXPENSES, ANNOUNCEMENTS, SOCIAL and SECONDARY JOURNEY DEMOS
 - Screen/Capability/Scenario/Architecture/Adapter cross-reference, source/doc GitHub links to files present in main, Japanese and English readiness text, constraints and safe policy summary
 - Reference scenario handoffs: travel-request+human approval+optional separately submitted expense claims, authorized document finding, moving and PC replacement **mock workflows**, conceptual employee onboarding/AI-access only
 - Differentiate business Domain/Workflow from read models, static illustrative posts, demo profiles and disconnected external adapters. Source annotations are documentation, not current authorization or business state
@@ -19,7 +19,7 @@
 | ID | Development evidence | Status / boundary |
 |---|---|---|
 | DEV-01 HOME | default HOME static reference and source link | Locally automated |
-| DEV-02 REQUEST detail | requests/selected detail shares Reference travel metadata and code source; dedicated detail entity not exposed | Partial: not separately identified |
+| DEV-02 REQUEST detail | dedicated \`request-detail\` screen ID for \`#workhub-request-detail\`, stable travel scenario, Domain/Workflow/Projection separation and real Source/Docs paths; separate unit/browser assertions | Development assertion implemented; final required CI result recorded on #351 |
 | DEV-03 SEARCH | route and metadata for authorization-aware Search | Locally automated |
 | DEV-04 Ask CECIL | existing static metadata and human action boundary | Locally automated |
 | DEV-05 APPS | app-catalog metadata, disconnected SaaS clearly mock | Locally automated |
@@ -44,9 +44,9 @@
 
 ## Known operational / product limitations
 
-- WORKHUB currently uses route/section identity and static reference descriptions rather than an exhaustive runtime metadata server; the Reference selected request detail inherits request-level metadata
+- WORKHUB uses route/section identity and static reference descriptions rather than a runtime metadata server. The request detail has its own safe metadata identity but no business request fields are copied into it
 - Production-ready is not inferred from `production-pattern`; this describes a design pattern, not validated SLAs, scalability, org-specific policy, audit or recovery
 - Demo user identities, company notices, social posts, people directory and secondary workflows are synthetic; cannot be used as actual HR/IT/ERP data or approvals
 - Semantic accessibility on a physical screen reader and authenticated Preview end-to-end business flows remain a **later consolidated System Test**, not a unit-test blocker
 - **Current Stage6 build is not deployed to Preview by this PR.** A separate exact-SHA owner-gated code-only Preview deployment and read-only HTTP smoke require explicit approval. Production, Remote D1, migrations, Secret and Cloudflare resources are not touched
-- Issue #351 should not close until final code/CI acceptance and coverage decision is recorded. Any deviations here remain explicit, not silently called complete.
+- Issue #351 development closure requires green final code/CI checks and a recorded acceptance decision. Formal authenticated Preview + physical devices/OS reader remain separate consolidated ST, even after development closure.
