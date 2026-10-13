@@ -48,3 +48,21 @@
   .workhub-ask-panel a { color: #8cbeff; }
   .workhub-ask-form { background: #172638; }
 }
+
+/* Ask CECIL L2 is a proposal surface, not the actual Application Command form. */
+.workhub-ask-draft-card { display: grid; gap: 12px; border: 1px solid #9eb8d3; border-radius: 12px; padding: 16px; }
+.workhub-ask-draft-title { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.workhub-ask-draft-title h3 { margin: 4px 0; }
+.workhub-ask-draft-card p { margin: 0; line-height: 1.6; }
+.workhub-ask-draft-fields { display: grid; gap: 12px; }
+.workhub-ask-draft-fields label { display: grid; gap: 5px; font-weight: 600; }
+.workhub-ask-draft-fields :is(input, select, textarea) {
+  width: 100%; min-width: 0; box-sizing: border-box; padding: 10px;
+  border: 1px solid #8099b4; border-radius: 7px; background: #fff; color: #1b2d42;
+  font: inherit;
+}
+.workhub-ask-draft-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.workhub-ask-draft-card small { line-height: 1.5; }
+@media (prefers-color-scheme: dark) {
+  .workhub-ask-draft-card { border-color: #668aab; }
+}
