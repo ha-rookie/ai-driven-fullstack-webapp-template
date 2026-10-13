@@ -21,7 +21,17 @@ export default function WorkhubNotFound() {
           <span className="workhub-not-found-monogram" aria-hidden="true">W</span>
           <span>WORKHUB <small>CECIL WORKS</small></span>
         </div>
+        <img
+          className="workhub-not-found-illustration"
+          src="/images/workhub/not-found-desk.svg"
+          width="800"
+          height="390"
+          alt="席を外したページを探す、小さな書類のキャラクターと静かなオフィス"
+          decoding="async"
+          onError={(event) => { event.currentTarget.hidden = true; }}
+        />
         <p className="workhub-not-found-code">404 / PAGE NOT FOUND</p>
+        <p className="workhub-not-found-whisper">このページは、少し席を外しているようです。</p>
         <h1 id="workhub-not-found-heading" ref={headingRef} tabIndex={-1}>ページが見つかりません</h1>
         <p className="workhub-not-found-explanation">
           指定されたページを表示できません。URLが変更されたか、ページを開けない可能性があります。
