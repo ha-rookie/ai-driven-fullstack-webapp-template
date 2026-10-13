@@ -3,7 +3,8 @@ import { useAuth } from "./frontend/auth";
 import AdminPortal from "./reference/admin/AdminPortal";
 import AccountSwitchButton from "./reference/workhub/AccountSwitchButton";
 import AskCecilPanel from "./reference/workhub/AskCecilPanel";
-import { validateCecilTravelDraft, type CecilTravelDraft } from "./reference/workhub/travel-draft";
+import CecilTravelReview from "./reference/workhub/CecilTravelReview";
+import { isAuthorizedCecilTravelApp, matchesCecilTravelReview, validateCecilTravelDraft, type CecilTravelDraft } from "./reference/workhub/travel-draft";
 import { ANNOUNCEMENT_AUDIENCE_DEPARTMENTS } from "./reference/workhub/announcements";
 import ExpenseWorkspace from "./reference/workhub/ExpenseWorkspace";
 import { listActionRequiredMyRequests } from "./reference/workhub/my-requests";
@@ -165,6 +166,9 @@ function TravelWorkspace() {
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [showAskCecil, setShowAskCecil] = useState(false);
   const [cecilDraftPrepared, setCecilDraftPrepared] = useState(false);
+  const [cecilTravelReview, setCecilTravelReview] = useState<CecilTravelDraft | null>(null);
+  const cecilSubmitButtonRef = useRef<HTMLButtonElement>(null);
+  const cecilConfirmationPending = useRef(false);
   const askCecilButtonRef = useRef<HTMLButtonElement>(null);
   const restoreAskCecilFocus = useRef(false);
   const closeAskCecil = () => { restoreAskCecilFocus.current = true; setShowAskCecil(false); };
@@ -331,7 +335,35 @@ function TravelWorkspace() {
       setMessage("社内お知らせを公開しました。");
     });
   };
-  const createAndSubmit = () => void run(async () => {
+  const createAndSubmit = (humanConfirmed?: CecilTravelDraft) => {
+    const liveDraft: CecilTravelDraft = { destinationOfficeItemId, startDate, endDate, purpose };
+    if (cecilDraftPrepared && (
+      !isAoi || !humanConfirmed || !cecilTravelReview ||
+      !matchesCecilTravelReview(humanConfirmed, liveDraft) ||
+      !matchesCecilTravelReview(cecilTravelReview, liveDraft) ||
+      validateCecilTravelDraft(liveDraft, offices) ||
+      selectedRequest || awaitingResubmission
+    )) {
+      setCecilTravelReview(null);
+      setMessage("下書きの確認内容が変更されたか申請状態が更新されました。再度確認してください。");
+      return;
+    }
+    if (cecilDraftPrepared && cecilConfirmationPending.current) return;
+    if (cecilDraftPrepared) cecilConfirmationPending.current = true;
+    void run(async () => {
+      if (cecilDraftPrepared) {
+        // Revalidate the current server-authorized app and selectable master
+        // immediately before the first business write, not only during L2.
+        const [apps, currentOffices] = await Promise.all([
+          apiJson<{ items: unknown }>("/api/workhub/apps"),
+          apiJson<{ items: OfficeOption[] }>("/api/workhub/offices"),
+        ]);
+        if (!isAuthorizedCecilTravelApp(apps.items) || !humanConfirmed ||
+          !Array.isArray(currentOffices.items) ||
+          validateCecilTravelDraft(humanConfirmed, currentOffices.items)) {
+          throw new Error("出張申請の権限または出張先が更新されています。提出せずに確認をやり直してください。");
+        }
+      }
     // The create and submit calls are separate business mutations. If submit's
     // response is lost, reuse the owner-authorized draft instead of creating
     // another request. Never retry a mutation automatically.
@@ -381,8 +413,11 @@ function TravelWorkspace() {
     }
     await Promise.all([loadNotifications(), loadMyRequests()]);
     pendingTravelDraft.current = null;
+    setCecilDraftPrepared(false);
+    setCecilTravelReview(null);
     setMessage("出張申請を提出しました。");
-  });
+    }).finally(() => { cecilConfirmationPending.current = false; });
+  };
   const updateAndResubmit = () => void run(async () => { if (!selectedRequest || !selectedWorkflow) return; const updated = await apiJson<{ request: TravelRequestRecord }>(`/api/workhub/travel-requests/${selectedRequest.id}`, { method: "PUT", body: JSON.stringify({ expectedVersion: selectedRequest.version, destinationOfficeItemId, startDate, endDate, purpose }) }); await apiJson(`/api/workhub/travel-requests/${selectedRequest.id}/resubmit`, { method: "POST", body: JSON.stringify({ expectedRequestVersion: updated.request.version, expectedWorkflowVersion: selectedWorkflow.version }) }); await openRequest(selectedRequest.id); await Promise.all([loadNotifications(), loadMyRequests()]); setMessage("出張申請を再申請しました。"); });
   const toggleDelegation = () => void run(async () => {
     if (delegationState !== "ready") return;
@@ -505,6 +540,20 @@ function TravelWorkspace() {
     if (detail.request.status !== "submitted") throw new Error("提出済みの申請だけ印刷できます。");
     requestAnimationFrame(() => window.print());
   });
+  const prepareCecilSubmissionReview = () => {
+    const current: CecilTravelDraft = { destinationOfficeItemId, startDate, endDate, purpose };
+    const validation = validateCecilTravelDraft(current, offices);
+    if (!isAoi || busy || selectedRequest || awaitingResubmission || !cecilDraftPrepared || validation) {
+      setMessage(validation ?? "この申請は確認できません。申請状態を再確認してください。");
+      return;
+    }
+    setMessage(null);
+    setCecilTravelReview({ ...current });
+  };
+  const cancelCecilSubmissionReview = () => {
+    setCecilTravelReview(null);
+    requestAnimationFrame(() => cecilSubmitButtonRef.current?.focus({ preventScroll: true }));
+  };
   const handoffCecilTravel = (draft: CecilTravelDraft): boolean => {
     // Only accepted while currently showing an eligible employee\u0027s new request form.
     // Never overwrite an unresolved POST draft or an existing returned request.
@@ -515,6 +564,7 @@ function TravelWorkspace() {
     setEndDate(draft.endDate);
     setPurpose(draft.purpose);
     setCecilDraftPrepared(true);
+    setCecilTravelReview(null);
     setMessage(null);
     restoreAskCecilFocus.current = false;
     setShowAskCecil(false);
@@ -789,7 +839,7 @@ function TravelWorkspace() {
           <small className="workhub-reference-note">自分の申請を最大20件表示。進捗はこの出張に明示的に紐づけた精算のみを集計し、支払完了は意味しません。状態は一覧更新で再取得します。</small>
         </section>}
         <section className="workhub-home-grid" id="workhub-requests" aria-label="出張申請 Reference Scenario">
-          {isAoi && <article className="workhub-home-card workhub-home-card-primary" id="workhub-travel-form"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "出張申請"}</h2>{cecilDraftPrepared && !awaitingResubmission && <p role="status" className="workhub-reference-note">Ask CECILで準備した値を入力欄へ反映しました。まだ保存・提出されていません。内容を確認してから本人が提出を判断してください。</p>}{awaitingResubmission && <div className="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>{returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</p></div>}<div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => setDestinationOfficeItemId(event.target.value)}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><label>目的<textarea id="workhub-travel-purpose" aria-label="目的" value={purpose} onChange={(event) => setPurpose(event.target.value)} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy} onClick={updateAndResubmit}>修正して再申請</button> : <button className="workhub-primary-button" type="button" disabled={busy} onClick={createAndSubmit}>出張申請を提出</button>}</div></article>}
+          {isAoi && <article className="workhub-home-card workhub-home-card-primary" id="workhub-travel-form"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "出張申請"}</h2>{cecilDraftPrepared && !awaitingResubmission && <p role="status" className="workhub-reference-note">Ask CECILで準備した値を入力欄へ反映しました。まだ保存・提出されていません。内容を確認してから本人が提出を判断してください。</p>}{awaitingResubmission && <div className="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>{returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</p></div>}<div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => { setDestinationOfficeItemId(event.target.value); setCecilTravelReview(null); }}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); setCecilTravelReview(null); }} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => { setEndDate(event.target.value); setCecilTravelReview(null); }} /></label><label>目的<textarea id="workhub-travel-purpose" aria-label="目的" value={purpose} onChange={(event) => { setPurpose(event.target.value); setCecilTravelReview(null); }} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy} onClick={updateAndResubmit}>修正して再申請</button> : <button ref={cecilSubmitButtonRef} className="workhub-primary-button" type="button" disabled={busy} onClick={cecilDraftPrepared ? prepareCecilSubmissionReview : () => createAndSubmit()}>{cecilDraftPrepared ? "提出前に内容を確認" : "出張申請を提出"}</button>}</div>{cecilDraftPrepared && cecilTravelReview && !awaitingResubmission && <CecilTravelReview draft={cecilTravelReview} actor={user?.displayName ?? "ログイン中の本人"} officeLabel={offices.find(office => office.itemId === cecilTravelReview.destinationOfficeItemId)?.label ?? "選択できない出張先"} submitting={busy} onCancel={cancelCecilSubmissionReview} onConfirm={() => createAndSubmit(cecilTravelReview)} />}</article>}
           <article className="workhub-home-card" id="workhub-notifications"><span className="workhub-card-label">NOTIFICATIONS</span><h2>通知 {notificationState === "ready" && unreadCount > 0 ? `(${unreadCount})` : ""}</h2>{
             notificationState === "loading" ? <p role="status">通知を確認しています…</p>
             : notificationState === "error" ? <div role="alert"><p>通知を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadNotifications()}>通知を再読み込み</button></div>
