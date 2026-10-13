@@ -3,6 +3,7 @@ import {
   developerScreens, developerSourceUrl, findDeveloperScreen,
   type DeveloperLocale, type DeveloperScreenId,
 } from "./developer-reference";
+import DeveloperGuideOverview from "./DeveloperGuideOverview";
 import "./developer-reference.css";
 
 interface Props {
@@ -15,7 +16,7 @@ const phrases = {
     screen: "画面", scenario: "シナリオ", capability: "利用しているCapability",
     owner: "情報の正本・投影元", authorization: "権限の考え方",
     readiness: "実装状況", limits: "制約", docs: "関連資料", source: "関連ソース",
-    close: "閉じる", guide: "ほかの画面も確認", disclaimer: "Reference / Developer向けです。動作例は本番導入の保証ではありません。",
+    close: "閉じる", screenTab: "この画面", overviewTab: "全体ガイド", guide: "ほかの画面も確認", disclaimer: "Reference / Developer向けです。動作例は本番導入の保証ではありません。",
     kind: { domain: "業務正本", workflow: "Workflow", projection: "表示用Projection", adapter: "連携Adapter", catalog: "カタログ" },
   },
   "en-US": {
@@ -23,12 +24,13 @@ const phrases = {
     screen: "Screen", scenario: "Scenario", capability: "Capabilities",
     owner: "Sources of truth and projections", authorization: "Authorization summary",
     readiness: "Readiness", limits: "Limitations", docs: "Related docs", source: "Related source",
-    close: "Close", guide: "Browse other screens", disclaimer: "Reference / Developer use only. Demo behavior is not a production-readiness guarantee.",
+    close: "Close", screenTab: "Current screen", overviewTab: "Full guide", guide: "Browse other screens", disclaimer: "Reference / Developer use only. Demo behavior is not a production-readiness guarantee.",
     kind: { domain: "Business source", workflow: "Workflow", projection: "Read projection", adapter: "Adapter", catalog: "Catalog" },
   },
 } as const;
 export default function DeveloperReferencePanel({ initialScreen, onClose }: Props) {
   const [screenId, setScreenId] = useState<DeveloperScreenId>(initialScreen);
+  const [view, setView] = useState<"screen" | "overview">("screen");
   const locale: DeveloperLocale = navigator.language.toLowerCase().startsWith("ja") ? "ja-JP" : "en-US";
   const p = phrases[locale];
   const screen = findDeveloperScreen(screenId);
@@ -71,6 +73,18 @@ export default function DeveloperReferencePanel({ initialScreen, onClose }: Prop
       </header>
       <div className="workhub-developer-sheet-content">
         <p>{p.intro}</p>
+        <div className="workhub-developer-view-switch" role="group" aria-label="Developer Guide 表示切替">
+          <button type="button" className="workhub-secondary-button" aria-pressed={view === "screen"}
+            onClick={() => setView("screen")}>{p.screenTab}</button>
+          <button type="button" className="workhub-secondary-button" aria-pressed={view === "overview"}
+            onClick={() => setView("overview")}>{p.overviewTab}</button>
+        </div>
+        {view === "overview"
+          ? <DeveloperGuideOverview locale={locale} onOpenScreen={nextScreen => {
+            setScreenId(nextScreen);
+            setView("screen");
+          }} />
+          : <>
         <label className="workhub-developer-screen-picker" htmlFor="workhub-developer-screen">
           {p.guide}
           <select id="workhub-developer-screen" value={screenId}
@@ -102,6 +116,7 @@ export default function DeveloperReferencePanel({ initialScreen, onClose }: Prop
         <section><h3>{p.source}</h3><ul>{screen.source.map(x => <li key={x}><a
           href={developerSourceUrl(x) ?? undefined} target="_blank" rel="noopener noreferrer">{x}</a></li>)}</ul></section>
         <p className="workhub-developer-disclaimer">{p.disclaimer}</p>
+        </>}
       </div>
     </section>
   </div>;
