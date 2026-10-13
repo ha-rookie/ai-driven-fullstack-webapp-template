@@ -18,6 +18,7 @@ test("Stage6 Reference Developer Mode shows safe screen-to-source and closes wit
       unexpected.push(request.method() + " " + new URL(request.url()).pathname);
     }
   });
+  await page.getByLabel("ユーザーメニュー", { exact: true }).click();
   const entry = page.getByRole("button", { name: "Developer Mode — この画面の実装情報" });
   await expect(entry).toBeVisible();
   await entry.click();
@@ -51,6 +52,7 @@ test("Developer Mode preserves the requested screen context when opened from APP
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: /Ren Managerさん/u })).toBeVisible();
   await page.getByRole("link", { name: "アプリ一覧", exact: true }).click();
+  await page.getByLabel("ユーザーメニュー", { exact: true }).click();
   const entry = page.getByRole("button", { name: "Developer Mode — この画面の実装情報" });
   await entry.click();
   const dialog = page.getByRole("dialog", { name: "Developer Mode" });
