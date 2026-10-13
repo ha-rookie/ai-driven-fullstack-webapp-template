@@ -41,9 +41,9 @@ Master / External / Mock Adapter (接続先の契約)
 
 ## Screen Catalog / Adapter Map と実装済み範囲
 
-Developer Mode の「全体ガイド」には現在のWORKHUBで実装された13画面領域を登録しています。画面を選ぶと、Source・Docs・実装状況・制約・Authorizationの概要を確認できます。
+Developer Mode の「全体ガイド」には現在のWORKHUBで実装された14画面領域を登録しています。画面を選ぶと、Source・Docs・実装状況・制約・Authorizationの概要を確認できます。
 
-- 出張申請、承認、経費精算はそれぞれ異なる正本・ワークフロー。経費精算は出張申請を提出するだけでは完了しない
+- 出張申請、申請詳細、承認、経費精算は正本と表示Projectionの違いを意識する。申請詳細は個別Screen IDだが、業務内容そのものはCurrent Principalによる再認可が必要。経費精算は出張申請の提出だけでは完了しない
 - 社内お知らせはReference用の公開者・配信範囲を持つが、実運用の権限設計とは異なる
 - 社内交流は架空投稿・読み取り専用。人事ディレクトリも架空人物の表示用Projection
 - 引っ越しとPC交換はWorkhubSecondaryJourneysの**模擬Workflow**。D1に模擬進捗は保存できても、実際の住所・PC資産を変更しない

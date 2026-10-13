@@ -3,7 +3,7 @@
  * This file contains NO user/business records, secrets, logs, SQL or
  * deployment configuration and MUST NOT be treated as an authorization source.
  */
-export type DeveloperScreenId = "home" | "requests" | "my-work" | "search" | "apps" | "people" | "documents" | "notifications" | "ask-cecil" | "expenses" | "announcements" | "social" | "secondary-journeys";
+export type DeveloperScreenId = "home" | "requests" | "request-detail" | "my-work" | "search" | "apps" | "people" | "documents" | "notifications" | "ask-cecil" | "expenses" | "announcements" | "social" | "secondary-journeys";
 export type DeveloperReadiness = "production-pattern" | "reference-implementation" | "mock-adapter" | "catalog-only" | "experimental" | "not-implemented";
 export type DeveloperLocale = "ja-JP" | "en-US";
 export interface DeveloperScreen {
@@ -59,6 +59,20 @@ export const developerScreens: readonly DeveloperScreen[] = [
     limitations: ["Demo scenario is domestic travel; not a commercial travel booking or payroll service."],
     docs: ["docs/reference/WORKHUB_STAGE5_ASK_CECIL_ACCEPTANCE.md"],
     source: ["src/App.tsx", "src/reference/workhub/travel-request/service.ts"],
+  },
+  {
+    id: "request-detail", title: { ja: "申請詳細", en: "Request details" }, scenario: "travel-request-settlement",
+    capabilities: ["Travel Request Domain", "Request timeline", "Authorized detail read", "Approval assignment context"],
+    sourceOfTruth: [
+      { view: "Request detail fields", owner: "Travel Request Domain", kind: "domain" },
+      { view: "Approval state / assignment", owner: "Workflow / Work Item", kind: "workflow" },
+      { view: "Current user's detail view", owner: "MY REQUESTS read projection", kind: "projection" },
+    ],
+    authorization: "Current principal must be the request owner or separately authorized work-item assignee. Developer Mode never reads or grants access to the selected record.",
+    readiness: [{ component: "Reference request detail / timeline", state: "reference-implementation" }],
+    limitations: ["Screen metadata is static and does not echo request purpose, dates, amounts or other business fields.", "The parent request list and detail remain business-authenticated views; this panel cannot bypass them."],
+    docs: ["docs/reference/WORKHUB_DEVELOPER_GUIDE.md"],
+    source: ["src/App.tsx", "src/reference/workhub/my-requests.ts", "src/reference/workhub/travel-request/service.ts"],
   },
   {
     id: "my-work", title: { ja: "自分のタスク", en: "My work" }, scenario: "common.my-work",
@@ -198,6 +212,7 @@ export const developerScreenFromRoute = (
 ): DeveloperScreenId => {
   if (askCecilOpen) return "ask-cecil";
   if (notificationOpen) return "notifications";
+  if (fragment.startsWith("#workhub-request-detail")) return "request-detail";
   if (fragment.startsWith("#workhub-expenses")) return "expenses";
   if (fragment.startsWith("#workhub-secondary-journeys")) return "secondary-journeys";
   if (fragment.startsWith("#workhub-announcements")) return "announcements";
