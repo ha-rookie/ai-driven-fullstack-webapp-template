@@ -31,7 +31,7 @@ test("Scenario Guide marks non-working catalog examples explicitly and links onl
   assert.equal(new Set(developerGuideScenarios.map(x => x.id)).size, developerGuideScenarios.length);
   const request = developerGuideScenarios.find(x => x.id === "travel-request-settlement");
   assert.equal(request?.kind, "implemented-reference");
-  assert.deepEqual(request?.screens, ["requests", "my-work", "notifications", "expenses", "ask-cecil"]);
+  assert.deepEqual(request?.screens, ["requests", "request-detail", "my-work", "notifications", "expenses", "ask-cecil"]);
   const conceptual = developerGuideScenarios.filter(x => x.kind === "catalog-only");
   assert.ok(conceptual.length > 0);
   assert.ok(conceptual.every(x => x.screens.length === 0));
