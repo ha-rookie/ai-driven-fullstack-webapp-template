@@ -3,7 +3,7 @@
 - Contract: [#351 Final Design Baseline v2](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/issues/351) and the **unchanged** #132 → #343 WBS Stage6
 - User-facing: WORKHUB Reference Developer Mode; no debug console or privileged data access
 - Architecture/source: `src/reference/workhub/developer-reference.ts`, `developer-guide.ts`, `DeveloperReferencePanel.tsx`, `DeveloperGuideOverview.tsx`
-- Baseline prior to final acceptance increment: main `64a2c3a75fe405e69d461bfc1723ccdc50375651`, work focus=[351]
+- Final locally accepted application baseline: main `bb71634bd21e825944be839be2fe14f94fccf902`, work focus=[351]; code increments #668, #670, #671, #672 merged under unchanged WBS
 - This is a **development acceptance matrix**, not a formal Preview or physical device System Test report. CI run IDs and final merge SHA are recorded on #351 after actual results.
 
 ## What is actually implemented
@@ -19,7 +19,7 @@
 | ID | Development evidence | Status / boundary |
 |---|---|---|
 | DEV-01 HOME | default HOME static reference and source link | Locally automated |
-| DEV-02 REQUEST detail | dedicated \`request-detail\` screen ID for \`#workhub-request-detail\`, stable travel scenario, Domain/Workflow/Projection separation and real Source/Docs paths; separate unit/browser assertions | Development assertion implemented; final required CI result recorded on #351 |
+| DEV-02 REQUEST detail | dedicated \`request-detail\` screen ID for \`#workhub-request-detail\`, stable travel scenario, Domain/Workflow/Projection separation and real Source/Docs paths; separate unit/browser assertions | Local development accepted; final required CI and browser tests SUCCESS (runs below) |
 | DEV-03 SEARCH | route and metadata for authorization-aware Search | Locally automated |
 | DEV-04 Ask CECIL | existing static metadata and human action boundary | Locally automated |
 | DEV-05 APPS | app-catalog metadata, disconnected SaaS clearly mock | Locally automated |
@@ -40,7 +40,7 @@
 - `e2e/tests/workhub-developer-reference.spec.ts`: open/close, current screen metadata, mobile/keyboard/focus, no mutation
 - `e2e/tests/workhub-developer-guide.spec.ts`: Architecture/Capability/Scenario paths, ja/en locale, no mutation
 - `e2e/tests/workhub-developer-catalog-acceptance.spec.ts`: expense/announcement/social/secondary mock routing, source links, user menu and mobile
-- Status **before final required CI** is evidence coverage only. Final CI SUCCESS/FAILURE must be appended to #351; do not turn planned verification into a PASS.
+- Final code-level acceptance reflects **actual completed checks** listed below, not planned verification. Preview and physical-device System Tests remain NOT RUN.
 
 ## Known operational / product limitations
 
@@ -50,3 +50,28 @@
 - Semantic accessibility on a physical screen reader and authenticated Preview end-to-end business flows remain a **later consolidated System Test**, not a unit-test blocker
 - **Current Stage6 build is not deployed to Preview by this PR.** A separate exact-SHA owner-gated code-only Preview deployment and read-only HTTP smoke require explicit approval. Production, Remote D1, migrations, Secret and Cloudflare resources are not touched
 - Issue #351 development closure requires green final code/CI checks and a recorded acceptance decision. Formal authenticated Preview + physical devices/OS reader remain separate consolidated ST, even after development closure.
+
+## Verified final development evidence — 2026-10-13
+
+**Decision: PASS for Stage6 local development acceptance only; remote release and formal System Test are distinct, not yet accepted.**
+
+| Evidence | Actual result |
+|---|---|
+| Exact merged application main | `bb71634bd21e825944be839be2fe14f94fccf902` |
+| Source work | [#668](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/pull/668), [#670](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/pull/670), [#671](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/pull/671), [#672](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/pull/672) all merged |
+| Required Full-stack CI (final #672 PR head) | [#38400823105](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/actions/runs/38400823105) **SUCCESS** |
+| Browser E2E (final #672 PR head) | [#38400823132](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/actions/runs/38400823132) **SUCCESS**, local browser only |
+| Secret detection (final #672 PR head) | [#38400823148](https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/actions/runs/38400823148) **SUCCESS** |
+| Registered Source / Docs paths | All registered relative paths checked for file existence via Node test; allowlisted GitHub links, not a guarantee of production-specific source anchors |
+| Stage6 code-only Preview deployment | **NOT RUN / NOT DEPLOYED**; requires exact-SHA owner Human Gate |
+| Read-only Preview HTTP Smoke after Stage6 release | **NOT RUN** |
+| Authenticated Preview end-to-end business System Test | **NOT RUN** — consolidated formal ST |
+| Android/iOS physical devices, TalkBack/VoiceOver | **NOT RUN** — consolidated formal ST |
+
+### Deployment target interpretation
+
+This repository uses `@cloudflare/vite-plugin` and `CLOUDFLARE_ENV=preview npm run build` followed by `npx wrangler deploy`. The Vite build emits a flattened redirected deploy configuration for the chosen Cloudflare environment. Consequently, this plugin's workflow must **not** add a separate `--env preview` to `wrangler deploy`; the repository's preview deploy validator intentionally checks that behavior. Static config verification is not a substitute for a successful, explicitly approved Preview deployment. No deploy was performed during this development acceptance.
+
+### Closure boundary
+
+Stage6 development work is locally accepted, but #351 remains OPEN while its separately authorized Preview code release and read-only HTTP Smoke have not run. CI success is not deployment evidence. Production, Remote D1, migrations, secrets and Cloudflare resource changes are outside this acceptance. Formal real-device/OS-reader/fully authenticated business System Test is intentionally deferred rather than folded into local unit tests.
