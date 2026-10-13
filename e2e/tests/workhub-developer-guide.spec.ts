@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+test.describe("Japanese guide", () => {
+  test.use({ locale: "ja-JP" });
 test("Stage6 guide maps architecture, capabilities and a real scenario back to screen source at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
@@ -28,7 +30,7 @@ test("Stage6 guide maps architecture, capabilities and a real scenario back to s
   await expect(overview).toContainText("このガイドに連動する完成済み");
   await overview.getByRole("combobox", { name: "Scenario Catalog" }).selectOption("travel-request-settlement");
   await expect(overview).toContainText("Reference実装の導線あり");
-  await overview.getByRole("button", { name: /この画面の詳細を開く: 出張申請・手続き/u }).click();
+  await overview.locator(".workhub-developer-scenario").getByRole("button", { name: /この画面の詳細を開く: 出張申請・手続き/u }).click();
   await expect(panel).toContainText("travel-request-settlement");
   await expect(panel).toContainText("Travel Request Domain");
   await panel.getByRole("button", { name: "全体ガイド" }).click();
@@ -40,7 +42,10 @@ test("Stage6 guide maps architecture, capabilities and a real scenario back to s
   await expect(panel).toHaveCount(0);
   await expect(entry).toBeFocused();
 });
+});
 
+test.describe("English guide", () => {
+  test.use({ locale: "en-US" });
 test("Stage6 overview works in en-US without changing technical stable IDs", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill("ren");
@@ -54,8 +59,10 @@ test("Stage6 overview works in en-US without changing technical stable IDs", asy
   await expect(dialog).toContainText("Business Domain / Workflow");
   await dialog.getByRole("combobox", { name: "Scenario Catalog" }).selectOption("common-find");
   await expect(dialog).toContainText("Linked Reference journey");
-  await dialog.getByRole("button", { name: /Open screen reference: Search/u }).click();
+  await dialog.locator(".workhub-developer-scenario").getByRole("button", { name: /Open screen reference: Search/u }).click();
   await expect(dialog).toContainText("common.find");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
+});
+
 });
