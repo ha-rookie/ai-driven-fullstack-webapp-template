@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    351
+    521
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-13: Stage5 #349 Reference functional development completed (PRs #662–#666), CLOSED; code Preview deployment #38347498189 and read-only HTTP Smoke #38347621571 SUCCESS. Under unchanged #343 WBS, focus advances to Stage6 #351 Developer Mode / Screen-to-Source / Guide. Formal authenticated Preview, physical device and OS reader System Tests remain NOT RUN and deferred to consolidated ST. #350/#521/#632 independently OPEN. No remote action from focus governance PR."
+  "notes": "2026-10-13: WORKHUB predefined #343 Stage1–6 development completed; #351 CLOSED after exact-main 34f6468d5f29664f09d24359a094865f76c6b7c6 Preview deploy #38410754442 and HTTP Smoke #38410982097 SUCCESS. Under existing #597/#132 priority record, focus transitions to outstanding P1 #521 intermittent Preview login HTTP 503 reliability: read-only historical Workers metrics #38411412113 show 3 sampled exceededResources but no individual login-503 correlation/root cause. #632 Preview D1 Human Gate incident and #350 WORKHUB cross-cutting Recovery/Accessibility remain independent OPEN, not waived or deprioritized silently. Authenticated Preview and physical/OS-reader consolidated ST NOT RUN. Focus update does not authorize remote mutations or modify WBS/milestones."
 }
