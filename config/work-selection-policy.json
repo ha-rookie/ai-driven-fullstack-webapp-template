@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    521
+    350
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-13: WORKHUB predefined #343 Stage1–6 development completed; #351 CLOSED after exact-main 34f6468d5f29664f09d24359a094865f76c6b7c6 Preview deploy #38410754442 and HTTP Smoke #38410982097 SUCCESS. Under existing #597/#132 priority record, focus transitions to outstanding P1 #521 intermittent Preview login HTTP 503 reliability: read-only historical Workers metrics #38411412113 show 3 sampled exceededResources but no individual login-503 correlation/root cause. #632 Preview D1 Human Gate incident and #350 WORKHUB cross-cutting Recovery/Accessibility remain independent OPEN, not waived or deprioritized silently. Authenticated Preview and physical/OS-reader consolidated ST NOT RUN. Focus update does not authorize remote mutations or modify WBS/milestones."
+  "notes": "2026-10-14: User explicitly stopped repeated investigation of historical Preview login HTTP503 and directed return to the original WBS. #521 remains OPEN as an unverified historical incident; strict Preview test #38413988883 4/4 browser tests and 6/6 unretried logins passed, but actual Google OIDC activation/individual-Ray root cause is NOT proven. #343 Stage1-6 completed, remaining original cross-cutting WORKHUB #350 Error/Empty/Recovery/Accessibility acceptance is next focus. #632 unauthorized automatic Preview D1 migration remains unresolved and blocks any migration-bearing main merges; no schema/migrations in #350. Formal authenticated business ST, physical devices and screen-reader ST deferred. No Preview/Production/Remote D1/Secrets authorization or WBS/milestone rewrite."
 }
