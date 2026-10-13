@@ -1544,3 +1544,23 @@ input:disabled {
   .workhub-request-intents { padding: 16px; }
   .workhub-request-intent-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Ask CECIL L3: explicit review within the actual WORKHUB request form. */
+.workhub-cecil-review {
+  margin-top: 16px; padding: 16px; border: 2px solid #286b77; border-radius: 12px;
+  background: #f1f8f7; color: #1b3338; min-width: 0;
+}
+.workhub-cecil-review h3 { margin: 6px 0 10px; line-height: 1.4; }
+.workhub-cecil-review p { line-height: 1.55; }
+.workhub-cecil-review dl { margin: 12px 0; display: grid; gap: 8px; }
+.workhub-cecil-review dl > div { display: grid; grid-template-columns: minmax(96px, 120px) minmax(0, 1fr); gap: 12px; border-bottom: 1px solid #c6d8d7; padding: 8px 0; }
+.workhub-cecil-review dt { font-weight: 700; }
+.workhub-cecil-review dd { margin: 0; overflow-wrap: anywhere; }
+.workhub-cecil-review-purpose { white-space: pre-wrap; }
+.workhub-cecil-review-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.workhub-cecil-review :is(button, h3):focus-visible { outline: 3px solid #20668c; outline-offset: 3px; }
+@media (max-width: 560px) {
+  .workhub-cecil-review { padding: 12px; }
+  .workhub-cecil-review dl > div { grid-template-columns: 1fr; gap: 3px; }
+  .workhub-cecil-review-actions button { flex: 1 1 140px; }
+}
