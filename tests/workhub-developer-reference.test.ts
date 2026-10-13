@@ -18,7 +18,7 @@ test("Developer Mode is limited to explicit Reference hosts; production disabled
 });
 
 test("Static reference screen metadata has unique stable IDs, domain vs projection and no leaked values", () => {
-  assert.equal(developerScreens.length, 13);
+  assert.equal(developerScreens.length, 14);
   assert.equal(new Set(developerScreens.map(x => x.id)).size, developerScreens.length);
   const travel = findDeveloperScreen("requests");
   assert.equal(travel.scenario, "travel-request-settlement");
@@ -45,6 +45,8 @@ test("Static reference screen metadata has unique stable IDs, domain vs projecti
 });
 
 test("Developer metadata selection uses context but never business values", () => {
+  assert.equal(developerScreenFromRoute("#workhub-request-detail"), "request-detail");
+  assert.equal(developerScreenFromRoute("#workhub-request-intents"), "requests");
   assert.equal(developerScreenFromRoute("#workhub-expenses"), "expenses");
   assert.equal(developerScreenFromRoute("#workhub-announcements"), "announcements");
   assert.equal(developerScreenFromRoute("#workhub-social"), "social");
@@ -69,4 +71,12 @@ test("Stage6 coverage of all existing WORKHUB navigation sections distinguishes 
   assert.equal(findDeveloperScreen("secondary-journeys").readiness.some(x => x.state === "mock-adapter"), true);
   assert.equal(findDeveloperScreen("social").readiness.some(x => x.state === "not-implemented"), true);
   assert.equal(findDeveloperScreen("expenses").sourceOfTruth.some(x => x.kind === "domain"), true);
+});
+
+test("Request detail carries a stable ID and static Domain vs Workflow vs Projection trail", () => {
+  const detail = findDeveloperScreen("request-detail");
+  assert.equal(detail.scenario, "travel-request-settlement");
+  assert.deepEqual(new Set(detail.sourceOfTruth.map(x => x.kind)), new Set(["domain", "workflow", "projection"]));
+  assert.ok(detail.source.includes("src/reference/workhub/travel-request/service.ts"));
+  assert.ok(detail.limitations.some(x => x.includes("static")));
 });
