@@ -598,11 +598,23 @@ function TravelWorkspace() {
         <button ref={askCecilButtonRef} className="workhub-header-action" type="button" aria-label="Ask CECIL" aria-haspopup="dialog" aria-controls="workhub-ask-title" aria-expanded={showAskCecil} onClick={() => setShowAskCecil(true)}>Ask CECIL</button>
         <button ref={notificationBellRef} className="workhub-header-action workhub-header-icon" type="button" aria-controls="workhub-notification-center" aria-expanded={showNotificationCenter} onClick={openNotificationCenter} aria-label={notificationState === "ready" ? `通知 未読${unreadCount}件` : "通知 取得状況を確認"}>🔔{notificationState === "ready" && <span className="workhub-notification-badge">{unreadCount}</span>}</button>
         <a className="workhub-header-action workhub-header-icon" href="#workhub-apps" aria-label="アプリ一覧">▦</a>
-        <div className="workhub-user-chip"><span className="workhub-user-dot" aria-hidden="true" /><span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span></div>
-        {developerReferenceEnabled && <button type="button" className="workhub-header-action workhub-developer-entry"
-          ref={developerEntryRef} aria-label="Developer Mode — この画面の実装情報"
-          aria-haspopup="dialog" aria-controls="workhub-developer-panel" aria-expanded={showDeveloperReference}
-          onClick={() => setShowDeveloperReference(true)}><span aria-hidden="true">{"</>"}</span><span className="workhub-developer-entry-label">実装情報</span></button>}
+        {developerReferenceEnabled ? <details className="workhub-developer-user-menu">
+          <summary className="workhub-user-chip" aria-label="ユーザーメニュー">
+            <span className="workhub-user-dot" aria-hidden="true" />
+            <span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span>
+          </summary>
+          <div className="workhub-developer-user-menu-content">
+            <button type="button" className="workhub-header-action workhub-developer-entry"
+              ref={developerEntryRef} aria-label="Developer Mode — この画面の実装情報"
+              aria-haspopup="dialog" aria-controls="workhub-developer-panel" aria-expanded={showDeveloperReference}
+              onClick={() => setShowDeveloperReference(true)}>
+              <span aria-hidden="true">{"</>"}</span><span className="workhub-developer-entry-label">この画面の実装情報</span>
+            </button>
+          </div>
+        </details> : <div className="workhub-user-chip">
+          <span className="workhub-user-dot" aria-hidden="true" />
+          <span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span>
+        </div>}
         <AccountSwitchButton />
       </div>
     </header>
