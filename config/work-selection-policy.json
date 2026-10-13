@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    349
+    351
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-13: Stage4 #348 development/automated acceptance and Preview release/HTTP Smoke completed (PR #644-#658; Preview 0037 migration run #38317919603, deploy #38317988280, Smoke #38318131067, one-time workflow cleanup PR #660). Following the user-requested continuation of the existing #343 WBS, focus moves in prescribed sequence to Stage5 #349 Ask CECIL, starting L0 Answer → L1 Find → L2 Draft → Human Confirm. Stage4 authenticated Preview, physical device and screen-reader System Tests remain NOT RUN and are deferred to consolidated ST. #350, #521 and #632 remain independent OPEN. No production/remote mutation by this policy PR."
+  "notes": "2026-10-13: Stage5 #349 Reference functional development completed (PRs #662–#666), CLOSED; code Preview deployment #38347498189 and read-only HTTP Smoke #38347621571 SUCCESS. Under unchanged #343 WBS, focus advances to Stage6 #351 Developer Mode / Screen-to-Source / Guide. Formal authenticated Preview, physical device and OS reader System Tests remain NOT RUN and deferred to consolidated ST. #350/#521/#632 independently OPEN. No remote action from focus governance PR."
 }
