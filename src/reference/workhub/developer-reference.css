@@ -1,0 +1,50 @@
+.workhub-developer-backdrop {
+  position: fixed; inset: 0; z-index: 1400; display: flex; justify-content: flex-end;
+  background: rgb(12 24 38 / 48%);
+}
+.workhub-developer-sheet {
+  box-sizing: border-box; display: flex; flex-direction: column;
+  width: min(510px, 100%); height: 100%; background: #fff; color: #1a3344;
+  box-shadow: -8px 0 32px rgb(0 0 0 / 18%);
+}
+.workhub-developer-sheet-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; padding: 18px; border-bottom: 1px solid #cdd9df;
+}
+.workhub-developer-sheet-header h2 { margin: 4px 0 0; font-size: 1.35rem; }
+.workhub-developer-sheet-content { overflow-y: auto; padding: 16px 20px 32px; }
+.workhub-developer-sheet-content :is(p, li, dd) { line-height: 1.55; overflow-wrap: anywhere; }
+.workhub-developer-sheet-content h3 { margin: 12px 0; font-size: 1.03rem; }
+.workhub-developer-sheet-content > section {
+  padding: 12px 0; border-bottom: 1px solid #d5dfe5;
+}
+.workhub-developer-sheet-content ul { padding-left: 20px; margin: 4px 0; }
+.workhub-developer-sheet-content li { padding: 3px 0; }
+.workhub-developer-screen-picker { display: grid; gap: 5px; font-weight: 700; }
+.workhub-developer-screen-picker select {
+  width: 100%; min-width: 0; padding: 10px;
+  font: inherit; border: 1px solid #768fa1; border-radius: 8px; color: #163249; background: #fff;
+}
+.workhub-developer-screen-id { margin: 14px 0; padding: 10px 12px; border-left: 3px solid #38718e; background: #f1f6f8; }
+.workhub-developer-sheet-content dl { margin: 0; display: grid; gap: 8px; }
+.workhub-developer-sheet-content dl > div { padding: 8px; background: #f3f7fa; border-radius: 6px; }
+.workhub-developer-sheet-content dt { font-weight: 700; }
+.workhub-developer-sheet-content dd { margin: 4px 0 0; }
+.workhub-developer-kind { font-size: .82rem; border: 1px solid #8da8ba; padding: 2px 6px; border-radius: 5px; }
+.workhub-developer-sheet code { word-break: break-word; color: inherit; }
+.workhub-developer-sheet a { color: #145cb1; text-decoration: underline; }
+.workhub-developer-disclaimer { padding: 12px; border-radius: 6px; background: #eef3f5; }
+.workhub-developer-sheet :is(button,select,a):focus-visible { outline: 3px solid #306b9e; outline-offset: 2px; }
+@media (max-width: 600px) {
+  .workhub-developer-backdrop { background: transparent; }
+  .workhub-developer-sheet { width: 100%; box-shadow: none; }
+  .workhub-developer-sheet-content { padding: 12px 16px 28px; }
+}
+@media (prefers-color-scheme: dark) {
+  .workhub-developer-sheet { background: #172638; color: #f3f7ff; }
+  .workhub-developer-sheet-header,.workhub-developer-sheet-content > section { border-color: #516d86; }
+  .workhub-developer-screen-id, .workhub-developer-sheet-content dl > div, .workhub-developer-disclaimer { background: #213b52; }
+  .workhub-developer-screen-picker select { background: #213b52; color: #f3f7ff; border-color: #90b3d3; }
+  .workhub-developer-sheet a { color: #99c9ff; }
+  .workhub-developer-kind { border-color: #91b3d0; }
+}

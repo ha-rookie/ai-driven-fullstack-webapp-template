@@ -3,6 +3,8 @@ import { useAuth } from "./frontend/auth";
 import AdminPortal from "./reference/admin/AdminPortal";
 import AccountSwitchButton from "./reference/workhub/AccountSwitchButton";
 import AskCecilPanel from "./reference/workhub/AskCecilPanel";
+import DeveloperReferencePanel from "./reference/workhub/DeveloperReferencePanel";
+import { developerScreenFromRoute, isDeveloperReferenceEnvironment } from "./reference/workhub/developer-reference";
 import CecilTravelReview from "./reference/workhub/CecilTravelReview";
 import { isAuthorizedCecilTravelApp, matchesCecilTravelReview, validateCecilTravelDraft, type CecilTravelDraft } from "./reference/workhub/travel-draft";
 import { ANNOUNCEMENT_AUDIENCE_DEPARTMENTS } from "./reference/workhub/announcements";
@@ -165,6 +167,13 @@ function TravelWorkspace() {
   const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [showAllAnnouncements, setShowAllAnnouncements] = useState(false); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [announcementImportance, setAnnouncementImportance] = useState<CompanyAnnouncement["importance"]>("normal"); const [announcementAudience, setAnnouncementAudience] = useState("all"); const [announcementDepartment, setAnnouncementDepartment] = useState("all"); const [announcementFrom, setAnnouncementFrom] = useState(""); const [announcementUntil, setAnnouncementUntil] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [showAskCecil, setShowAskCecil] = useState(false);
+  const developerReferenceEnabled = isDeveloperReferenceEnvironment(window.location.hostname, import.meta.env.DEV);
+  const [showDeveloperReference, setShowDeveloperReference] = useState(false);
+  const developerEntryRef = useRef<HTMLButtonElement>(null);
+  const closeDeveloperReference = () => {
+    setShowDeveloperReference(false);
+    window.requestAnimationFrame(() => developerEntryRef.current?.focus({ preventScroll: true }));
+  };
   const [cecilDraftPrepared, setCecilDraftPrepared] = useState(false);
   const [cecilTravelReview, setCecilTravelReview] = useState<CecilTravelDraft | null>(null);
   const cecilSubmitButtonRef = useRef<HTMLButtonElement>(null);
@@ -590,10 +599,17 @@ function TravelWorkspace() {
         <button ref={notificationBellRef} className="workhub-header-action workhub-header-icon" type="button" aria-controls="workhub-notification-center" aria-expanded={showNotificationCenter} onClick={openNotificationCenter} aria-label={notificationState === "ready" ? `通知 未読${unreadCount}件` : "通知 取得状況を確認"}>🔔{notificationState === "ready" && <span className="workhub-notification-badge">{unreadCount}</span>}</button>
         <a className="workhub-header-action workhub-header-icon" href="#workhub-apps" aria-label="アプリ一覧">▦</a>
         <div className="workhub-user-chip"><span className="workhub-user-dot" aria-hidden="true" /><span><strong>{user?.displayName ?? "CECIL WORKS User"}</strong><small>{reference?.role ?? "Authenticated User"}</small></span></div>
+        {developerReferenceEnabled && <button type="button" className="workhub-header-action workhub-developer-entry"
+          ref={developerEntryRef} aria-label="Developer Mode — この画面の実装情報"
+          aria-haspopup="dialog" aria-controls="workhub-developer-panel" aria-expanded={showDeveloperReference}
+          onClick={() => setShowDeveloperReference(true)}><span aria-hidden="true">{"</>"}</span><span className="workhub-developer-entry-label">実装情報</span></button>}
         <AccountSwitchButton />
       </div>
     </header>
     {showAskCecil && <AskCecilPanel onClose={closeAskCecil} onTravelHandoff={handoffCecilTravel} />}
+    {developerReferenceEnabled && showDeveloperReference &&
+      <DeveloperReferencePanel initialScreen={developerScreenFromRoute(window.location.hash, showNotificationCenter, showAskCecil)}
+        onClose={closeDeveloperReference} />}
     <main hidden={!showNotificationCenter} className="workhub-notification-center" id="workhub-notification-center" aria-labelledby="workhub-notification-center-title">
       <div className="workhub-notification-center-heading">
         <div><span className="workhub-card-label">NOTIFICATION CENTER</span><h1 id="workhub-notification-center-title" ref={notificationTitleRef} tabIndex={-1}>通知センター</h1></div>
