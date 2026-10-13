@@ -24,12 +24,12 @@ test("Ask CECIL L2 prepares but never creates/submits a travel request", async (
   await card.getByRole("button", { name: "申請画面で確認する" }).click();
   await expect(card.getByRole("alert")).toContainText("出張先");
   await card.getByRole("combobox", { name: "下書きの出張先" }).selectOption({ index: 1 });
-  await card.getByRole("textbox", { name: "下書きの開始日" }).fill("2026-10-20");
-  await card.getByRole("textbox", { name: "下書きの終了日" }).fill("2026-10-19");
+  await card.getByLabel("下書きの開始日").fill("2026-10-20");
+  await card.getByLabel("下書きの終了日").fill("2026-10-19");
   await card.getByRole("textbox", { name: "下書きの目的" }).fill("顧客訪問");
   await card.getByRole("button", { name: "申請画面で確認する" }).click();
   await expect(card.getByRole("alert")).toContainText("終了日");
-  await card.getByRole("textbox", { name: "下書きの終了日" }).fill("2026-10-21");
+  await card.getByLabel("下書きの終了日").fill("2026-10-21");
 
   const officeId = await card.getByRole("combobox", { name: "下書きの出張先" }).inputValue();
   await card.getByRole("button", { name: "申請画面で確認する" }).click();
@@ -37,8 +37,8 @@ test("Ask CECIL L2 prepares but never creates/submits a travel request", async (
   const form = page.locator("#workhub-travel-form");
   await expect(form.getByRole("status")).toContainText("まだ保存・提出されていません");
   await expect(form.getByRole("combobox", { name: "行先" })).toHaveValue(officeId);
-  await expect(form.getByRole("textbox", { name: "開始日" })).toHaveValue("2026-10-20");
-  await expect(form.getByRole("textbox", { name: "終了日" })).toHaveValue("2026-10-21");
+  await expect(form.getByLabel("開始日")).toHaveValue("2026-10-20");
+  await expect(form.getByLabel("終了日")).toHaveValue("2026-10-21");
   await expect(form.getByRole("textbox", { name: "目的" })).toHaveValue("顧客訪問");
   expect(unexpectedMutations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
