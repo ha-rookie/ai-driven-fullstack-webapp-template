@@ -6,6 +6,7 @@ import {
   type CecilSearchResult,
 } from "./ask-cecil";
 import CecilTravelDraftCard from "./CecilTravelDraftCard";
+import { createCecilEscalationNote } from "./ask-cecil-escalation";
 import type { CecilTravelDraft } from "./travel-draft";
 import "./ask-cecil.css";
 
@@ -25,6 +26,9 @@ type LookupState = "idle" | "loading" | "ready" | "error";
 export default function AskCecilPanel({ onClose, onTravelHandoff }: AskCecilPanelProps) {
   const [query, setQuery] = useState("");
   const [showTravelDraft, setShowTravelDraft] = useState(false);
+  const [lookupQuery, setLookupQuery] = useState("");
+  const [escalationState, setEscalationState] = useState<"idle" | "preparing" | "ready">("idle");
+  const [escalationNote, setEscalationNote] = useState<string | null>(null);
   const [state, setState] = useState<LookupState>("idle");
   const [guide, setGuide] = useState<CecilGuide | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -83,6 +87,9 @@ export default function AskCecilPanel({ onClose, onTravelHandoff }: AskCecilPane
     requestRef.current = controller;
     const version = ++requestVersion.current;
     setQuery(trimmed);
+    setLookupQuery(trimmed);
+    setEscalationState("idle");
+    setEscalationNote(null);
     setShowTravelDraft(false);
     setState("loading");
     setGuide(null);
@@ -127,6 +134,32 @@ export default function AskCecilPanel({ onClose, onTravelHandoff }: AskCecilPane
     }
   };
 
+  const prepareEscalation = async () => {
+    if (!lookupQuery || escalationState === "preparing") return;
+    const version = requestVersion.current;
+    setEscalationState("preparing");
+    setEscalationNote(null);
+    // A source must pass a fresh authorized read before it enters a message
+    // intended for a human. A 403/503 degrades to a question-only note.
+    let authorized: CecilDocument[] = [];
+    try {
+      const response = await fetch("/api/workhub/documents", {
+        method: "GET", headers: { accept: "application/json" },
+        credentials: "same-origin", cache: "no-store",
+      });
+      if (response.ok) {
+        const payload: unknown = await response.json();
+        const items = (payload as { items?: unknown } | null)?.items;
+        if (Array.isArray(items)) authorized = items as CecilDocument[];
+      }
+    } catch {
+      // Never re-use stale document evidence after a failed fresh authorization read.
+    }
+    if (version !== requestVersion.current) return;
+    setEscalationNote(createCecilEscalationNote(lookupQuery, guide, authorized));
+    setEscalationState("ready");
+  };
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void lookup(query);
@@ -154,7 +187,7 @@ export default function AskCecilPanel({ onClose, onTravelHandoff }: AskCecilPane
         </header>
         <div className="workhub-ask-scroll">
           <p className="workhub-ask-disclaimer">
-            現在は参照情報による案内（L0・L1）と、出張申請の入力準備（L2）です。AI生成の規程回答や申請の自動実行はしません。
+            現在は根拠付き案内（L0・L1）、出張申請の入力準備（L2）・本人確認（L3）、担当者への相談準備です。AIによる申請・承認の自動実行や問い合わせ送信はしません。
           </p>
           {!showTravelDraft && <div className="workhub-ask-prompts" aria-label="質問例">
             {SUGGESTIONS.map(item => (
@@ -203,7 +236,26 @@ export default function AskCecilPanel({ onClose, onTravelHandoff }: AskCecilPane
                 <button type="button" className="workhub-primary-button" onClick={() => setShowTravelDraft(true)}>出張申請の下書きを準備する</button>
               )}
               {guide.status === "insufficient" && <a href="#workhub-documents" onClick={onClose}>ナレッジ一覧から探す</a>}
+              {guide.status === "multiple" && <p role="status" className="workhub-ask-warning">資料の内容が一致するか未確認です。判断せず、資料の管理者へ確認してください。</p>}
             </div>
+          )}
+          {!showTravelDraft && (state === "ready" || state === "error") && lookupQuery && (
+            <section className="workhub-ask-escalation" aria-label="担当者への相談準備">
+              <h3>人に確認する</h3>
+              <p>回答の根拠が足りないとき、資料が複数あるとき、検索が利用できないときは、担当者への確認に切り替えられます。</p>
+              <button type="button" className="workhub-secondary-button"
+                disabled={escalationState === "preparing"} onClick={() => void prepareEscalation()}>
+                {escalationState === "preparing" ? "資料の閲覧権限を確認中…" : "問い合わせ用メモを作る"}
+              </button>
+              {escalationNote && <div className="workhub-ask-escalation-note" role="status">
+                <p><strong>送信前のメモです。担当者への送信は行っていません。</strong></p>
+                <label htmlFor="workhub-ask-escalation-copy">問い合わせ用メモ（選択してコピーできます）</label>
+                <textarea id="workhub-ask-escalation-copy" value={escalationNote} readOnly
+                  rows={10} onFocus={event => event.target.select()} />
+                <a href="#workhub-people" onClick={onClose}>社員・組織一覧で担当者を探す →</a>
+                <small>正式な問い合わせ先や送信手段は担当者に確認してください。会話・申請・個人情報は自動転送されません。</small>
+              </div>}
+            </section>
           )}
         </div>
         {!showTravelDraft && <form className="workhub-ask-form" onSubmit={submit} role="search">
@@ -214,7 +266,7 @@ export default function AskCecilPanel({ onClose, onTravelHandoff }: AskCecilPane
               id="workhub-ask-query"
               value={query}
               maxLength={100}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => { setQuery(event.target.value); setEscalationNote(null); setEscalationState("idle"); }}
               placeholder="例: 出張について"
             />
             <button className="workhub-primary-button" disabled={!query.trim() || state === "loading"} type="submit">探す</button>
