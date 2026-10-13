@@ -95,11 +95,18 @@ const readRememberedUserId = (): string => { try { return localStorage.getItem(R
 const persistRememberedUserId = (remember: boolean, userId: string): void => { try { if (remember) localStorage.setItem(REMEMBERED_USER_ID_KEY, userId); else localStorage.removeItem(REMEMBERED_USER_ID_KEY); } catch { /* browser storage is optional */ } };
 const loginFailureMessage = (status: number): string => status === 401 ? "ユーザーIDまたはパスワードを確認してください。" : status === 429 ? "ログイン試行が一時的に制限されています。しばらくしてから再度お試しください。" : status === 400 || status === 413 || status === 415 ? "入力内容を確認してください。" : "現在ログインできません。時間をおいて再度お試しください。";
 
+class WorkhubApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "WorkhubApiError";
+  }
+}
+
 async function apiJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers); headers.set("accept", "application/json"); if (init?.body) headers.set("content-type", "application/json");
   if (init?.method && !["GET", "HEAD", "OPTIONS"].includes(init.method.toUpperCase())) { const csrfResponse = await fetch("/api/auth/csrf", { credentials: "same-origin" }); if (!csrfResponse.ok) throw new Error("CSRF token unavailable"); const csrfPayload = await csrfResponse.json() as { csrfToken: string }; headers.set("x-csrf-token", csrfPayload.csrfToken); }
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
-  if (!response.ok) { const payload = await response.json().catch(() => ({})) as { error?: { message?: string } }; throw new Error(payload.error?.message ?? `Request failed (${response.status})`); }
+  if (!response.ok) { const payload = await response.json().catch(() => ({})) as { error?: { message?: string } }; throw new WorkhubApiError(payload.error?.message ?? `Request failed (${response.status})`, response.status); }
   return response.json() as Promise<T>;
 }
 
@@ -237,11 +244,25 @@ function TravelWorkspace() {
       setNotifications(list.items);
       setUnreadCount(count.unreadCount);
       setNotificationState("ready");
+      return true;
     } catch {
       setNotificationState("error");
+      return false;
     }
   }, []);
-  const loadMyWork = useCallback(async () => { if (!canReviewTravel) return; setMyWorkState("loading"); try { const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work"); setMyWork(result.items); setMyWorkState("ready"); } catch { setMyWorkState("error"); } }, [canReviewTravel]);
+  const loadMyWork = useCallback(async (): Promise<boolean> => {
+    if (!canReviewTravel) return false;
+    setMyWorkState("loading");
+    try {
+      const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work");
+      setMyWork(result.items);
+      setMyWorkState("ready");
+      return true;
+    } catch {
+      setMyWorkState("error");
+      return false;
+    }
+  }, [canReviewTravel]);
   const loadDelegation = useCallback(async (): Promise<{ grant: ApprovalDelegationGrant | null } | null> => {
     if (!canReviewTravel) return null;
     setDelegationState("loading");
@@ -456,7 +477,58 @@ function TravelWorkspace() {
       setMessage(requestedEnabled ? "Meiへの出張承認代理を24時間有効にしました。" : "代理承認を取り消しました。");
     }
   });
-  const decide = (entry: MyWorkEntry, action: "approve" | "return") => { const comment = returnReasons[entry.workItem.id]?.trim() ?? ""; if (action === "return" && !comment) { setMessage("差戻し理由を入力してください。"); return; } void run(async () => { await apiJson(`/api/workhub/workflows/${entry.workflow.id}/${action}`, { method: "POST", body: JSON.stringify({ expectedInstanceVersion: entry.workflow.version, expectedWorkItemVersion: entry.workItem.version, ...(action === "return" ? { reasonCode: "correction_required", comment } : {}) }) }); focusMyWorkAfterDecision.current = true; await loadMyWork(); await loadNotifications(); setMessage(action === "approve" ? "承認しました。" : "差し戻しました。"); }); };
+  const decide = (entry: MyWorkEntry, action: "approve" | "return") => {
+    const comment = returnReasons[entry.workItem.id]?.trim() ?? "";
+    if (action === "return" && !comment) {
+      setMessage("差戻し理由を入力してください。");
+      return;
+    }
+    void run(async () => {
+      try {
+        // The POST is attempted once only. A failed response is NOT proof that
+        // the transition did not commit; never automatically replay it.
+        await apiJson(`/api/workhub/workflows/${entry.workflow.id}/${action}`, {
+          method: "POST",
+          body: JSON.stringify({
+            expectedInstanceVersion: entry.workflow.version,
+            expectedWorkItemVersion: entry.workItem.version,
+            ...(action === "return" ? { reasonCode: "correction_required", comment } : {}),
+          }),
+        });
+      } catch (caught) {
+        // After a 409, the old task/version is no longer actionable. For
+        // network/5xx errors the write outcome is ambiguous. In both cases,
+        // read current state, but never retry the business mutation.
+        focusMyWorkAfterDecision.current = true;
+        const refreshed = await loadMyWork();
+        if (caught instanceof WorkhubApiError && caught.status === 409) {
+          setMessage(refreshed
+            ? "承認タスクは別の操作で更新されました。最新の一覧を取得しました。内容を確認してください。"
+            : "承認タスクは別の操作で更新されました。最新の一覧を取得できません。再送信せず、一覧を再読み込みしてください。");
+        } else {
+          setMessage(refreshed
+            ? "操作結果を確定できません。最新の承認タスクを確認してください。自動で再送信していません。"
+            : "操作結果を確認できません。再送信せず、承認タスク一覧を再読み込みしてください。");
+        }
+        return;
+      }
+
+      // Authoritative workflow mutation already succeeded: read-side
+      // notification or task projection failures must not invite re-approval.
+      focusMyWorkAfterDecision.current = true;
+      const [tasksReady, notificationsReady] = await Promise.all([loadMyWork(), loadNotifications()]);
+      const completed = action === "approve" ? "承認" : "差戻し";
+      if (!tasksReady && !notificationsReady) {
+        setMessage(`${completed}は完了しました。ただしタスク一覧と通知を更新できません。操作を繰り返さず、各一覧を再読み込みしてください。`);
+      } else if (!tasksReady) {
+        setMessage(`${completed}は完了しました。ただしタスク一覧を更新できません。操作を繰り返さず、タスク一覧を再読み込みしてください。`);
+      } else if (!notificationsReady) {
+        setMessage(`${completed}は完了しました。ただし通知を取得できません。操作を繰り返さず、通知を再読み込みしてください。`);
+      } else {
+        setMessage(action === "approve" ? "承認しました。" : "差し戻しました。");
+      }
+    });
+  };
   const retryDelegationRead = () => { focusDelegationAfterRead.current = true; void loadDelegation(); };
   const openNotification = (notification: NotificationRecord) => void run(async () => { if (!notification.readAt) await apiJson(`/api/workhub/notifications/${notification.id}/read`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version }) }); const target = notification.actionTarget?.match(/^resource:travel_request:(.+)$/u)?.[1]; if (target && isAoi) await openRequest(target); await loadNotifications(); });
   const search = async (event?: FormEvent<HTMLFormElement>) => {
