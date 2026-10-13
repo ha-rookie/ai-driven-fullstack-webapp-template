@@ -42,3 +42,11 @@ export const isAuthorizedCecilTravelApp = (apps: unknown): boolean =>
   Array.isArray(apps) && apps.some(item =>
     item && typeof item === "object" && item.key === "travel-request"
     && item.availability === "available" && item.launchTarget === "/#workhub-requests");
+
+/** Comparison against the currently displayed user-editable fields.
+ * Any change invalidates a previously requested L3 human confirmation. */
+export const matchesCecilTravelReview = (review: CecilTravelDraft, current: CecilTravelDraft): boolean =>
+  review.destinationOfficeItemId === current.destinationOfficeItemId
+  && review.startDate === current.startDate
+  && review.endDate === current.endDate
+  && review.purpose === current.purpose;
