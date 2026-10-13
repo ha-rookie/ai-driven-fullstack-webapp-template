@@ -50,7 +50,7 @@ test("Developer Mode preserves the requested screen context when opened from APP
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: /Ren Managerさん/u })).toBeVisible();
-  await page.getByRole("link", { name: /アプリ一覧/u }).click();
+  await page.getByRole("link", { name: "アプリ一覧", exact: true }).click();
   const entry = page.getByRole("button", { name: "Developer Mode — この画面の実装情報" });
   await entry.click();
   const dialog = page.getByRole("dialog", { name: "Developer Mode" });
