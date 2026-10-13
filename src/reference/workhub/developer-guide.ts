@@ -39,7 +39,7 @@ export interface DeveloperGuideScenario {
   readonly id: string;
   readonly ja: string;
   readonly en: string;
-  readonly kind: "implemented-reference" | "catalog-only";
+  readonly kind: "implemented-reference" | "reference-mock" | "catalog-only";
   readonly personaJa: string;
   readonly personaEn: string;
   readonly screens: readonly DeveloperScreenId[];
@@ -54,7 +54,7 @@ export const developerGuideScenarios: readonly DeveloperGuideScenario[] = [
     en: "Travel request and approval (expense claim is separate)",
     kind: "implemented-reference",
     personaJa: "申請者・承認者", personaEn: "Requester and approver",
-    screens: ["requests", "my-work", "notifications", "ask-cecil"],
+    screens: ["requests", "my-work", "notifications", "expenses", "ask-cecil"],
     noteJa: "本人による申請、承認担当者の確認、通知・履歴まで。旅費精算の完全自動化は行わない",
     noteEn: "Human submission, assigned approval, notifications and timeline; not automatic full travel settlement",
   },
@@ -67,6 +67,26 @@ export const developerGuideScenarios: readonly DeveloperGuideScenario[] = [
     screens: ["search", "documents", "ask-cecil"],
     noteJa: "許可された資料のみ検索・表示。資料矛盾は断定せず人へ確認",
     noteEn: "Only authorized documents; uncertainty goes to a human, not a fabricated answer",
+  },
+  {
+    id: "moving-reference",
+    ja: "引っ越し手続き（模擬Workflow）",
+    en: "Moving workflow (mock)",
+    kind: "reference-mock",
+    personaJa: "社員", personaEn: "Employee",
+    screens: ["apps", "secondary-journeys"],
+    noteJa: "住所・通勤・緊急連絡先の確認は模擬Workflow。実人事情報は更新しない",
+    noteEn: "Synthetic address/commute/contact steps, no real HR record updates",
+  },
+  {
+    id: "pc-replacement-reference",
+    ja: "PC交換手続き（模擬Workflow）",
+    en: "PC replacement workflow (mock)",
+    kind: "reference-mock",
+    personaJa: "社員・総務担当", personaEn: "Employee and corporate staff",
+    screens: ["apps", "secondary-journeys"],
+    noteJa: "社員・総務のデモ手続きのみ。IT資産の交換・在庫連携は行わない",
+    noteEn: "Demo handoff only; no actual asset replacement or inventory integration",
   },
   {
     id: "newcomer-onboarding",
@@ -93,3 +113,12 @@ export const developerGuideScenarios: readonly DeveloperGuideScenario[] = [
 export const developerGuideLinkableScreen = (
   id: DeveloperScreenId,
 ): boolean => developerScreens.some(screen => screen.id === id);
+
+/** Static Adapter catalog derived from the same screen metadata as screen-to-source. */
+export const developerAdapterMap = (): readonly { screen: DeveloperScreenId; view: string; owner: string; mock: boolean }[] =>
+  developerScreens.flatMap(screen => screen.sourceOfTruth
+    .filter(ref => ref.kind === "adapter")
+    .map(ref => ({
+      screen: screen.id, view: ref.view, owner: ref.owner,
+      mock: screen.readiness.some(x => x.state === "mock-adapter"),
+    })));

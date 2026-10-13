@@ -14,6 +14,7 @@ test("Stage6 guide maps architecture, capabilities and a real scenario back to s
   page.on("request", request => {
     if (!["GET", "HEAD"].includes(request.method())) mutations.push(request.method() + " " + new URL(request.url()).pathname);
   });
+  await page.getByLabel("ユーザーメニュー", { exact: true }).click();
   const entry = page.getByRole("button", { name: "Developer Mode — この画面の実装情報" });
   await entry.click();
   const panel = page.getByRole("dialog", { name: "Developer Mode" });
@@ -52,6 +53,7 @@ test("Stage6 overview works in en-US without changing technical stable IDs", asy
   await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: /Ren Managerさん/u })).toBeVisible();
+  await page.getByLabel("ユーザーメニュー", { exact: true }).click();
   await page.getByRole("button", { name: "Developer Mode — この画面の実装情報" }).click();
   const dialog = page.getByRole("dialog", { name: "Developer Mode" });
   await dialog.getByRole("button", { name: "Full guide" }).click();

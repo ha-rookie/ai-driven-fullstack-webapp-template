@@ -16,6 +16,8 @@ const phrases = {
     screen: "画面", scenario: "シナリオ", capability: "利用しているCapability",
     owner: "情報の正本・投影元", authorization: "権限の考え方",
     readiness: "実装状況", limits: "制約", docs: "関連資料", source: "関連ソース",
+    noDocs: "この画面専用の資料はありません。全体ガイドを参照してください。",
+    readinessLabels: { "production-pattern": "本番向け設計パターン（運用品質は未保証）", "reference-implementation": "Reference実装", "mock-adapter": "模擬連携", "catalog-only": "構想のみ", "experimental": "検証段階", "not-implemented": "未実装" },
     close: "閉じる", screenTab: "この画面", overviewTab: "全体ガイド", guide: "ほかの画面も確認", disclaimer: "Reference / Developer向けです。動作例は本番導入の保証ではありません。",
     kind: { domain: "業務正本", workflow: "Workflow", projection: "表示用Projection", adapter: "連携Adapter", catalog: "カタログ" },
   },
@@ -24,6 +26,8 @@ const phrases = {
     screen: "Screen", scenario: "Scenario", capability: "Capabilities",
     owner: "Sources of truth and projections", authorization: "Authorization summary",
     readiness: "Readiness", limits: "Limitations", docs: "Related docs", source: "Related source",
+    noDocs: "No dedicated screen document. Consult the overall developer guide.",
+    readinessLabels: { "production-pattern": "Production design pattern (not deployment-ready)", "reference-implementation": "Reference implementation", "mock-adapter": "Mock integration", "catalog-only": "Catalog only", "experimental": "Experimental", "not-implemented": "Not implemented" },
     close: "Close", screenTab: "Current screen", overviewTab: "Full guide", guide: "Browse other screens", disclaimer: "Reference / Developer use only. Demo behavior is not a production-readiness guarantee.",
     kind: { domain: "Business source", workflow: "Workflow", projection: "Read projection", adapter: "Adapter", catalog: "Catalog" },
   },
@@ -64,7 +68,7 @@ export default function DeveloperReferencePanel({ initialScreen, onClose }: Prop
   return <div className="workhub-developer-backdrop" onMouseDown={event => {
     if (event.target === event.currentTarget) onClose();
   }}>
-    <section className="workhub-developer-sheet" role="dialog" aria-modal="true"
+    <section id="workhub-developer-panel" className="workhub-developer-sheet" role="dialog" aria-modal="true"
       aria-label="Developer Mode" ref={panelRef} onKeyDown={onKeyDown}>
       <header className="workhub-developer-sheet-header">
         <div><span className="workhub-card-label">DEVELOPER MODE / REFERENCE</span>
@@ -106,13 +110,13 @@ export default function DeveloperReferencePanel({ initialScreen, onClose }: Prop
         </section>
         <section><h3>{p.authorization}</h3><p>{screen.authorization}</p></section>
         <section><h3>{p.readiness}</h3><ul>{screen.readiness.map(x => <li key={x.component}>
-          <strong>{x.component}</strong>: <code>{x.state}</code>
+          <strong>{x.component}</strong>: {p.readinessLabels[x.state]} <code>({x.state})</code>
         </li>)}</ul></section>
         <section><h3>{p.limits}</h3><ul>{screen.limitations.map(x => <li key={x}>{x}</li>)}</ul></section>
         <section><h3>{p.docs}</h3>{screen.docs.length
           ? <ul>{screen.docs.map(x => <li key={x}><a href={developerSourceUrl(x) ?? undefined}
               target="_blank" rel="noopener noreferrer">{x}</a></li>)}</ul>
-          : <p>—</p>}</section>
+          : <p>{p.noDocs}</p>}</section>
         <section><h3>{p.source}</h3><ul>{screen.source.map(x => <li key={x}><a
           href={developerSourceUrl(x) ?? undefined} target="_blank" rel="noopener noreferrer">{x}</a></li>)}</ul></section>
         <p className="workhub-developer-disclaimer">{p.disclaimer}</p>

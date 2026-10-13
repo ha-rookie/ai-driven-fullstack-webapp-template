@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import {
   developerScreens, developerScreenFromRoute, developerSourceUrl,
@@ -16,7 +18,7 @@ test("Developer Mode is limited to explicit Reference hosts; production disabled
 });
 
 test("Static reference screen metadata has unique stable IDs, domain vs projection and no leaked values", () => {
-  assert.ok(developerScreens.length >= 7);
+  assert.equal(developerScreens.length, 13);
   assert.equal(new Set(developerScreens.map(x => x.id)).size, developerScreens.length);
   const travel = findDeveloperScreen("requests");
   assert.equal(travel.scenario, "travel-request-settlement");
@@ -33,6 +35,7 @@ test("Static reference screen metadata has unique stable IDs, domain vs projecti
     for (const path of [...x.docs, ...x.source]) {
       const url = developerSourceUrl(path);
       assert.ok(url?.startsWith("https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/"));
+      assert.equal(existsSync(resolve(process.cwd(), path)), true, `Broken Source/Docs reference: ${path}`);
     }
   }
   assert.equal(developerSourceUrl("../src/App.tsx"), null);
@@ -42,10 +45,28 @@ test("Static reference screen metadata has unique stable IDs, domain vs projecti
 });
 
 test("Developer metadata selection uses context but never business values", () => {
+  assert.equal(developerScreenFromRoute("#workhub-expenses"), "expenses");
+  assert.equal(developerScreenFromRoute("#workhub-announcements"), "announcements");
+  assert.equal(developerScreenFromRoute("#workhub-social"), "social");
+  assert.equal(developerScreenFromRoute("#workhub-secondary-journeys"), "secondary-journeys");
   assert.equal(developerScreenFromRoute("#workhub-apps"), "apps");
   assert.equal(developerScreenFromRoute("#workhub-request-intents"), "requests");
   assert.equal(developerScreenFromRoute("#workhub-people"), "people");
   assert.equal(developerScreenFromRoute("#workhub-home", true), "notifications");
   assert.equal(developerScreenFromRoute("#workhub-home", false, true), "ask-cecil");
   assert.equal(developerScreenFromRoute("#workhub-unknown"), "home");
+});
+
+test("Stage6 coverage of all existing WORKHUB navigation sections distinguishes synthetic adapters", () => {
+  for (const id of ["expenses", "announcements", "social", "secondary-journeys"] as const) {
+    const screen = findDeveloperScreen(id);
+    assert.equal(screen.id, id);
+    assert.ok(screen.source.length > 0);
+    assert.ok(screen.authorization.length > 25);
+    assert.ok(screen.readiness.length > 0);
+    assert.ok(screen.limitations.length > 0);
+  }
+  assert.equal(findDeveloperScreen("secondary-journeys").readiness.some(x => x.state === "mock-adapter"), true);
+  assert.equal(findDeveloperScreen("social").readiness.some(x => x.state === "not-implemented"), true);
+  assert.equal(findDeveloperScreen("expenses").sourceOfTruth.some(x => x.kind === "domain"), true);
 });

@@ -1571,3 +1571,27 @@ input:disabled {
   .workhub-developer-entry { width: 38px; min-width: 38px; justify-content: center; padding-inline: 0; }
   .workhub-developer-entry-label { display: none; }
 }
+
+/* Stage6 Developer entry lives in the authenticated user menu, not a primary header action. */
+.workhub-developer-user-menu { position: relative; }
+.workhub-developer-user-menu > summary {
+  box-sizing: border-box; cursor: pointer; min-width: 44px; min-height: 44px;
+  padding: 6px; border-radius: 6px; list-style: none;
+}
+.workhub-developer-user-menu > summary::-webkit-details-marker { display: none; }
+.workhub-developer-user-menu > summary::after { content: "⌄"; margin-left: 3px; font-size: 16px; }
+.workhub-developer-user-menu > summary:focus-visible { outline: 3px solid #306b9e; outline-offset: 2px; }
+.workhub-developer-user-menu-content {
+  position: absolute; right: 0; top: calc(100% + 5px); z-index: 1100;
+  min-width: 225px; padding: 8px; box-sizing: border-box;
+  background: #fff; border: 1px solid #b6cad4; border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+}
+.workhub-developer-user-menu-content .workhub-developer-entry {
+  display: flex; justify-content: flex-start; width: 100%; padding: 10px; white-space: normal;
+}
+.workhub-developer-user-menu-content .workhub-developer-entry-label { display: inline; }
+@media (prefers-color-scheme: dark) {
+  .workhub-developer-user-menu-content { background: #1a2d40; border-color: #8aa5bd; }
+  .workhub-developer-user-menu-content .workhub-developer-entry { color: #eef6ff; }
+}
