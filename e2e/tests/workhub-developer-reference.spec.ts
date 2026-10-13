@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+// Verify Japanese Reference labels explicitly; default Chromium locale may be en-US.
+test.use({ locale: "ja-JP" });
+
 test("Stage6 Reference Developer Mode shows safe screen-to-source and closes without business mutations", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
