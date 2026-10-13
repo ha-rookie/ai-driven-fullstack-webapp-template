@@ -14,7 +14,7 @@ test("unknown WORKHUB URL offers safe navigation without querying credentials or
   await expect(page.getByText("このページは、少し席を外しているようです。")).toBeVisible();
   const illustration = page.getByRole("img", { name: /席を外したページを探す/u });
   await expect(illustration).toBeVisible();
-  await expect(illustration).toHaveAttribute("src", "/images/workhub/not-found-desk.svg");
+  await expect(illustration).toHaveAttribute("src", "/images/workhub/not-found-desk.webp");
   await expect.poll(async () => illustration.evaluate((image: HTMLImageElement) =>
     image.complete && image.naturalWidth > 0 && image.naturalHeight > 0,
   )).toBe(true);
@@ -45,7 +45,7 @@ test("unknown admin subpath is a keyboard-accessible 404 on mobile, not the admi
 });
 
 test("the recovery actions still work when the decorative 404 illustration is unavailable", async ({ page }) => {
-  await page.route("**/images/workhub/not-found-desk.svg", route => route.abort());
+  await page.route("**/images/workhub/not-found-desk.webp", route => route.abort());
   await page.goto("/unavailable-illustration");
   await expect(page.getByRole("heading", { name: "ページが見つかりません" })).toBeVisible();
   await expect(page.locator(".workhub-not-found-illustration")).toBeHidden();
