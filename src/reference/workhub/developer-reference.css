@@ -48,3 +48,25 @@
   .workhub-developer-sheet a { color: #99c9ff; }
   .workhub-developer-kind { border-color: #91b3d0; }
 }
+
+/* Stage6 Developer Guide is a static explanatory map, not a diagnostic console. */
+.workhub-developer-view-switch { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 0 16px; }
+.workhub-developer-view-switch button[aria-pressed="true"] { border: 2px solid currentColor; font-weight: 700; }
+.workhub-developer-overview { display: grid; gap: 12px; min-width: 0; }
+.workhub-developer-overview > h3, .workhub-developer-overview > p { margin: 0; }
+.workhub-developer-overview > section { padding: 12px 0; border-bottom: 1px solid #b9cad4; }
+.workhub-developer-overview h4 { margin: 0 0 10px; font-size: 1rem; }
+.workhub-developer-architecture { padding-left: 26px; display: grid; gap: 8px; }
+.workhub-developer-architecture li { padding: 10px; border: 1px solid #99b4c8; border-radius: 8px; }
+.workhub-developer-architecture li strong, .workhub-developer-architecture li span { display: block; }
+.workhub-developer-capability-list { display: grid; gap: 10px; list-style: none; padding: 0 !important; }
+.workhub-developer-capability-list > li { border: 1px solid #aabdc9; border-radius: 8px; padding: 10px; }
+.workhub-developer-capability-list > li strong { display: block; margin-bottom: 4px; overflow-wrap: anywhere; }
+.workhub-developer-inline-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.workhub-developer-inline-actions button { min-height: 40px; max-width: 100%; overflow-wrap: anywhere; }
+.workhub-developer-scenario { border-left: 3px solid #548cab; padding: 10px; margin-top: 10px; background: #f0f5f8; }
+@media (prefers-color-scheme: dark) {
+  .workhub-developer-overview > section { border-color: #6584a0; }
+  .workhub-developer-architecture li, .workhub-developer-capability-list > li { border-color: #678da9; }
+  .workhub-developer-scenario { background: #223b52; }
+}
