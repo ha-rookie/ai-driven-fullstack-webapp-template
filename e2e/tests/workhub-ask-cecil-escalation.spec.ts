@@ -22,9 +22,9 @@ test("Stage5 Escalate prepares a non-sending human note with only refreshed evid
   const escalation = panel.getByRole("region", { name: "担当者への相談準備" });
   await escalation.getByRole("button", { name: "問い合わせ用メモを作る" }).click();
   const note = escalation.getByRole("textbox", { name: "問い合わせ用メモ（選択してコピーできます）" });
-  await expect(note).toContainText("出張");
-  await expect(note).toContainText("v3");
-  await expect(note).toContainText("送信されていません");
+  await expect(note).toHaveValue(new RegExp("出張", "u"));
+  await expect(note).toHaveValue(new RegExp("v3", "u"));
+  await expect(note).toHaveValue(new RegExp("送信されていません", "u"));
   await expect(escalation).toContainText("会話・申請・個人情報は自動転送されません");
   expect(writes).toEqual([]);
   await escalation.getByRole("link", { name: "社員・組織一覧で担当者を探す" }).click();
@@ -46,8 +46,8 @@ test("Escalate after failed fresh authorized documents lookup sends no source or
   const escalation = panel.getByRole("region", { name: "担当者への相談準備" });
   await escalation.getByRole("button", { name: "問い合わせ用メモを作る" }).click();
   const note = escalation.getByRole("textbox", { name: "問い合わせ用メモ（選択してコピーできます）" });
-  await expect(note).toContainText("現時点で確認できた出典は添付していません");
-  await expect(note).not.toContainText("出張と経費精算の手順");
+  await expect(note).toHaveValue(new RegExp("現時点で確認できた出典は添付していません", "u"));
+  await expect(note).not.toHaveValue(new RegExp("出張と経費精算の手順", "u"));
   await page.unroute("**/api/workhub/documents");
 });
 
@@ -61,7 +61,7 @@ test("Insufficient evidence and unavailable search offer usable inquiry preparat
   await expect(panel.getByText(/確認できる根拠が見つかりませんでした/u)).toBeVisible();
   const escalation = panel.getByRole("region", { name: "担当者への相談準備" });
   await escalation.getByRole("button", { name: "問い合わせ用メモを作る" }).click();
-  await expect(escalation.getByRole("textbox", { name: "問い合わせ用メモ（選択してコピーできます）" })).toContainText("根拠が不足");
+  await expect(escalation.getByRole("textbox", { name: "問い合わせ用メモ（選択してコピーできます）" })).toHaveValue(new RegExp("根拠が不足", "u"));
   await page.route("**/api/workhub/search?**", route => route.fulfill({
     status: 503, contentType: "application/json", body: '{"error":"temporarily unavailable"}',
   }));
@@ -70,8 +70,8 @@ test("Insufficient evidence and unavailable search offer usable inquiry preparat
   await expect(panel.getByRole("alert")).toContainText("0件とは限りません");
   await escalation.getByRole("button", { name: "問い合わせ用メモを作る" }).click();
   const note = escalation.getByRole("textbox", { name: "問い合わせ用メモ（選択してコピーできます）" });
-  await expect(note).toContainText("検索を利用できません");
-  await expect(note).not.toContainText("出張と経費精算の手順");
+  await expect(note).toHaveValue(new RegExp("検索を利用できません", "u"));
+  await expect(note).not.toHaveValue(new RegExp("出張と経費精算の手順", "u"));
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ask CECIL" })).toBeFocused();
