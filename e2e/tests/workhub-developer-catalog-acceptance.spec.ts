@@ -21,6 +21,7 @@ test("Stage6 Screen Catalog correctly maps four implemented WORKHUB sections, sa
   await page.getByLabel("ユーザーメニュー", { exact: true }).click();
   const entry = page.getByRole("button", { name: "Developer Mode — この画面の実装情報" });
   for (const [fragment, id, sourceFile] of [
+    ["#workhub-request-detail", "request-detail", "src/reference/workhub/travel-request/service.ts"],
     ["#workhub-expenses", "expenses", "src/reference/workhub/ExpenseWorkspace.tsx"],
     ["#workhub-announcements", "announcements", "src/reference/workhub/announcements.ts"],
     ["#workhub-social", "social", "src/reference/workhub/social.ts"],
