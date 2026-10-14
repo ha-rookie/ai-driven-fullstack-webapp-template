@@ -1,6 +1,8 @@
 import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import { requireAuthenticatedUser, requireScopedAuthorization, type RolePolicy } from "../authorization";
 import { apiErrorResponse } from "../http";
+import { decideOperationPolicy, OPERATIONS_POLICY_VERSION } from "../operations/policy";
+import type { OperationDefinition, OperationRequest } from "../operations/types";
 import { unmonitoredConnectionProjection } from "./integration-connection-projection";
 
 const INTEGRATION_VIEW_ACTION = "integrations:view";
@@ -10,6 +12,51 @@ const FAILURE_PAGE_SIZE = 20;
 const MAX_RECENT = 8;
 const MAX_SCOPE_LENGTH = 128;
 const OUTBOX_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/u;
+
+/**
+ * #419: Shared #429 policy projects the retry risk, but provider receipt and
+ * idempotency have NOT been verified. This read-only projection never grants an
+ * execution capability or registers a handler; #429/#430 must gate any future Act.
+ */
+const DELIVERY_RETRY_DEFINITION: OperationDefinition = {
+  id: "DELIVERY_RETRY",
+  capability: "integrations:retry",
+  baseRisk: "OPERATIONAL",
+  reversible: false,
+  idempotent: false,
+  externalSideEffect: true,
+  requiresVerification: true,
+};
+
+const blockedDeliveryRetryGate = (
+  environment: OperationRequest["environment"],
+  outboxId: string,
+  scopeId: string,
+  requestId: string,
+) => {
+  const preview = decideOperationPolicy(
+    { allowed: false, reason: "provider_receipt_unverified" },
+    {
+      definition: DELIVERY_RETRY_DEFINITION,
+      actorKind: "HUMAN",
+      environment,
+      target: { resourceType: "integration_outbox", resourceId: outboxId, scopeId },
+      affectedCount: 1,
+      correlationId: requestId,
+    },
+  );
+  if (preview.policyDecision !== "DENY") throw new Error("Retry gate failed closed");
+  // Do not return an executable OperationPreview, a provider id or arbitrary
+  // credentials. A later retry route must independently authorize and verify.
+  return {
+    operationId: preview.operationId,
+    risk: preview.risk,
+    policyDecision: preview.policyDecision,
+    policyVersion: OPERATIONS_POLICY_VERSION,
+    blocker: "provider_receipt_unverified" as const,
+    executionAllowed: false as const,
+  };
+};
 
 /** D1 Outbox has environment but no scope column. An explicit single-scope project opt-in is mandatory. */
 export interface IntegrationOperationsOptions {
@@ -250,6 +297,9 @@ export const handleIntegrationOperationsApi = async (
           nextAction: nextAction(detail.status),
           providerOutcome: "unverified",
           manualRetryAllowed: false,
+          operationGate: blockedDeliveryRetryGate(
+            environment as OperationRequest["environment"], detail.id, scopeId, requestId,
+          ),
           rationale: "Provider delivery outcome is not verified. Never re-send solely from Outbox status.",
         },
       });

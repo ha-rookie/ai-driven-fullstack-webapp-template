@@ -101,9 +101,13 @@ test("overview summarizes bounded authorized signals without claiming complete h
         deliveredAt: null, deadLetteredAt: null,
         updatedAt: "2026-10-09T00:00:00.000Z", version: 1, failureCode: "other" },
       decision: { nextAction: "queued", providerOutcome: "unverified",
-        manualRetryAllowed: false },
+        manualRetryAllowed: false,
+        operationGate: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
+          policyDecision: "DENY", policyVersion: "operations-policy-v1",
+          blocker: "provider_receipt_unverified", executionAllowed: false } },
     }),
   }));
+  let forgedDecision = false;
   await page.route("**/api/admin/integrations/outbox/safe-1?**", (route) => route.fulfill({
     status: 200, contentType: "application/json",
     body: JSON.stringify({
@@ -113,7 +117,11 @@ test("overview summarizes bounded authorized signals without claiming complete h
         deliveredAt: null, deadLetteredAt: "2026-10-10T00:00:00.000Z",
         updatedAt: "2026-10-10T00:00:00.000Z", version: 3, failureCode: "other" },
       decision: { nextAction: "reconcile_external_first", providerOutcome: "unverified",
-        manualRetryAllowed: false },
+        manualRetryAllowed: false,
+        operationGate: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
+          policyDecision: forgedDecision ? "ALLOW" : "DENY",
+          policyVersion: "operations-policy-v1",
+          blocker: "provider_receipt_unverified", executionAllowed: false } },
     }),
   }));
   await page.route("**/api/admin/audit?**", (route) => {
@@ -207,6 +215,9 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(detail).toContainText("外部サービス側の配送結果を照合してください");
   await expect(detail).toContainText("Version: 3");
   await expect(detail).toContainText("外部配送結果：未照合");
+  await expect(detail.getByTestId("outbox-operation-gate")).toContainText("共通Operations Core判定：再送禁止");
+  await expect(detail.getByTestId("outbox-operation-gate")).toContainText("CONTROLLED_CHANGE");
+  await expect(detail.getByTestId("outbox-operation-gate")).toContainText("DELIVERY_RETRYは実行できません");
   await page.getByTestId("outbox-watch").getByRole("button", { name: "状態と対応方針を確認" }).click();
   await expect(detail).toContainText("個別Outbox確認：due-1");
   await expect(detail).toContainText("送信待ちです。送信処理の状態を確認してください。");
@@ -232,6 +243,11 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await paged.getByRole("button", { name: "前の20件" }).click();
   await expect(paged).toContainText("safe-1");
   await expect(paged.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+  // An untrusted HTTP response must never turn a forged ALLOW into an action.
+  forgedDecision = true;
+  await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
+  await expect(paged.getByTestId("outbox-detail")).toContainText("取得できません");
+  await expect(paged).not.toContainText("DELIVERY_RETRYは実行できません");
   await expect(page.locator("#admin-integration-outbox")).not.toContainText("sensitive-provider-credential");
   await expect(card(page, "Metrics / Alert").locator("strong")).toHaveText("未接続");
   await expect(summary.getByTestId("operations-overview-environment")).toContainText("Server Environment: local");

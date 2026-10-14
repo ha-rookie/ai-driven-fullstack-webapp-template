@@ -72,6 +72,14 @@ interface OutboxDetail {
     readonly nextAction: "reconcile_external_first" | "await_scheduled_retry" | "observe_in_progress" | "queued" | "none";
     readonly providerOutcome: "unverified";
     readonly manualRetryAllowed: false;
+    readonly operationGate: {
+      readonly operationId: "DELIVERY_RETRY";
+      readonly risk: "CONTROLLED_CHANGE" | "HUMAN_GATE";
+      readonly policyDecision: "DENY";
+      readonly policyVersion: "operations-policy-v1";
+      readonly blocker: "provider_receipt_unverified";
+      readonly executionAllowed: false;
+    };
   };
 }
 interface AuditSnapshot {
@@ -201,7 +209,14 @@ const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
   && ["reconcile_external_first", "await_scheduled_retry", "observe_in_progress", "queued", "none"]
     .includes(String(value.decision.nextAction))
   && value.decision.providerOutcome === "unverified"
-  && value.decision.manualRetryAllowed === false;
+  && value.decision.manualRetryAllowed === false
+  && isRecord(value.decision.operationGate)
+  && value.decision.operationGate.operationId === "DELIVERY_RETRY"
+  && ["CONTROLLED_CHANGE", "HUMAN_GATE"].includes(String(value.decision.operationGate.risk))
+  && value.decision.operationGate.policyDecision === "DENY"
+  && value.decision.operationGate.policyVersion === "operations-policy-v1"
+  && value.decision.operationGate.blocker === "provider_receipt_unverified"
+  && value.decision.operationGate.executionAllowed === false;
 
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
@@ -389,6 +404,12 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
           <p>更新：{detail.data.outbox.updatedAt} / 診断コード：{detail.data.outbox.failureCode}</p>
           <p><strong>次の確認：</strong>{actionLabel[detail.data.decision.nextAction]}</p>
           <p>外部配送結果：未照合。再送可否は判断できません（この画面では再送しません）。</p>
+          <p data-testid="outbox-operation-gate">
+            共通Operations Core判定：<strong>再送禁止</strong>
+            {"（リスク: " + detail.data.decision.operationGate.risk
+              + " / Policy: " + detail.data.decision.operationGate.policyVersion + "）"}
+            外部Providerの受領未確認のため、DELIVERY_RETRYは実行できません。
+          </p>
           {detail.data.decision.nextAction === "reconcile_external_first" && (
             <section data-testid="outbox-reconcile-checklist" aria-label="照合手順">
               <h5>再送前の照合手順（操作・照合結果の登録機能は未実装）</h5>
