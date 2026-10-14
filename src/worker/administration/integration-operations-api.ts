@@ -2,6 +2,7 @@ import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import { requireAuthenticatedUser, requireScopedAuthorization, type RolePolicy } from "../authorization";
 import { apiErrorResponse } from "../http";
 import { unmonitoredConnectionProjection } from "./integration-connection-projection";
+import { integrationRecoveryReadiness } from "./integration-recovery-readiness";
 
 const INTEGRATION_VIEW_ACTION = "integrations:view";
 const ROUTE = "/api/admin/integrations/outbox";
@@ -252,6 +253,11 @@ export const handleIntegrationOperationsApi = async (
           manualRetryAllowed: false,
           rationale: "Provider delivery outcome is not verified. Never re-send solely from Outbox status.",
         },
+        // #429 shared policy + guard, #430 fail-safe. Not an executable preview.
+        recoveryReadiness: integrationRecoveryReadiness({
+          environment, scopeId, outboxId: detail.id,
+          version: detail.version, requestId, actorId: auth.user.id,
+        }),
       });
     }
 
