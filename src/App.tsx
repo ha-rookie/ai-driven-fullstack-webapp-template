@@ -136,10 +136,16 @@ async function apiJson<T = unknown>(path: string, init?: RequestInit): Promise<T
     // Display only bounded, printable server references; never echo provider diagnostics.
     const rawReference = response.headers.get("x-request-id");
     const requestReference = rawReference && /^[a-zA-Z0-9_.:-]{1,128}$/u.test(rawReference) ? rawReference : null;
-    throw new WorkhubApiError(
-      modeCode ? operationModeMessages[modeCode] : payload.error?.message ?? `Request failed (${response.status})`,
-      response.status, modeCode, requestReference,
-    );
+    // Never echo arbitrary provider/SQL/stack details on 5xx. An uncertain
+    // mutation must not be blindly replayed, even if the backend timed out.
+    const readOnlyRequest = ["GET", "HEAD", "OPTIONS"].includes((init?.method ?? "GET").toUpperCase());
+    const message = modeCode ? operationModeMessages[modeCode]
+      : response.status >= 500
+        ? readOnlyRequest
+          ? "情報を取得できませんでした。時間をおいて現在の状態を再確認してください。"
+          : "サーバーで問題が発生しました。処理が完了したか確認できません。再送信せず、現在の状態を確認してください。"
+        : payload.error?.message ?? `Request failed (${response.status})`;
+    throw new WorkhubApiError(message, response.status, modeCode, requestReference);
   }
   return response.json() as Promise<T>;
 }
