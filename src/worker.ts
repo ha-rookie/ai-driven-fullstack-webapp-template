@@ -35,6 +35,7 @@ import {
   requireCsrfProtection,
 } from "./worker/http";
 import { handleWorkhubBusinessApi } from "./worker/workhub-business-api";
+import { handleWorkhubUsersAccessApi } from "./worker/administration/workhub-users-access-api";
 import {
   handleWorkhubDemoConfig,
   handleWorkhubLogin,
@@ -302,6 +303,9 @@ export default {
       workhubMasterViewerOptions,
     );
     if (masterDataResponse) return api(masterDataResponse);
+
+    const usersAccessResponse = await handleWorkhubUsersAccessApi(request, env, requestContext.requestId);
+    if (usersAccessResponse) return api(usersAccessResponse);
 
     const workhubBusinessResponse = await handleWorkhubBusinessApi(request, env);
     if (workhubBusinessResponse) return api(workhubBusinessResponse);
