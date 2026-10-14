@@ -1,4 +1,4 @@
-import { isRuntimeEnvironment } from "../../shared/runtime";
+import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import { requireAuthenticatedUser, requireScopedAuthorization } from "../authorization";
 import { apiErrorResponse } from "../http";
 import { handleReadiness } from "../health";
@@ -156,7 +156,13 @@ export const handleWorkhubOperationsOverviewApi = async (
   if (url.searchParams.get("scopeId") !== SCOPE || options.masterViewer.scopeId !== SCOPE) {
     return reject(requestId, 403, "forbidden");
   }
-  if (!isRuntimeEnvironment(env.RUNTIME_ENVIRONMENT)) {
+  // Local Vite/Workers can omit RUNTIME_ENVIRONMENT. Use the established
+  // WORKHUB resolver: local hostname => local; non-local needs explicit config.
+  let sourceEnv: Env;
+  try {
+    sourceEnv = { DB: env.DB,
+      RUNTIME_ENVIRONMENT: resolveWorkhubRuntimeEnvironment(request, env.RUNTIME_ENVIRONMENT) };
+  } catch {
     return reject(requestId, 503, "runtime_environment_required");
   }
 
@@ -191,16 +197,16 @@ export const handleWorkhubOperationsOverviewApi = async (
   };
   const scoped = "?scopeId=" + SCOPE;
   const [jobs, outbox, auditFailures, privileged, master, database] = await Promise.all([
-    call(() => handleJobOperationsApi(internal("/api/admin/jobs/summary" + scoped), env, requestId,
+    call(() => handleJobOperationsApi(internal("/api/admin/jobs/summary" + scoped), sourceEnv, requestId,
       { singleScopeSummaryId: SCOPE })),
     call(() => handleIntegrationOperationsApi(internal("/api/admin/integrations/outbox" + scoped),
-      env, requestId, { singleScopeSummaryId: SCOPE })),
+      sourceEnv, requestId, { singleScopeSummaryId: SCOPE })),
     call(() => handleAuditLogViewerApi(internal("/api/admin/audit" + scoped + "&outcome=failure&limit=20"),
-      env, requestId)),
+      sourceEnv, requestId)),
     call(() => handleAuditLogViewerApi(internal("/api/admin/audit" + scoped + "&category=system&limit=20"),
-      env, requestId)),
+      sourceEnv, requestId)),
     call(() => handleMasterDataViewerApi(internal("/api/admin/master-data" + scoped
-      + "&masterKey=workhub.office"), env, requestId, options.masterViewer)),
+      + "&masterKey=workhub.office"), sourceEnv, requestId, options.masterViewer)),
     call(() => handleReadiness(env.DB)),
   ]);
   const payload = await projectOperationsOverviewSources({
