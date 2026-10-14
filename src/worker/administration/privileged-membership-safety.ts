@@ -91,6 +91,9 @@ export const removeScopeMembershipSafely = async (
   if (!existing) {
     throw new MembershipMutationError("membership_not_found", "Membership does not exist");
   }
+  if (input.expectedRole !== undefined && existing.role !== input.expectedRole) {
+    throw new MembershipMutationError("membership_role_mismatch", "Membership role changed; reload");
+  }
 
   const privilegedRoles = await resolvePrivilegedRoles(policy, scopeId);
   if (!isPrivileged(existing.role, privilegedRoles)) {
@@ -185,6 +188,9 @@ export const changeMembershipRoleSafely = async (
   const existing = await readMembership(db, userId, scopeId);
   if (!existing) {
     throw new MembershipRoleChangeError("membership_not_found", "Membership does not exist");
+  }
+  if (input.expectedRole !== undefined && existing.role !== input.expectedRole) {
+    throw new MembershipRoleChangeError("membership_changed_concurrently", "Membership role changed; reload");
   }
   if (existing.role === nextRole) {
     return {

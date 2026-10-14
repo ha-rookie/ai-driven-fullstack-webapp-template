@@ -7,6 +7,7 @@ import {
   removeScopeMembershipSafely,
 } from "../src/worker/administration";
 import { createPrivilegedMembershipSafetyAuditEvent } from "../src/worker/audit";
+import { MembershipMutationError, MembershipRoleChangeError } from "../src/worker/administration";
 import {
   fromPrivilegedMembershipSafetyFailure,
   securityRejectionAuditEvent,
@@ -300,4 +301,35 @@ test("rejection connects to Audit and Security Rejection Event without role voca
   assert.equal(securityRejectionAuditEvent(security).category, "authorization");
   assert.equal(JSON.stringify(security).includes("manager"), false);
   assert.equal("role" in security, false);
+});
+
+
+test("safe membership removal rejects stale expectedRole even when target became privileged", async () => {
+  const fake = new FakeD1();
+  fake.seed("scope-1", "user-1", "manager");
+  fake.seed("scope-1", "user-2", "operator");
+  await assert.rejects(
+    () => removeScopeMembershipSafely(asD1(fake), privilegedPolicy, {
+      actorId: "operator-9", userId: "user-1", scopeId: "scope-1",
+      expectedRole: "member", reason: "stale form", now,
+    }),
+    (caught: unknown) => caught instanceof MembershipMutationError
+      && caught.reasonCode === "membership_role_mismatch",
+  );
+  assert.equal(fake.memberships.get("scope-1:user-1")?.role, "manager");
+});
+
+test("safe role change rejects stale expectedRole before altering another privileged user", async () => {
+  const fake = new FakeD1();
+  fake.seed("scope-1", "user-1", "operator");
+  fake.seed("scope-1", "user-2", "manager");
+  await assert.rejects(
+    () => changeMembershipRoleSafely(asD1(fake), rolePolicy, privilegedPolicy, {
+      actorId: "operator-9", userId: "user-1", scopeId: "scope-1",
+      expectedRole: "member", nextRole: "manager", reason: "stale form", now,
+    }),
+    (caught: unknown) => caught instanceof MembershipRoleChangeError
+      && caught.reasonCode === "membership_changed_concurrently",
+  );
+  assert.equal(fake.memberships.get("scope-1:user-1")?.role, "operator");
 });
