@@ -304,7 +304,7 @@ export default {
     );
     if (masterDataResponse) return api(masterDataResponse);
 
-    const usersAccessResponse = await handleWorkhubUsersAccessApi(request, env, requestContext.requestId);
+    const usersAccessResponse = await handleWorkhubUsersAccessApi(request, env, requestContext.requestId, audit);
     if (usersAccessResponse) return api(usersAccessResponse);
 
     const workhubBusinessResponse = await handleWorkhubBusinessApi(request, env);

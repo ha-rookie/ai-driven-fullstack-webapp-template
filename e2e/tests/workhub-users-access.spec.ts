@@ -64,3 +64,84 @@ test("#99 inaccessible directory fails visibly without fabricating empty/healthy
   await panel.getByRole("button", { name: "所属ユーザーを再取得" }).click();
   await expect(panel.getByRole("table")).toBeVisible();
 });
+
+
+test("#99 status mutation is gated by confirmation and shows conflict before any success", async ({ page }) => {
+  await login(page, "kai");
+  await page.goto("/admin");
+  const panel = page.locator("#admin-users-and-access");
+  const row = panel.locator("tr").filter({ hasText: "workhub-demo-aoi" });
+  await expect(row).toBeVisible();
+  await expect(panel.locator("tr").filter({ hasText: "workhub-demo-kai" })).toContainText("管理者の状態変更不可");
+
+  let posts = 0;
+  let changed = false;
+  await page.route("**/api/admin/scopes/workhub-company/memberships", async route => {
+    if (!changed) return route.continue();
+    const response = await route.fetch();
+    const data = await response.json() as { members: { userId: string; status: string }[] };
+    return route.fulfill({ response, json: {
+      ...data, members: data.members.map(member => member.userId === "workhub-demo-aoi" ? { ...member, status: "disabled" } : member),
+    } });
+  });
+  await page.route("**/api/admin/scopes/workhub-company/users/workhub-demo-aoi/disable", route => {
+    posts++;
+    if (posts === 1) return route.fulfill({ status: 409, contentType: "application/json", body: '{"error":{"code":"stale_user_status"}}' });
+    changed = true;
+    return route.fulfill({ status: 200, contentType: "application/json", body: '{"result":{"nextStatus":"disabled"}}' });
+  });
+
+  await row.getByRole("button", { name: "無効化を確認" }).click();
+  const form = panel.getByRole("form", { name: "ユーザー状態変更の確認" });
+  await expect(form.getByRole("button", { name: "このユーザーを無効化" })).toBeDisabled();
+  await form.getByLabel("操作理由").fill("担当者の異動に伴う利用停止");
+  await expect(form.getByRole("button", { name: "このユーザーを無効化" })).toBeDisabled();
+  await form.getByRole("checkbox", { name: /対象・状態・影響範囲を確認/u }).check();
+  await form.getByRole("button", { name: "このユーザーを無効化" }).click();
+  await expect(panel.getByRole("alert")).toContainText("対象の状態が変更されています");
+  expect(posts).toBe(1);
+  await row.getByRole("button", { name: "無効化を確認" }).click();
+  const retryForm = panel.getByRole("form", { name: "ユーザー状態変更の確認" });
+  await retryForm.getByLabel("操作理由").fill("管理者承認済みの利用停止");
+  await retryForm.getByRole("checkbox", { name: /対象・状態・影響範囲を確認/u }).check();
+  await retryForm.getByRole("button", { name: "このユーザーを無効化" }).click();
+  await expect(panel.getByRole("status")).toContainText("無効化が完了しました");
+  await expect(row).toContainText("無効");
+  await expect(row.getByRole("button", { name: "再有効化を確認" })).toBeVisible();
+  expect(posts).toBe(2);
+});
+
+test("#99 lifecycle API rejects absent CSRF, privilege self-change and ordinary employees", async ({ page }) => {
+  await login(page, "kai");
+  const target = "/api/admin/scopes/workhub-company/users/workhub-demo-aoi/disable";
+  const noProofStatus = await page.evaluate(async url => (await fetch(url, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reason: "実行されない確認", confirmed: true, expectedStatus: "active" }),
+  })).status, target);
+  expect(noProofStatus).toBe(403);
+
+  const selfStatus = await page.evaluate(async () => {
+    const csrf = await fetch("/api/auth/csrf");
+    const { csrfToken } = await csrf.json() as { csrfToken: string };
+    return (await fetch("/api/admin/scopes/workhub-company/users/workhub-demo-kai/disable", {
+      method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ reason: "拒否される特権ユーザー操作", confirmed: true, expectedStatus: "active" }),
+    })).status;
+  });
+  expect(selfStatus).toBe(403);
+
+});
+
+test("#99 ordinary employee cannot mutate another user lifecycle", async ({ page }) => {
+  await login(page, "aoi");
+  const target = "/api/admin/scopes/workhub-company/users/workhub-demo-ren/disable";
+  const nonAdminStatus = await page.evaluate(async url => {
+    const csrf = await fetch("/api/auth/csrf");
+    const { csrfToken } = await csrf.json() as { csrfToken: string };
+    return (await fetch(url, {
+      method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ reason: "権限なし", confirmed: true, expectedStatus: "active" }),
+    })).status;
+  }, target);
+  expect(nonAdminStatus).toBe(403);
+});
