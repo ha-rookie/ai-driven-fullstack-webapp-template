@@ -389,6 +389,18 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
           <p>更新：{detail.data.outbox.updatedAt} / 診断コード：{detail.data.outbox.failureCode}</p>
           <p><strong>次の確認：</strong>{actionLabel[detail.data.decision.nextAction]}</p>
           <p>外部配送結果：未照合。再送可否は判断できません（この画面では再送しません）。</p>
+          {detail.data.decision.nextAction === "reconcile_external_first" && (
+            <section data-testid="outbox-reconcile-checklist" aria-label="照合手順">
+              <h5>再送前の照合手順（操作・照合結果の登録機能は未実装）</h5>
+              <ol>
+                <li>外部Providerの配送履歴を、対象の配送ID・日時・宛先の管理された情報と突き合わせる。秘密情報はここへ入力しない。</li>
+                <li>外部側で受領・処理済みか、未処理か、不明かを確認する。タイムアウトやUNKNOWNを未配送と決めつけない。</li>
+                <li>結果が不明なら再送せず、運用担当者に調査を引き継ぐ。受領済みの場合も二重配送を避ける。</li>
+                <li>確認結果・承認・監査証跡と冪等性が揃うまでは、共通Operations Core経由の再送申請も実行も行わない。</li>
+              </ol>
+              <p>この画面は参照専用です。Provider照合API・監査記録の保存・DELIVERY_RETRYの実行は提供していません。</p>
+            </section>
+          )}
         </>}
   </div>;
 };

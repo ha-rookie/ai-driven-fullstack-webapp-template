@@ -220,6 +220,12 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(paged).not.toContainText("never-render-paged");
   await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
   await expect(paged.getByTestId("outbox-detail")).toContainText("Version: 3");
+  const reconcile = paged.getByTestId("outbox-reconcile-checklist");
+  await expect(reconcile).toContainText("再送前の照合手順");
+  await expect(reconcile).toContainText("タイムアウトやUNKNOWNを未配送と決めつけない");
+  await expect(reconcile).toContainText("共通Operations Core");
+  await expect(reconcile.getByRole("button")).toHaveCount(0);
+
   await paged.getByRole("button", { name: "次の20件" }).click();
   await expect(paged).toContainText("old-safe-1");
   await expect(paged).not.toContainText("never-render-paged");
