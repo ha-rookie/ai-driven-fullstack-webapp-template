@@ -127,7 +127,7 @@ class WorkhubApiError extends Error {
 
 async function apiJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers); headers.set("accept", "application/json"); if (init?.body) headers.set("content-type", "application/json");
-  if (init?.method && !["GET", "HEAD", "OPTIONS"].includes(init.method.toUpperCase())) { const csrfResponse = await fetch("/api/auth/csrf", { credentials: "same-origin" }); if (!csrfResponse.ok) throw new Error("CSRF token unavailable"); const csrfPayload = await csrfResponse.json() as { csrfToken: string }; headers.set("x-csrf-token", csrfPayload.csrfToken); }
+  if (init?.method && !["GET", "HEAD", "OPTIONS"].includes(init.method.toUpperCase())) { const csrfResponse = await fetch("/api/auth/csrf", { credentials: "same-origin" }); if (!csrfResponse.ok) { if (csrfResponse.status === 401) window.dispatchEvent(new Event("workhub:session-check")); throw new Error("セッションの確認に失敗しました。処理は送信していません。状態を確認してからやり直してください。"); } const csrfPayload = await csrfResponse.json() as { csrfToken: string }; headers.set("x-csrf-token", csrfPayload.csrfToken); }
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { error?: { message?: string; code?: string } };
