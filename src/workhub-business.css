@@ -674,3 +674,22 @@
 .workhub-operation-mode-notice button {
   margin-top: 8px;
 }
+
+/* Read-only correlation reference: keyboard selectable, bounded on mobile. */
+.workhub-operation-mode-notice label {
+  display: block;
+  margin-top: 12px;
+}
+.workhub-operation-mode-notice input[readonly] {
+  display: block;
+  width: min(100%, 26rem);
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 8px 10px;
+  color: inherit;
+  background: #fff;
+  border: 1px solid #bda080;
+  border-radius: 6px;
+  font: inherit;
+}
