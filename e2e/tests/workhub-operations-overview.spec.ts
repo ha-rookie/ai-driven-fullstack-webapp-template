@@ -30,6 +30,25 @@ const overviewFixture = (sources: Record<string, unknown> = {}) => JSON.stringif
   ...sources,
 });
 
+test("#414 live local Overview API authenticates admin, bounds source data and rejects mutation", async ({ page }) => {
+  await login(page);
+  const endpoint = "/api/admin/operations/overview?scopeId=workhub-company";
+  const response = await page.request.get(endpoint);
+  expect(response.status()).toBe(200);
+  const body = await response.json() as Record<string, unknown>;
+  expect(body.schemaVersion).toBe(1);
+  expect(body.scopeId).toBe("workhub-company");
+  expect(body).toHaveProperty("jobs.kind");
+  expect(body).toHaveProperty("auditFailures.kind");
+  expect(body).toHaveProperty("database.kind");
+  expect(body).toHaveProperty("outbox.kind");
+  expect(JSON.stringify(body)).not.toMatch(/tokenHash|token_hash|redeemToken|requestId|actorId|rawProviderSecret|payloadFingerprint/iu);
+  const noMutation = await page.request.post(endpoint);
+  expect(noMutation.status()).toBe(405);
+  const wrongScope = await page.request.get("/api/admin/operations/overview?scopeId=another-tenant");
+  expect(wrongScope.status()).toBe(403);
+});
+
 test("overview summarizes bounded authorized signals without claiming complete health", async ({ page }) => {
   await login(page);
   await page.route("**/api/health/ready", (route) => route.fulfill({
