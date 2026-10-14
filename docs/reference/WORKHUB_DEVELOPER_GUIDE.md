@@ -36,6 +36,7 @@ Master / External / Mock Adapter (接続先の契約)
 |---|---|---|
 | `travel-request-settlement` | Referenceの関連導線あり | 出張申請→本人確認→承認作業→通知。経費精算を含む全自動処理とは断定しない |
 | `common-find` | Referenceの関連導線あり | 検索→権限内文書→根拠確認。根拠不足は推測せず人へ |
+| `scenario.workhub.error-recovery` | 部分Reference（正式ST未実施） | 404・権限・競合・投影障害・空状態・運用モードの失敗セマンティクス。帳票生成失敗の業務画面は未接続。 [確認表](WORKHUB_ERROR_RECOVERY_ACCEPTANCE.md) |
 | `newcomer-onboarding` | Catalog-only | ガイド内では端から端までの動く導線を保証しない |
 | `ai-access-request` | Catalog-only | 構想。権限付与や申請の実装済機能ではない |
 

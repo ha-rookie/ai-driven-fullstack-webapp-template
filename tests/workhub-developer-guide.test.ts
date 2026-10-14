@@ -4,6 +4,8 @@ import {
   developerArchitectureLayers, developerCapabilityMap, developerGuideLinkableScreen, developerGuideScenarios, developerAdapterMap,
 } from "../src/reference/workhub/developer-guide";
 import { developerScreens, developerSourceUrl } from "../src/reference/workhub/developer-reference";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 test("Stage6 guide architecture is a human-readable layered diagram, not business data", () => {
   assert.deepEqual(developerArchitectureLayers.map(x => x.id), ["ui", "application", "domain", "projections", "adapters"]);
@@ -49,4 +51,18 @@ test("Adapter catalog links to screens and mock journeys are not marked producti
   const mock = developerGuideScenarios.filter(x => x.kind === "reference-mock");
   assert.deepEqual(mock.map(x => x.id), ["moving-reference", "pc-replacement-reference"]);
   assert.ok(mock.every(x => x.screens.includes("secondary-journeys") && x.noteJa.includes("実") || x.noteJa.includes("デモ")));
+});
+
+
+test("#350 recovery scenario remains partial and points to real evidence without claiming System Test", () => {
+  const scenario = developerGuideScenarios.find(item => item.id === "scenario.workhub.error-recovery");
+  assert.ok(scenario, "missing #350 recovery scenario");
+  assert.equal(scenario.kind, "partial-reference");
+  assert.ok(scenario.screens.includes("my-work") && scenario.screens.includes("search"));
+  assert.equal(scenario.evidenceDoc, "docs/reference/WORKHUB_ERROR_RECOVERY_ACCEPTANCE.md");
+  assert.equal(existsSync(resolve(process.cwd(), scenario.evidenceDoc!)), true);
+  assert.match(developerSourceUrl(scenario.evidenceDoc!) ?? "", /^https:\/\/github\.com\/ha-rookie\//);
+  assert.match(scenario.noteJa, /未完了/);
+  assert.match(scenario.noteEn, /incomplete/);
+  assert.ok(developerGuideScenarios.filter(item => item.kind === "catalog-only").every(item => item.screens.length === 0));
 });
