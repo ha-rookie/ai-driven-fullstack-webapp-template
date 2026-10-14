@@ -214,8 +214,12 @@ export default function UsersAccessPanel() {
           </table>
         </div>}
       {members.data.hasMore && <p role="status" className="admin-audit-note">51件目以降はこの画面に表示されません。50件で全件とは限りません。</p>}
-      <MembershipOperationsPanel members={members.data.members} onRefresh={loadMembers} />
     </>}
+    <MembershipOperationsPanel
+      members={members.kind === "ready" ? members.data.members : []}
+      ready={members.kind === "ready"}
+      onRefresh={loadMembers}
+    />
     {operation && <form className="admin-retry-panel" aria-label="ユーザー状態変更の確認"
       onSubmit={(event) => { event.preventDefault(); void executeLifecycle(); }}>
       <h3>{operation.member.displayName || operation.member.userId} の{operation.kind === "disable" ? "無効化" : "再有効化"}</h3>
