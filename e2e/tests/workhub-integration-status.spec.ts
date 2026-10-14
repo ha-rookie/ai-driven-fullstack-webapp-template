@@ -180,6 +180,9 @@ test("#419 local failed-Outbox pages are bounded, authorized, read-only and fail
         + encodeURIComponent(cursor))).status, body.nextCursor);
     expect(next).toBe(200);
   }
+});
+
+test("#419 non-admin cannot read paged failed Outbox history", async ({ page }) => {
   await login(page, "aoi");
   const denied = await page.evaluate(async () =>
     (await fetch("/api/admin/integrations/outbox/_failures?scopeId=workhub-company")).status);
