@@ -67,8 +67,10 @@ const blockedOperation = (
     previewPolicyVersion: OPERATIONS_POLICY_VERSION,
     evidence: {},
   });
-  if (preview.policyDecision !== "DENY" || guard.allowed
-    || guard.reason !== "policy_denied") throw new Error("Integration recovery policy must fail closed");
+  if (guard.allowed) throw new Error("Integration recovery guard unexpectedly allowed execution");
+  if (preview.policyDecision !== "DENY" || guard.reason !== "policy_denied") {
+    throw new Error("Integration recovery policy must fail closed");
+  }
   return {
     operationId: definition.id,
     risk: preview.risk,
