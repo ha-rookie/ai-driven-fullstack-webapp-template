@@ -22,7 +22,7 @@ const VALID_ID = /^[A-Za-z0-9_.:-]{1,128}$/u;
 const WORKHUB_ASSIGNABLE_ROLES = ["newcomer", "employee", "manager", "accounting", "corporate"] as const;
 const validRole = (role: unknown): role is (typeof WORKHUB_ASSIGNABLE_ROLES)[number] =>
   typeof role === "string" && WORKHUB_ASSIGNABLE_ROLES.some(allowed => allowed === role);
-const privilegedPolicy = { getPrivilegedRoles: (_scopeId: string): readonly string[] => ["system_admin"] };
+const privilegedPolicy = { getPrivilegedRoles: (): readonly string[] => ["system_admin"] };
 const rolePolicy = { isValidRole: (role: string) => validRole(role) };
 
 interface Env { readonly DB: D1Database; readonly RUNTIME_ENVIRONMENT?: string }
