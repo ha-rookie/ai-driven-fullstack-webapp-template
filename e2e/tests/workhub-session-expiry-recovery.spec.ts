@@ -43,3 +43,26 @@ test("#350 authenticated WORKHUB session expiry returns to login; 403 does not",
   await expect(page.getByRole("heading", { name: /Aoi Employeeさん/u })).toBeVisible();
   await expect(page.getByText("セッションの有効期限が切れたか", { exact: false })).toHaveCount(0);
 });
+
+test("#350 expired session on CSRF preflight does not submit a business mutation", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill("aoi");
+  await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /Aoi Employeeさん/u })).toBeVisible();
+  await expect(page.getByRole("button", { name: "出張申請を提出" })).toBeVisible();
+
+  let unsafeBusinessRequests = 0;
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/workhub/") && !["GET", "HEAD", "OPTIONS"].includes(request.method())) {
+      unsafeBusinessRequests += 1;
+    }
+  });
+
+  await page.context().clearCookies();
+  await page.getByRole("button", { name: "出張申請を提出" }).click();
+  await expect(page.getByRole("heading", { name: "WORKHUBにログイン" })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("セッションの有効期限が切れたか");
+  expect(unsafeBusinessRequests, "a failed CSRF GET must prevent sending the business POST").toBe(0);
+});
