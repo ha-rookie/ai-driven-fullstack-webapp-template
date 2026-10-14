@@ -374,6 +374,22 @@ try {
     assert.ok(outbox.attentionItems.every((item) => !("payload" in item)
       && !("destinationKey" in item) && item.failureCode !== "sensitive-provider-credential"));
     assert.equal(outbox.sampleLimit, 8);
+    assert.deepEqual(outbox.deliveryEvidence, {
+      kind: "local_outbox_state",
+      lastDeliveredUpdatedAt: createdAt,
+      lastDeadLetterUpdatedAt: createdAt,
+      providerReceipt: "unverified",
+    }, "local delivery state is evidence, NOT a third-party receipt");
+    assert.ok(!JSON.stringify(outbox.deliveryEvidence).includes("test-provider"));
+    localRuntime = "production"; // Local D1 environment fixture, never remote resources.
+    const productionOutboxResponse = await outboxGet(admin);
+    assert.equal(productionOutboxResponse.status, 200);
+    const productionOutbox = await productionOutboxResponse.json();
+    assert.equal(productionOutbox.environment, "production");
+    assert.equal(productionOutbox.deliveryEvidence.lastDeliveredUpdatedAt, null,
+      "local delivered history must never include another environment");
+    assert.equal(productionOutbox.deliveryEvidence.lastDeadLetterUpdatedAt, createdAt);
+    localRuntime = "test";
     assert.equal(outbox.items.length, 8);
     assert.ok(outbox.items.every((item) => !JSON.stringify(item).includes("sensitive-provider-credential")));
     assert.ok(outbox.items.every((item) => !("destinationKey" in item) && !("payload" in item)));
