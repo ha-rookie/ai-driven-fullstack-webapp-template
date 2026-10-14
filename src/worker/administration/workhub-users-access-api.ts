@@ -1,4 +1,7 @@
 import { disableUser, reactivateUser, queryActiveApplicationSessionsForUser, UserLifecycleTransitionError } from "../auth";
+import { addScopeMembership, MembershipMutationError } from "./membership-management";
+import { MembershipRoleChangeError } from "./membership-role-change";
+import { changeMembershipRoleSafely, removeScopeMembershipSafely, PrivilegedMembershipSafetyError } from "./privileged-membership-safety";
 import { D1OperationModeStore } from "../../infrastructure/d1-operation-mode-store";
 import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import { OperationModeGuard, operationModeRejectionResponse, requireCsrfProtection, csrfGuardFailureResponse, readJsonBody } from "../http";
@@ -16,6 +19,11 @@ const VIEW_ACTION = "administration:manage";
 const POLICY = { [VIEW_ACTION]: ["system_admin"] };
 const MAX_MEMBERS = 50;
 const VALID_ID = /^[A-Za-z0-9_.:-]{1,128}$/u;
+const WORKHUB_ASSIGNABLE_ROLES = ["newcomer", "employee", "manager", "accounting", "corporate"] as const;
+const validRole = (role: unknown): role is (typeof WORKHUB_ASSIGNABLE_ROLES)[number] =>
+  typeof role === "string" && WORKHUB_ASSIGNABLE_ROLES.some(allowed => allowed === role);
+const privilegedPolicy = { getPrivilegedRoles: (_scopeId: string): readonly string[] => ["system_admin"] };
+const rolePolicy = { isValidRole: (role: string) => validRole(role) };
 
 interface Env { readonly DB: D1Database; readonly RUNTIME_ENVIRONMENT?: string }
 type Audit = (event: Omit<AuditEvent, "requestId" | "method" | "path">) => void;
@@ -39,10 +47,18 @@ export const handleWorkhubUsersAccessApi = async (
   const members = /^\/api\/admin\/scopes\/([^/]+)\/memberships$/u.exec(path);
   const sessions = /^\/api\/admin\/scopes\/([^/]+)\/users\/([^/]+)\/sessions$/u.exec(path);
   const lifecycle = /^\/api\/admin\/scopes\/([^/]+)\/users\/([^/]+)\/(disable|reactivate)$/u.exec(path);
-  if (!members && !sessions && !lifecycle) return null;
-  if (request.method !== (lifecycle ? "POST" : "GET")) return error(requestId, 405, "method_not_allowed");
-  if ((members ?? sessions ?? lifecycle)![1] !== SCOPE_ID) return error(requestId, 403, "forbidden");
-  const targetUserId = (sessions ?? lifecycle)?.[2];
+  const membershipRemove = /^\/api\/admin\/scopes\/([^/]+)\/memberships\/([^/]+)$/u.exec(path);
+  const membershipRole = /^\/api\/admin\/scopes\/([^/]+)\/memberships\/([^/]+)\/role$/u.exec(path);
+  if (!members && !sessions && !lifecycle && !membershipRemove && !membershipRole) return null;
+  const supported = members ? (request.method === "GET" || request.method === "POST")
+    : membershipRemove ? request.method === "DELETE"
+    : membershipRole ? request.method === "PATCH"
+    : lifecycle ? request.method === "POST" : request.method === "GET";
+  if (!supported) return error(requestId, 405, "method_not_allowed");
+  if ((members ?? sessions ?? lifecycle ?? membershipRemove ?? membershipRole)![1] !== SCOPE_ID) {
+    return error(requestId, 403, "forbidden");
+  }
+  const targetUserId = (sessions ?? lifecycle ?? membershipRemove ?? membershipRole)?.[2];
   if (targetUserId && !VALID_ID.test(targetUserId)) {
     return apiErrorResponse({ status: 400, code: "invalid_request", message: "Invalid target" }, requestId);
   }
@@ -68,6 +84,90 @@ export const handleWorkhubUsersAccessApi = async (
     if (!authorization.allowed) return error(requestId, 403, "forbidden");
   } catch {
     return error(requestId, 503, "authorization_unavailable");
+  }
+
+  if ((members && request.method === "POST") || membershipRemove || membershipRole) {
+    try {
+      const runtime = resolveWorkhubRuntimeEnvironment(request, env.RUNTIME_ENVIRONMENT);
+      const mode = await new OperationModeGuard(
+        new D1OperationModeStore(env.DB, runtime), { environment: runtime, retryAfterSeconds: 30 },
+      ).check(request);
+      if (!mode.allowed) return operationModeRejectionResponse(mode, requestId);
+    } catch {
+      return error(requestId, 503, "operation_mode_unavailable");
+    }
+    const csrf = await requireCsrfProtection(request);
+    if (!csrf.allowed) return csrfGuardFailureResponse(csrf, requestId);
+    const parsed = await readJsonBody(request, { maxBytes: 1024 });
+    if (!parsed.ok) {
+      return apiErrorResponse({ status: parsed.status, code: parsed.code, message: parsed.message }, requestId);
+    }
+    const obj = typeof parsed.value === "object" && parsed.value !== null && !Array.isArray(parsed.value)
+      ? parsed.value as Record<string, unknown> : null;
+    const reason = typeof obj?.reason === "string" ? obj.reason.trim() : "";
+    if (!obj || !reason || reason.length > 200 || obj.confirmed !== true) {
+      return apiErrorResponse({ status: 400, code: "invalid_request", message: "Reason and explicit confirmation are required" }, requestId);
+    }
+    try {
+      if (members) {
+        const userId = obj.userId;
+        if (typeof userId !== "string" || !VALID_ID.test(userId) || !validRole(obj.role)) {
+          return apiErrorResponse({ status: 400, code: "invalid_request", message: "Valid user and assignable role required" }, requestId);
+        }
+        const row = await env.DB.prepare("SELECT status FROM users WHERE id=?")
+          .bind(userId).first<{ status: string }>();
+        if (!row || row.status !== "active") {
+          return apiErrorResponse({ status: 409, code: "user_not_active", message: "An existing active user is required" }, requestId);
+        }
+        const result = await addScopeMembership(env.DB, {
+          actorId, userId, scopeId: SCOPE_ID, role: obj.role, reason,
+        });
+        if (result.kind !== "added") {
+          return apiErrorResponse({ status: 409, code: "membership_exists", message: "Membership already exists; reload" }, requestId);
+        }
+        audit({ category: "authorization", action: "admin.membership.add", outcome: "success",
+          actorId, scopeId: SCOPE_ID, resourceType: "user", resourceId: userId, reason });
+        return Response.json({ result }, { status: 201, headers: { "cache-control": "no-store" } });
+      }
+      if (!targetUserId || targetUserId === actorId) return error(requestId, 403, "forbidden");
+      const existing = await env.DB.prepare(
+        "SELECT role FROM scope_memberships WHERE scope_id=? AND user_id=?",
+      ).bind(SCOPE_ID, targetUserId).first<{ role: string }>();
+      if (!existing) return error(requestId, 403, "forbidden");
+      if (existing.role !== obj.expectedRole) {
+        return apiErrorResponse({ status: 409, code: "stale_membership_role", message: "Membership changed; reload" }, requestId);
+      }
+      // This reference project never changes or removes privileged memberships.
+      // Shared services additionally guard self-change and last-admin constraints.
+      if (existing.role === "system_admin") return error(requestId, 403, "forbidden");
+      if (membershipRole) {
+        if (!validRole(obj.nextRole) || obj.nextRole === existing.role) {
+          return apiErrorResponse({ status: 400, code: "invalid_role", message: "Choose a different permitted role" }, requestId);
+        }
+        const result = await changeMembershipRoleSafely(env.DB, rolePolicy, privilegedPolicy, {
+          actorId, userId: targetUserId, scopeId: SCOPE_ID, nextRole: obj.nextRole, reason,
+        });
+        audit({ category: "authorization", action: "admin.membership.role_change", outcome: "success",
+          actorId, scopeId: SCOPE_ID, resourceType: "user", resourceId: targetUserId, reason });
+        return respond({ result });
+      }
+      const result = await removeScopeMembershipSafely(env.DB, privilegedPolicy, {
+        actorId, userId: targetUserId, scopeId: SCOPE_ID, reason,
+      });
+      audit({ category: "authorization", action: "admin.membership.remove", outcome: "success",
+        actorId, scopeId: SCOPE_ID, resourceType: "user", resourceId: targetUserId, reason });
+      return respond({ result });
+    } catch (caught) {
+      if (caught instanceof MembershipMutationError ||
+          caught instanceof MembershipRoleChangeError ||
+          caught instanceof PrivilegedMembershipSafetyError) {
+        return apiErrorResponse({ status: 409, code: "membership_conflict", message: "Membership changed or operation rejected; reload" }, requestId);
+      }
+      if (caught instanceof TypeError) {
+        return apiErrorResponse({ status: 400, code: "invalid_request", message: "Invalid membership operation" }, requestId);
+      }
+      return error(requestId, 503, "administration_unavailable");
+    }
   }
 
   if (lifecycle && targetUserId) {
