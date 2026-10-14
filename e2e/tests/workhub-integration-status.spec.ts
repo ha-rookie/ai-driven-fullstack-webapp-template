@@ -9,6 +9,34 @@ const login = async (page: Page, user = "kai") => {
   await expect(page.getByRole("heading", { name: user === "kai" ? /Kai Admin/u : /Aoi Employee/u })).toBeVisible();
 };
 
+test("#419 live local Outbox API is authorized, read-only and does not claim provider receipt", async ({ page }) => {
+  await login(page);
+  const actual = await page.evaluate(async () => {
+    const endpoint = "/api/admin/integrations/outbox?scopeId=workhub-company";
+    const response = await fetch(endpoint);
+    const body: unknown = await response.json();
+    const noMutation = await fetch(endpoint, { method: "POST" });
+    const otherScope = await fetch("/api/admin/integrations/outbox?scopeId=another-company");
+    return { status: response.status, body,
+      cacheControl: response.headers.get("cache-control"),
+      mutationStatus: noMutation.status, otherScopeStatus: otherScope.status };
+  });
+  expect(actual.status).toBe(200);
+  expect(actual.cacheControl).toBe("no-store");
+  const body = actual.body as Record<string, unknown>;
+  expect(body.coverage).toBe("environment");
+  const evidence = body.deliveryEvidence as Record<string, unknown>;
+  expect(evidence.kind).toBe("local_outbox_state");
+  expect(evidence.providerReceipt).toBe("unverified");
+  for (const key of ["lastDeliveredUpdatedAt", "lastDeadLetterUpdatedAt"]) {
+    expect(evidence).toHaveProperty(key);
+    expect(evidence[key] === null || typeof evidence[key] === "string").toBe(true);
+  }
+  expect(JSON.stringify(evidence)).not.toMatch(/payload|credential|secret|destinationKey|rawProvider/iu);
+  expect(actual.mutationStatus).toBe(405);
+  expect(actual.otherScopeStatus).toBe(403);
+});
+
 test("#419 local Outbox evidence is distinct from unverified external receipt and fails closed", async ({ page }) => {
   await login(page);
   let unavailable = false;
