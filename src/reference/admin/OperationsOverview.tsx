@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
  * never means the entire environment is healthy.
  */
 const SCOPE_ID = "workhub-company";
-const LIMIT = 20;
 const params = (values: Record<string, string>): string => new URLSearchParams(values).toString();
 
 interface JobSummary {
@@ -187,25 +186,44 @@ const hasReadiness = (value: unknown): value is ReadinessSnapshot =>
   isRecord(value) && value.component === "database"
   && (value.status === "ok" || value.status === "unavailable");
 
-const sourceUrl = {
-  jobs: "/api/admin/jobs/summary?" + params({ scopeId: SCOPE_ID }),
-  outbox: "/api/admin/integrations/outbox?" + params({ scopeId: SCOPE_ID }),
-  auditFailures: "/api/admin/audit?" + params({ scopeId: SCOPE_ID, outcome: "failure", limit: String(LIMIT) }),
-  privileged: "/api/admin/audit?" + params({ scopeId: SCOPE_ID, category: "system", limit: String(LIMIT) }),
-  master: "/api/admin/master-data?" + params({ scopeId: SCOPE_ID, masterKey: "workhub.office" }),
+/** Consume the server-owned cross-domain contract, never fabricate Healthy/0 on failure. */
+const decodeProbe = <T,>(source: unknown, valid: (value: unknown) => value is T): Probe<T> => {
+  if (!isRecord(source)) return { kind: "unknown" };
+  if (source.kind === "denied") return { kind: "denied" };
+  if (source.kind === "ready" && valid(source.data)) {
+    return { kind: "ready", data: source.data };
+  }
+  return { kind: "unknown" };
 };
 
+const emptySnapshot = (kind: "denied" | "unknown"): OverviewSnapshot => ({
+  jobs: { kind }, outbox: { kind }, auditFailures: { kind },
+  privileged: { kind }, master: { kind }, database: { kind },
+  updatedAt: new Date().toISOString(),
+});
+
 const snapshot = async (): Promise<OverviewSnapshot> => {
-  const [jobs, outbox, auditFailures, privileged, master, database] = await Promise.all([
-    read(sourceUrl.jobs, hasJobSummary),
-    read(sourceUrl.outbox, hasOutboxSummary),
-    read(sourceUrl.auditFailures, hasAudit),
-    read(sourceUrl.privileged, hasAudit),
-    read(sourceUrl.master, hasMaster),
-    read("/api/health/ready", hasReadiness),
-  ]);
-  return { jobs, outbox, auditFailures, privileged, master, database,
-    updatedAt: new Date().toISOString() };
+  try {
+    const response = await fetch("/api/admin/operations/overview?" + params({ scopeId: SCOPE_ID }), {
+      headers: { accept: "application/json" }, cache: "no-store",
+    });
+    if (response.status === 401 || response.status === 403) return emptySnapshot("denied");
+    if (!response.ok) return emptySnapshot("unknown");
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || payload.schemaVersion !== 1 || payload.scopeId !== SCOPE_ID
+      || typeof payload.updatedAt !== "string") return emptySnapshot("unknown");
+    return {
+      jobs: decodeProbe(payload.jobs, hasJobSummary),
+      outbox: decodeProbe(payload.outbox, hasOutboxSummary),
+      auditFailures: decodeProbe(payload.auditFailures, hasAudit),
+      privileged: decodeProbe(payload.privileged, hasAudit),
+      master: decodeProbe(payload.master, hasMaster),
+      database: decodeProbe(payload.database, hasReadiness),
+      updatedAt: payload.updatedAt,
+    };
+  } catch {
+    return emptySnapshot("unknown");
+  }
 };
 
 const unavailableLabel = (probe: Probe<unknown>): string =>
