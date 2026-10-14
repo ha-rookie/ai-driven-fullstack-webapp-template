@@ -135,3 +135,31 @@ test("logout reset clears frontend identity without retaining raw session materi
     syncing: false,
   });
 });
+
+test("an authenticated session rejected by /api/auth/me shows transient expiry, not initial login", async () => {
+  let authenticated = true;
+  const loader = createAuthApiLoader(async () => authenticated
+    ? jsonResponse({ authenticated: true, user: { id: "u1", displayName: "Employee" } })
+    : new Response(null, { status: 401, headers: { "x-request-id": "expired-401" } }));
+  const controller = createAuthController(loader);
+
+  const initial = await controller.bootstrap();
+  assert.equal(initial.status, "authenticated");
+  assert.equal(initial.sessionExpired, undefined);
+
+  authenticated = false;
+  const expired = await controller.synchronize();
+  assert.equal(expired.status, "unauthenticated");
+  assert.equal(expired.user, null);
+  assert.equal(expired.sessionExpired, true);
+  assert.equal(expired.requestId, "expired-401");
+
+  // Explicit logout/switch must not be described as an expired session.
+  controller.resetAfterLogout();
+  assert.equal(controller.getSnapshot().sessionExpired, undefined);
+
+  authenticated = true;
+  const restored = await controller.synchronize();
+  assert.equal(restored.status, "authenticated");
+  assert.equal(restored.sessionExpired, undefined);
+});

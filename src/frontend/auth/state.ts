@@ -12,6 +12,8 @@ export interface AuthSnapshot {
   readonly user: AuthUser | null;
   readonly syncing: boolean;
   readonly requestId?: string;
+  /** True only after a previously authenticated client receives a verified session 401. */
+  readonly sessionExpired?: boolean;
 }
 
 export interface AuthController {
@@ -119,11 +121,15 @@ export const createAuthController = (loader: AuthLoader): AuthController => {
       .then((user) => publish({ status: "authenticated", user, syncing: false }))
       .catch((error: unknown) => {
         if (error instanceof AuthLoadError && error.kind === "unauthenticated") {
+          // Initial signed-out users are not expired users. Only a previously
+          // authenticated session that is now rejected warrants this notice.
+          const sessionExpired = snapshot.status === "authenticated";
           return publish({
             status: "unauthenticated",
             user: null,
             syncing: false,
             ...(error.requestId ? { requestId: error.requestId } : {}),
+            ...(sessionExpired ? { sessionExpired: true } : {}),
           });
         }
         return publish({
