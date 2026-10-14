@@ -12,6 +12,24 @@ const login = async (page: Page, user = "kai") => {
 const card = (page: Page, title: string) =>
   page.locator("#admin-operations-overview .admin-overview-card").filter({ has: page.getByRole("heading", { name: title, exact: true }) });
 
+/** #414: server-owned cross-domain snapshot. Each fixture is bounded, sanitized and versioned. */
+const ready = (data: unknown) => ({ kind: "ready", data });
+const noSignal = (kind: "denied" | "unknown") => ({ kind });
+const overviewFixture = (sources: Record<string, unknown> = {}) => JSON.stringify({
+  schemaVersion: 1, scopeId: "workhub-company", updatedAt: "2026-10-14T00:00:00.000Z",
+  jobs: ready({ coverage: "environment", environment: "local",
+    observedAt: "2026-10-14T00:00:00.000Z", counts: { failed: 0, deadLetter: 0 } }),
+  outbox: ready({ coverage: "environment", environment: "local",
+    observedAt: "2026-10-14T00:00:00.000Z", counts: { retryWait: 0, deadLetter: 0 },
+    watch: { duePending: 0, dueRetryWait: 0, processing: 0, oldestProcessingUpdatedAt: null },
+    sampleLimit: 8, items: [], attentionItems: [] }),
+  auditFailures: ready({ items: [], nextCursor: null }),
+  privileged: ready({ items: [], nextCursor: null }),
+  master: ready({ environment: "local", asOf: "2026-10-14T00:00:00.000Z" }),
+  database: ready({ component: "database", status: "ok" }),
+  ...sources,
+});
+
 test("overview summarizes bounded authorized signals without claiming complete health", async ({ page }) => {
   await login(page);
   await page.route("**/api/health/ready", (route) => route.fulfill({
@@ -100,6 +118,30 @@ test("overview summarizes bounded authorized signals without claiming complete h
       status: 200, contentType: "application/json", body: JSON.stringify(body),
     });
   });
+  await page.route("**/api/admin/operations/overview?**", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: overviewFixture({
+      jobs: ready({ coverage: "environment", environment: "local",
+        observedAt: "2026-10-10T00:00:00.000Z", counts: { failed: 29, deadLetter: 4 } }),
+      outbox: ready({ coverage: "environment", environment: "local",
+        observedAt: "2026-10-10T00:00:00.000Z", counts: { retryWait: 10, deadLetter: 3 },
+        watch: { duePending: 3, dueRetryWait: 4, processing: 2,
+          oldestProcessingUpdatedAt: "2026-10-09T00:00:00.000Z" },
+        sampleLimit: 8,
+        items: [{ outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
+          updatedAt: "2026-10-10T00:00:00.000Z", failureCode: "other" }],
+        attentionItems: [{ outboxId: "due-1", status: "pending", attemptCount: 0,
+          updatedAt: "2026-10-09T00:00:00.000Z", availableAt: "2026-10-09T00:00:00.000Z",
+          failureCode: "other" }],
+      }),
+      auditFailures: ready({ items: [{ category: "system", action: "operation.JOB_RETRY" }],
+        nextCursor: "next-page" }),
+      privileged: ready({ items: [
+        { category: "system", action: "operation.RETIRE_MASTER_ITEM" },
+        { category: "system", action: "readiness_probe" },
+      ], nextCursor: null }),
+    }),
+  }));
   await page.goto("/admin");
   const summary = page.locator("#admin-operations-overview");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
@@ -168,6 +210,15 @@ test("overview shows degraded and denied sources as non-healthy, then refreshes 
     status: 503, contentType: "application/json",
     body: JSON.stringify({ error: { code: "master_data_unavailable" } }),
   }));
+  await page.route("**/api/admin/operations/overview?**", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: overviewFixture({
+      database: ready({ component: "database", status: databaseOk ? "ok" : "unavailable" }),
+      jobs: noSignal("unknown"), outbox: noSignal("unknown"),
+      master: noSignal("unknown"),
+      auditFailures: auditAllowed ? ready({ items: [], nextCursor: null }) : noSignal("denied"),
+    }),
+  }));
   await page.goto("/admin");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("接続異常");
   await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("取得できません");
@@ -185,6 +236,8 @@ test("overview shows degraded and denied sources as non-healthy, then refreshes 
 
 test("non-admin user never mounts operational overview or loads privileged overview data", async ({ page }) => {
   await login(page, "aoi");
+  const directOverview = await page.request.get("/api/admin/operations/overview?scopeId=workhub-company");
+  expect(directOverview.status()).toBe(403);
   let privilegedReads = 0;
   let outboxReads = 0;
   await page.route("**/api/admin/integrations/outbox?**", (route) => {
@@ -243,6 +296,20 @@ test("overview refuses to combine a job count from a different environment", asy
     } : { environment: "local", asOf: "2026-10-10T00:00:00.000Z", items: [], hasMore: false };
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
+  await page.route("**/api/admin/operations/overview?**", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: overviewFixture({
+      jobs: ready({ coverage: "environment", environment: "production",
+        observedAt: "2026-10-10T00:00:00.000Z", counts: { failed: 9, deadLetter: 1 } }),
+      outbox: ready({ coverage: "environment", environment: "production",
+        observedAt: "2026-10-10T00:00:00.000Z",
+        counts: { retryWait: 7, deadLetter: 4 },
+        sampleLimit: 8, items: [], attentionItems: [],
+        watch: { duePending: 3, dueRetryWait: 0, processing: 1,
+          oldestProcessingUpdatedAt: "2026-10-10T00:00:00.000Z" },
+      }),
+    }),
+  }));
   await page.goto("/admin");
   await expect(card(page, "失敗・Dead Letterジョブ").locator("strong")).toHaveText("環境情報が不一致");
   await expect(card(page, "失敗・Dead Letterジョブ")).toHaveAttribute("data-source-state", "unknown");
