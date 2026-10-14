@@ -148,6 +148,9 @@ export default function UsersAccessPanel() {
       );
       if (!response.ok) {
         if (response.status === 409) {
+          setOperation(null);
+          setConfirmed(false);
+          setReason("");
           await loadMembers();
           setActionMessage({ error: true, text: "対象の状態が変更されています。再取得した状態を確認してください。" });
         } else {
