@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    414
+    419
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-14: Stage5 #99 Users & Access representative UI completed (9 original acceptance criteria reviewed, Issue Closed; PR #696-#699 merged), latest baseline main 8047b43d1145ef01017f2cfa361f039feb52a598. Per EXISTING #132/#41 Admin / Operations Portal WBS, Stage6 #414 Admin Operations Overview is now the next permitted implementation focus, with its remaining cross-domain status contract acceptance still OPEN (Stage1-3 previously implemented). Stage7 #419, Stage8 #420, Stage9 #431 follow; #430 P1 Failure Safety remains cross-cutting. WORKHUB formal real-device and integrated System Test remains separate #694 Not Run; do not recast it as unit testing or a precondition for an individual implementation Issue's code/CI Done. #632 remote D1 Environment reviewer protection is still unverified (auto migration trigger removed by PR #650); remote work always requires separate Human Gate. #521 Preview 503 is recurrence-only, OIDC is out of current focus. #475 external evaluation, #594/#595 optional additions and #689 later backlog cannot preempt the existing WBS. Production release is not requested; do NOT deploy Production or create/change Production/Preview Remote D1, migrations, secrets, Cloudflare resources. Preview application deploy is also separately gated. This is a work-selection transition only under the base-policy #597 governance exception: no feature source, runtime, milestone, or roadmap scope change. #414 implementation PRs are eligible only AFTER this focused policy PR is separately CI-validated, exact-HEAD approved, and merged."
+  "notes": "2026-10-15: Existing #132/#41 WBS Stage6 #414 Admin Operations Overview completed 6/6 and Closed after PR #701 (main 76ca77035b61e11172289caa534034cdc1ef8473), with formal System Test #694 separate Not Run. Stage7 #419 Integration Operations Console is the next existing WBS priority: #304 outbound/inbound foundation is Closed, while #335 external storage adapters remain tracking/Open. #419 already has read-only Outbox list/detail/watch (#559/#560/#561), but provider-neutral connection projection, actual provider reconciliation / safe retry boundaries and focused browser/integration acceptance are Open. Shift the focus lane to [419] through base-approved governance exception #597; do not add provider-specific integrations or pretend provider receipt verification exists. Stage8 #420 and Stage9 #431 remain later. #430 remains cross-cutting; #429 operations core must be reused. Existing WBS #132 body, milestones and priority remain unchanged. No Preview/Production deployments, Remote D1, migrations, Secrets or Cloudflare resource changes are permitted; ST #694 and other external evaluations remain separate. Policy change ONLY; subsequent #419 code PRs must independently satisfy the base-main work selection gate and require separate HEAD approval before merge."
 }
