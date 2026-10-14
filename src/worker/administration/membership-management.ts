@@ -19,6 +19,8 @@ export interface AddScopeMembershipInput extends MembershipMutationContext {
 export interface RemoveScopeMembershipInput extends MembershipMutationContext {
   readonly userId: string;
   readonly scopeId: string;
+  /** Optional caller-observed role, checked again inside the safe mutation service. */
+  readonly expectedRole?: string;
 }
 
 export interface MembershipMutationResult {
