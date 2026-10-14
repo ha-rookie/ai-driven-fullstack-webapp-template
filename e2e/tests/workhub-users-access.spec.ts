@@ -177,7 +177,7 @@ test("#99 membership and role action form requires confirmation and refreshes cu
   await expect(submit).toBeDisabled();
   await form.getByRole("checkbox").check();
   await submit.click();
-  await expect(panel.getByRole("status")).toContainText("現在の一覧を再取得しました");
+  await expect(panel.getByRole("status").filter({ hasText: "現在の一覧を再取得しました" })).toBeVisible();
   await expect(panel.locator("tr").filter({ hasText: "workhub-demo-aoi" })).toContainText("manager");
   expect(patches).toBe(1);
 });
