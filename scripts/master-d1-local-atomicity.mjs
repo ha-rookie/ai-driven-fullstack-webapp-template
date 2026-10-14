@@ -396,10 +396,18 @@ try {
     assert.equal(detailBody.decision.nextAction, "reconcile_external_first");
     assert.equal(detailBody.decision.providerOutcome, "unverified");
     assert.equal(detailBody.decision.manualRetryAllowed, false);
+    assert.deepEqual(detailBody.decision.operationGate, {
+      operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
+      policyDecision: "DENY", policyVersion: "operations-policy-v1",
+      blocker: "provider_receipt_unverified", executionAllowed: false,
+    }, "shared Operations Core denies the unverified retry before any provider action");
     assert.ok(!("payload" in detailBody) && !("destinationKey" in detailBody.outbox));
     const pendingDetail = await outboxGet(admin,
       baseUrl + "/api/admin/integrations/outbox/r-1?scopeId=workhub-company");
-    assert.equal((await pendingDetail.json()).decision.nextAction, "await_scheduled_retry");
+    const pendingBody = await pendingDetail.json();
+    assert.equal(pendingBody.decision.nextAction, "await_scheduled_retry");
+    assert.equal(pendingBody.decision.operationGate.policyDecision, "DENY",
+      "scheduled retry must not authorize a manual retry");
     const doneDetail = await outboxGet(admin,
       baseUrl + "/api/admin/integrations/outbox/done?scopeId=workhub-company");
     assert.equal((await doneDetail.json()).decision.nextAction, "none");
