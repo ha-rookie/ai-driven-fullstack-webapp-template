@@ -1,3 +1,6 @@
+import { D1GeneratedArtifactStore } from "../shared/report/d1-generated-artifact-store";
+import { WORKHUB_TRAVEL_APPROVAL_REPORT_KEY } from "../reference/workhub/travel-report";
+import { projectWorkhubTravelReportStatus, type WorkhubTravelReportStatus } from "../reference/workhub/report-status";
 import { D1OperationModeStore } from "../infrastructure/d1-operation-mode-store";
 import {
   D1TravelRequestStore,
@@ -608,7 +611,25 @@ export const handleWorkhubBusinessApi = async (
         && workflowInstance.requesterId === principalId
         ? await services.travelStore.getReturnComment(environment, workflowInstance.id)
         : null;
-      return json({ request: record, workflow: workflowInstance, returnComment });
+      // Read-only projection AFTER the owner's request authorization. Never
+      // infer approval from the artifact. A projection outage must not hide
+      // an already-committed workflow decision, or imply zero reports.
+      let reportStatus: WorkhubTravelReportStatus | null = null;
+      if (workflowInstance?.state === "completed"
+        && workflowInstance.resourceType === WORKHUB_TRAVEL_RESOURCE_TYPE
+        && workflowInstance.resourceId === record.id
+        && workflowInstance.requesterId === principalId) {
+        try {
+          const latest = await new D1GeneratedArtifactStore(env.DB).findLatestOriginalStatus({
+            environment, resourceType: WORKHUB_TRAVEL_RESOURCE_TYPE,
+            resourceId: record.id, reportKey: WORKHUB_TRAVEL_APPROVAL_REPORT_KEY,
+          });
+          reportStatus = projectWorkhubTravelReportStatus(latest);
+        } catch {
+          reportStatus = { state: "unavailable" };
+        }
+      }
+      return json({ request: record, workflow: workflowInstance, returnComment, reportStatus });
     }
     if (travelMatch && request.method === "PUT") {
       const id = decodeURIComponent(travelMatch[1]);
