@@ -114,6 +114,16 @@ test("overview summarizes bounded authorized signals without claiming complete h
         updatedAt: "2026-10-10T00:00:00.000Z", version: 3, failureCode: "other" },
       decision: { nextAction: "reconcile_external_first", providerOutcome: "unverified",
         manualRetryAllowed: false },
+      recoveryReadiness: {
+        kind: "policy_readiness_not_execution_preview", policyVersion: "operations-policy-v1",
+        providerOutcome: "unverified", rawProviderSecret: "must-not-appear",
+        reconcile: { operationId: "INTEGRATION_RECONCILE", risk: "CONTROLLED_CHANGE",
+          policyDecision: "DENY", executable: false, guardReason: "policy_denied",
+          blockingReason: "provider_reconcile_adapter_not_registered" },
+        retry: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
+          policyDecision: "DENY", executable: false, guardReason: "policy_denied",
+          blockingReason: "provider_receipt_unverified" },
+      },
     }),
   }));
   await page.route("**/api/admin/audit?**", (route) => {
@@ -207,6 +217,13 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(detail).toContainText("外部サービス側の配送結果を照合してください");
   await expect(detail).toContainText("Version: 3");
   await expect(detail).toContainText("外部配送結果：未照合");
+  const readiness = detail.getByTestId("integration-recovery-readiness");
+  await expect(readiness).toContainText("Policy: operations-policy-v1");
+  await expect(readiness).toContainText("外部結果の照合：禁止（DENY）");
+  await expect(readiness).toContainText("手動再送：禁止（DENY）");
+  await expect(readiness).toContainText("Provider受領証跡が未確認");
+  await expect(readiness).not.toContainText("must-not-appear");
+  await expect(readiness.getByRole("button")).toHaveCount(0);
   await page.getByTestId("outbox-watch").getByRole("button", { name: "状態と対応方針を確認" }).click();
   await expect(detail).toContainText("個別Outbox確認：due-1");
   await expect(detail).toContainText("送信待ちです。送信処理の状態を確認してください。");
