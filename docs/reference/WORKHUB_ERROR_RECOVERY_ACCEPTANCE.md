@@ -46,7 +46,8 @@ Personality must not conceal error semantics, primary recovery actions, or actua
 
 ## Remaining acceptance and system test boundary
 
-- A read-only report-status/recovery UI is now **implemented in the #350 follow-up PR**, but full live generated-report flow and persisted error recovery are **NOT** implemented/accepted. The UI is informative, not a report generation retry mechanism.
+- A read-only report-status/recovery UI is implemented, but full live generated-report flow remains **NOT** implemented/accepted. The UI is informative, not a report generation retry mechanism.
+- **Local persisted-failure integration acceptance (new #350 test, pending CI):** `e2e/tests/workhub-report-persisted-failure.spec.ts` exercises real Aoi submit → Ren approve → local D1 `generated_artifacts.status=failed` persistence → Aoi detail GET/390px recovery and protected non-owner GET. It inserts only an isolated local fixture via `wrangler d1 execute DB --local`, with no route interception. This verifies only persisted-failure consumption; it does **not** verify real report job dispatch, R2, actual generated binary download, Preview authenticated ST, or physical-device ST.
 - A corrupt/non-canonical persisted report expiry must produce an `unavailable` read-only report projection and a not-found download denial, not a false `ready` state or indefinite file access. Unit evidence: `tests/report-expiry-recovery.test.ts`; the existing report-download core is not yet a WORKHUB user download route.
 - The Worker currently calls `OperationModeGuard` before WORKHUB business-route dispatch, but H still needs formal authenticated end-to-end acceptance for each mutation type.
 - End-to-end Reference user walkthrough (A–H as applicable), authenticated Preview business scenarios, Android/iOS physical devices, TalkBack/VoiceOver, and cross-device visual/readability are reserved for **consolidated formal System Test**; do not require physical devices in every unit/PR change.
