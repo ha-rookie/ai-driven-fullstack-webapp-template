@@ -36,6 +36,7 @@ import {
 } from "./worker/http";
 import { handleWorkhubBusinessApi } from "./worker/workhub-business-api";
 import { handleWorkhubUsersAccessApi } from "./worker/administration/workhub-users-access-api";
+import { handleWorkhubInvitationApi } from "./worker/administration/workhub-invitation-api";
 import {
   handleWorkhubDemoConfig,
   handleWorkhubLogin,
@@ -303,6 +304,9 @@ export default {
       workhubMasterViewerOptions,
     );
     if (masterDataResponse) return api(masterDataResponse);
+
+    const invitationResponse = await handleWorkhubInvitationApi(request, env, requestContext.requestId, audit);
+    if (invitationResponse) return api(invitationResponse);
 
     const usersAccessResponse = await handleWorkhubUsersAccessApi(request, env, requestContext.requestId, audit);
     if (usersAccessResponse) return api(usersAccessResponse);
