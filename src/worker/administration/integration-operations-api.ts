@@ -5,6 +5,8 @@ import { unmonitoredConnectionProjection } from "./integration-connection-projec
 
 const INTEGRATION_VIEW_ACTION = "integrations:view";
 const ROUTE = "/api/admin/integrations/outbox";
+const FAILURE_PAGE_ROUTE = ROUTE + "/_failures";
+const FAILURE_PAGE_SIZE = 20;
 const MAX_RECENT = 8;
 const MAX_SCOPE_LENGTH = 128;
 const OUTBOX_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/u;
@@ -37,6 +39,27 @@ const response = (payload: unknown): Response =>
 
 const safeFailureCode = (value: string | null): string =>
   value !== null && safeFailureCodes.has(value) ? value : "other";
+
+/** Keyset cursor matches the existing Audit read-only pagination approach. */
+interface FailureCursor { readonly updatedAt: string; readonly id: string }
+const encodeFailureCursor = (cursor: FailureCursor): string =>
+  btoa(JSON.stringify(cursor)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
+const decodeFailureCursor = (value: string | null): FailureCursor | null => {
+  if (value === null) return null;
+  if (!/^[A-Za-z0-9_-]{1,512}$/u.test(value)) throw new TypeError("Invalid failure cursor");
+  try {
+    const b64 = value.replaceAll("-", "+").replaceAll("_", "/");
+    const parsed: unknown = JSON.parse(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, "=")));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new TypeError("Invalid cursor");
+    const fields = parsed as Record<string, unknown>;
+    if (typeof fields.updatedAt !== "string" || fields.updatedAt.length > 64
+      || !Number.isFinite(Date.parse(fields.updatedAt))
+      || typeof fields.id !== "string" || !OUTBOX_ID_PATTERN.test(fields.id)) {
+      throw new TypeError("Invalid cursor fields");
+    }
+    return { updatedAt: fields.updatedAt, id: fields.id };
+  } catch { throw new TypeError("Invalid failure cursor"); }
+};
 
 type OutboxStatus = "pending" | "processing" | "retry_wait" | "delivered" | "dead_letter";
 
@@ -87,7 +110,8 @@ export const handleIntegrationOperationsApi = async (
 
   // Individual reads remain within the same authorized single-scope endpoint.
   let outboxId: string | null = null;
-  if (url.pathname !== ROUTE) {
+  const failurePage = url.pathname === FAILURE_PAGE_ROUTE;
+  if (url.pathname !== ROUTE && !failurePage) {
     const encodedId = url.pathname.slice(ROUTE.length + 1);
     try {
       outboxId = decodeURIComponent(encodedId);
@@ -109,8 +133,10 @@ export const handleIntegrationOperationsApi = async (
   }
 
   // No arbitrary filters or pagination: a fixed, bounded operational observation only.
-  if ([...url.searchParams.keys()].some((key) => key !== "scopeId")
-    || url.searchParams.getAll("scopeId").length !== 1) {
+  if ([...url.searchParams.keys()].some((key) =>
+    key !== "scopeId" && !(failurePage && key === "cursor"))
+    || url.searchParams.getAll("scopeId").length !== 1
+    || url.searchParams.getAll("cursor").length > 1) {
     return error(requestId, 400, "invalid_integration_query", "Integration query is invalid");
   }
   const scopeId = url.searchParams.get("scopeId") ?? "";
@@ -144,6 +170,53 @@ export const handleIntegrationOperationsApi = async (
   }
 
   try {
+    if (failurePage) {
+      // The exact same authorized single-Scope/Environment boundary as the
+      // existing Outbox summary and detail. Never expose destination/payload.
+      let cursor: FailureCursor | null;
+      try { cursor = decodeFailureCursor(url.searchParams.get("cursor")); }
+      catch { return error(requestId, 400, "invalid_integration_query", "Integration query is invalid"); }
+      const sql = `
+        SELECT id, status, attempt_count, updated_at, failure_code
+        FROM integration_outbox
+        WHERE environment = ? AND status IN ('retry_wait', 'dead_letter')
+          ${cursor ? "AND (updated_at < ? OR (updated_at = ? AND id < ?))" : ""}
+        ORDER BY updated_at DESC, id DESC
+        LIMIT ?
+      `;
+      const args: (string | number)[] = [environment];
+      if (cursor) args.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
+      args.push(FAILURE_PAGE_SIZE + 1);
+      const page = await env.DB.prepare(sql).bind(...args).all<{
+        id: string; status: string; attempt_count: number;
+        updated_at: string; failure_code: string | null;
+      }>();
+      const rows = page.results ?? [];
+      if (rows.length > FAILURE_PAGE_SIZE + 1) throw new Error("Outbox page exceeds limit");
+      const hasMore = rows.length > FAILURE_PAGE_SIZE;
+      const items = rows.slice(0, FAILURE_PAGE_SIZE).map((row) => {
+        if (!OUTBOX_ID_PATTERN.test(row.id)
+          || (row.status !== "retry_wait" && row.status !== "dead_letter")
+          || !Number.isSafeInteger(row.attempt_count) || row.attempt_count < 0
+          || typeof row.updated_at !== "string" || row.updated_at.length > 64
+          || !Number.isFinite(Date.parse(row.updated_at))) {
+          throw new Error("Invalid failure row");
+        }
+        return {
+          outboxId: row.id, status: row.status,
+          attemptCount: row.attempt_count, updatedAt: row.updated_at,
+          failureCode: safeFailureCode(row.failure_code),
+        };
+      });
+      const last = items.at(-1);
+      return response({
+        coverage: "environment", environment, observedAt: new Date().toISOString(),
+        pageLimit: FAILURE_PAGE_SIZE, items,
+        nextCursor: hasMore && last
+          ? encodeFailureCursor({ updatedAt: last.updatedAt, id: last.outboxId }) : null,
+        providerReceipt: "unverified",
+      });
+    }
     if (outboxId !== null) {
       const detail = await env.DB.prepare(`
         SELECT id, status, attempt_count, available_at, last_attempt_at,
