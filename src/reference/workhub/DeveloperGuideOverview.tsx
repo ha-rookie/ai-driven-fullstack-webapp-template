@@ -18,8 +18,9 @@ const guideText = {
     architecture: "Architecture Map", flow: "上から業務画面・権限境界・正本。下位の表示・外部連携は正本ではありません。",
     capabilities: "Capability Map", onScreens: "利用する画面", open: "この画面の詳細を開く",
     scenarios: "Scenario Catalog", persona: "想定する人", screenCatalog: "Screen Catalog", adapters: "Adapter / Integration Map", mapping: "連携境界", adapterNone: "接続先は画面情報を参照",
-    status: { "implemented-reference": "Reference実装の導線あり", "reference-mock": "模擬Workflowのみ", "catalog-only": "構想・ガイド例のみ" },
+    status: { "implemented-reference": "Reference実装の導線あり", "partial-reference": "部分実装・正式System Test未実施", "reference-mock": "模擬Workflowのみ", "catalog-only": "構想・ガイド例のみ" },
     noScreen: "ガイドと連動する完成画面はまだありません",
+    evidenceDoc: "実装と未完了の確認表",
     learning: "導入ガイド・始め方", start: "初めての方へ：画面からソースまで追う手順",
     limitations: "注意：Developer Modeの閲覧は業務データへのアクセス権を増やしません。Demoが動作することはProduction Readyを意味しません。",
   },
@@ -29,8 +30,9 @@ const guideText = {
     architecture: "Architecture Map", flow: "UI and auth guard lead to authoritative domains; read models and external adapters are not authoritative.",
     capabilities: "Capability Map", onScreens: "Used by screens", open: "Open screen reference",
     scenarios: "Scenario Catalog", persona: "Personas", screenCatalog: "Screen Catalog", adapters: "Adapter / Integration Map", mapping: "Integration boundary", adapterNone: "See screen reference for connected systems",
-    status: { "implemented-reference": "Linked Reference journey", "reference-mock": "Mock workflow only", "catalog-only": "Concept / guide only" },
+    status: { "implemented-reference": "Linked Reference journey", "partial-reference": "Partially implemented; formal System Test pending", "reference-mock": "Mock workflow only", "catalog-only": "Concept / guide only" },
     noScreen: "No complete linked screen journey is registered",
+    evidenceDoc: "Evidence and remaining gaps",
     learning: "Developer onboarding", start: "Getting started: trace a screen to its source",
     limitations: "Developer Mode never expands access to business records. A working demo does not mean Production Ready.",
   },
@@ -88,6 +90,8 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
             aria-label={`${labels.open}: ${displayName(id)} — ${scenario.id}`}
             onClick={() => onOpenScreen(id)}>{displayName(id)}</button>)}
         </div> : <p>{labels.noScreen}</p>}
+        {scenario.evidenceDoc && <p><a href={developerSourceUrl(scenario.evidenceDoc) ?? undefined}
+          target="_blank" rel="noopener noreferrer">{labels.evidenceDoc}</a></p>}
       </div>
     </section>
     <section aria-labelledby="workhub-developer-screen-catalog-heading">
