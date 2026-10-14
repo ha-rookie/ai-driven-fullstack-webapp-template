@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../../frontend/auth";
+import { PermissionGuard, PermissionProvider } from "../../frontend/permissions";
 import AccountSwitchButton from "../workhub/AccountSwitchButton";
 import MasterDataViewer from "./MasterDataViewer";
 import OperationsOverview from "./OperationsOverview";
@@ -496,18 +497,26 @@ const AuditViewer = () => {
   </section>;
 };
 
+// #99: reuse the shared #77 presentation guard. The project-specific evaluator
+// controls only visibility; every administrative API independently authorizes.
+const PORTAL_PERMISSION = "administration:manage";
 export default function AdminPortal() {
+  return <PermissionProvider evaluate={(permission, user) =>
+    permission === PORTAL_PERMISSION && user.id === ADMIN_USER_ID}>
+    <PermissionGuard permission={PORTAL_PERMISSION} fallback={
+      <main className="admin-gate"><p className="admin-eyebrow">ADMINISTRATION</p><h1>この領域を表示する権限がありません</h1><p>管理機能の表示制御は利便性のためのものです。実際の操作はAPI側で再認証・再認可されます。</p><a href="/">WORKHUBへ戻る</a></main>
+    }>
+      <AuthorizedAdminPortal />
+    </PermissionGuard>
+  </PermissionProvider>;
+}
+
+function AuthorizedAdminPortal() {
   const auth = useAuth();
   const [selectedMasterItemId, setSelectedMasterItemId] = useState<string | null>(null);
   const [masterRefreshKey, setMasterRefreshKey] = useState(0);
   const refreshMasterViewer = () => setMasterRefreshKey((key) => key + 1);
   const environment = import.meta.env.MODE === "production" ? "PRODUCTION" : "PREVIEW / LOCAL";
-  const authorized = auth.status === "authenticated" && auth.user?.id === ADMIN_USER_ID;
-
-  if (!authorized) {
-    return <main className="admin-gate"><p className="admin-eyebrow">ADMINISTRATION</p><h1>この領域を表示する権限がありません</h1><p>管理機能の表示制御は利便性のためのものです。実際の操作はAPI側で再認証・再認可されます。</p><a href="/">WORKHUBへ戻る</a></main>;
-  }
-
   return <div className="admin-shell">
     <header className="admin-header">
       <a className="admin-brand" href="/"><span>CECIL WORKS</span><strong>Operations Portal</strong></a>
