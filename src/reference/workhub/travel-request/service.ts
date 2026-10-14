@@ -387,7 +387,10 @@ export class TravelRequestService {
     const record = await this.options.store.get(id, this.options.environment);
     if (!record) throw new TravelRequestError("not_found", "travel request not found");
     if (record.requesterId !== principalId) {
-      throw new TravelRequestError("forbidden", "travel request belongs to another principal");
+      // Private requests are hidden, not advertised as existing-but-forbidden.
+      // Use the same public failure as a missing ID for GET and any mutation
+      // whose ownership precondition fails.
+      throw new TravelRequestError("not_found", "travel request not found");
     }
     return record;
   }

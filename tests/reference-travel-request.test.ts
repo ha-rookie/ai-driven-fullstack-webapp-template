@@ -177,7 +177,8 @@ test("stale Draft updates and another principal both fail closed", async () => {
   );
   await assert.rejects(
     () => travel.get(draft.id, "workhub-demo-ren"),
-    (error: unknown) => error instanceof TravelRequestError && error.code === "forbidden",
+    (error: unknown) => error instanceof TravelRequestError && error.code === "not_found"
+      && error.message === "travel request not found",
   );
 });
 
@@ -299,4 +300,42 @@ test("MY REQUESTS is a bounded, ordered list of only the requesting employee's r
     () => travel.listMine("   "),
     (error: unknown) => error instanceof TravelRequestError && error.code === "invalid_input",
   );
+});
+
+// A hidden request must be indistinguishable from an unknown ID at the
+// Service boundary. This also applies before a write; never disclose ownership
+// merely because the caller attempted a stale or malicious update.
+test("unauthorized TravelRequest is hidden as missing on read and write", async () => {
+  const { masterData, travel } = createFixture();
+  const tokyo = await seedOffice(masterData, "TOKYO", "Tokyo Office");
+  const created = await travel.createDraft(draftCommand(tokyo.item.id));
+  const unauthorized = "workhub-demo-ren";
+
+  const capture = async (operation: () => Promise<unknown>) => {
+    try {
+      await operation();
+      assert.fail("operation unexpectedly succeeded");
+    } catch (caught) {
+      assert.ok(caught instanceof TravelRequestError);
+      return { code: caught.code, message: caught.message };
+    }
+  };
+
+  const missing = await capture(() => travel.get("missing-travel-request", unauthorized));
+  assert.deepEqual(await capture(() => travel.get(created.id, unauthorized)), missing);
+  assert.deepEqual(await capture(() => travel.updateDraft({
+    ...draftCommand(tokyo.item.id),
+    id: created.id,
+    principalId: unauthorized,
+    expectedVersion: created.version,
+  })), missing);
+  assert.deepEqual(await capture(() => travel.submit({
+    id: created.id,
+    principalId: unauthorized,
+    expectedVersion: created.version,
+  })), missing);
+
+  const owner = await travel.get(created.id, "workhub-demo-aoi");
+  assert.equal(owner.id, created.id);
+  assert.equal(owner.purpose, "Tokyo customer meeting");
 });
