@@ -35,12 +35,15 @@ test("Stage 2 travel retry checks the existing submission instead of creating a 
     (button as HTMLButtonElement).click();
     (button as HTMLButtonElement).click();
   });
-  await expect(page.getByRole("status").filter({ hasText: "Request failed (503)" })).toBeVisible();
+  // An ambiguous business POST must show safe reconciliation guidance,
+  // never an internal HTTP diagnostic or an invitation to blindly retry.
+  await expect(page.getByRole("status").filter({ hasText: "処理が完了したか確認できません。再送信せず" })).toBeVisible();
   expect(draftsCreated).toBe(1);
   expect(submissions).toBe(1);
 
-  // User explicitly retries. Read-only GET confirms already submitted;
-  // there must be no second draft nor duplicate submit command.
+  // The user explicitly requests reconciliation through the existing control.
+  // Read-only GET confirms the persisted submission first; neither the draft
+  // creation nor the submit command may be repeated.
   await submit.click();
   await expect(page.getByText("出張申請を提出しました。", { exact: true })).toBeVisible();
   expect(draftsCreated).toBe(1);
