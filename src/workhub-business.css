@@ -649,3 +649,28 @@
 .workhub-my-work-empty small {
   line-height: 1.65;
 }
+
+/* #350 H: a specific OperationModeGuard refusal is not a form validation
+   error. The server remains authoritative; this banner is guidance only. */
+.workhub-operation-mode-notice {
+  margin: 18px 0;
+  padding: 18px;
+  border: 2px solid #aa7640;
+  border-radius: 12px;
+  color: #5a371a;
+  background: #fff9ef;
+}
+
+.workhub-operation-mode-notice strong {
+  display: block;
+  font-size: 17px;
+}
+
+.workhub-operation-mode-notice p {
+  margin: 9px 0;
+  line-height: 1.65;
+}
+
+.workhub-operation-mode-notice button {
+  margin-top: 8px;
+}
