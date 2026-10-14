@@ -9,7 +9,12 @@ export const handleReportArtifactDownload=async(input:{request:Request;requestId
  createAuthorizedDownloadResponse({request:input.request,requestId:input.requestId,storage:input.storage,hideForbiddenAsNotFound:true,resolve:async():Promise<FileDownloadResolution>=>{
   const artifact=await input.artifacts.get(input.artifactId,input.environment);
   if(!artifact||artifact.status!=="ready")return{kind:"not_found"};
-  if(artifact.expiresAt && (input.now?.() ?? new Date()).getTime() >= new Date(artifact.expiresAt).getTime())return{kind:"not_found"};
+  if (artifact.expiresAt !== undefined) {
+   const expiry = Date.parse(artifact.expiresAt);
+   // Invalid/non-canonical metadata must never turn into unlimited access.
+   if (!Number.isFinite(expiry) || new Date(expiry).toISOString() !== artifact.expiresAt
+     || (input.now?.() ?? new Date()).getTime() >= expiry) return {kind:"not_found"};
+  }
   if(!await input.authorizer.canDownload({principalId:input.principalId,resourceType:artifact.resourceType,resourceId:artifact.resourceId,reportKey:artifact.reportKey}))return{kind:"forbidden"};
   return{kind:"authorized",identifier:artifact.objectIdentifier,displayFilename:input.filename(artifact.id,artifact.reportKey),contentType:artifact.contentType,disposition:"attachment"};
  }});
