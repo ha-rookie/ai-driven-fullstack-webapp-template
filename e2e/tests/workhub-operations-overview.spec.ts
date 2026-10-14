@@ -390,3 +390,47 @@ test("overview refuses to combine a job count from a different environment", asy
   await expect(card(page, "外部連携Outbox")).toHaveAttribute("data-source-state", "unknown");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
 });
+
+test("#419 forged ALLOW recovery preview fails closed, never mounts an action", async ({ page }) => {
+  await login(page);
+  await page.route("**/api/admin/operations/overview?**", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: overviewFixture({ outbox: ready({
+      coverage: "environment", environment: "local", observedAt: "2026-10-15T00:00:00.000Z",
+      counts: { retryWait: 0, deadLetter: 1 },
+      watch: { duePending: 0, dueRetryWait: 0, processing: 0, oldestProcessingUpdatedAt: null },
+      sampleLimit: 8, attentionItems: [],
+      items: [{ outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
+        updatedAt: "2026-10-15T00:00:00.000Z", failureCode: "other" }],
+    }) }),
+  }));
+  await page.route("**/api/admin/integrations/outbox/safe-1?**", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", environment: "local", observedAt: "2026-10-15T00:00:00.000Z",
+      outbox: { outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
+        availableAt: "2026-10-14T00:00:00.000Z", lastAttemptAt: null,
+        deliveredAt: null, deadLetteredAt: "2026-10-15T00:00:00.000Z",
+        updatedAt: "2026-10-15T00:00:00.000Z", version: 3, failureCode: "other" },
+      decision: { nextAction: "reconcile_external_first", providerOutcome: "unverified",
+        manualRetryAllowed: false },
+      recoveryReadiness: {
+        kind: "policy_readiness_not_execution_preview", policyVersion: "operations-policy-v1",
+        providerOutcome: "unverified",
+        reconcile: { operationId: "INTEGRATION_RECONCILE", risk: "CONTROLLED_CHANGE",
+          policyDecision: "ALLOW", executable: true, guardReason: "policy_denied",
+          blockingReason: "provider_reconcile_adapter_not_registered" },
+        retry: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
+          policyDecision: "DENY", executable: false, guardReason: "policy_denied",
+          blockingReason: "provider_receipt_unverified" },
+      },
+    }),
+  }));
+  await page.goto("/admin");
+  await page.locator("#admin-integration-outbox")
+    .getByRole("button", { name: "状態と対応方針を確認" }).first().click();
+  const detail = page.getByTestId("outbox-detail");
+  await expect(detail).toContainText("取得できません。再試行はできません");
+  await expect(detail.getByTestId("integration-recovery-readiness")).toHaveCount(0);
+  await expect(page.locator("#admin-integration-outbox").getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+});
