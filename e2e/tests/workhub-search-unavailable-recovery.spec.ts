@@ -36,7 +36,7 @@ for (const [name, invalidBody] of [
     });
     const { search, query } = await openSearch(page);
     await search.getByRole("button", { name: "検索", exact: true }).click();
-    const results = page.getByRole("region", { name: "検索結果" });
+    const results = page.getByRole("region", { name: "検索結果", exact: true });
     await expect(results.getByRole("alert")).toContainText("0件とは限りません");
     await expect(results.getByText("まだ、この条件では見つかりませんでした。")).toHaveCount(0);
     await expect(results.getByRole("link")).toHaveCount(0);
@@ -68,7 +68,7 @@ test("search-provider outage removes previously rendered results and recovers wi
       }) });
   });
   const { search } = await openSearch(page);
-  const results = page.getByRole("region", { name: "検索結果" });
+  const results = page.getByRole("region", { name: "検索結果", exact: true });
   await search.getByRole("button", { name: "検索", exact: true }).click();
   await expect(results.getByRole("link", { name: /テスト文書/u })).toBeVisible();
   fail = true;
