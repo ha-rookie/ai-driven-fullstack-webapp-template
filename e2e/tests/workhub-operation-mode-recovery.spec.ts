@@ -84,12 +84,14 @@ for (const scenario of errorScenarios) {
   });
 }
 
-test("an unrelated server error must not masquerade as WORKHUB maintenance", async ({ page }) => {
+test("a generic 503 never echoes raw provider details or claims maintenance", async ({ page }) => {
+  let submits = 0;
   await page.route("**/api/workhub/travel-requests", async route => {
     if (route.request().method() !== "POST") return route.continue();
+    submits++;
     return route.fulfill({
       status: 503, contentType: "application/json",
-      body: '{"error":{"code":"resource_unavailable","message":"Service unavailable"}}',
+      body: '{"error":{"code":"resource_unavailable","message":"sensitive-provider-message SELECT * FROM confidential_table"}}',
     });
   });
   await page.goto("/");
@@ -102,6 +104,10 @@ test("an unrelated server error must not masquerade as WORKHUB maintenance", asy
   await page.getByLabel("終了日").fill("2026-10-21");
   await page.getByLabel("目的", { exact: true }).fill("通常障害と運用モードの区別");
   await page.getByRole("button", { name: "出張申請を提出" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Service unavailable" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "処理が完了したか確認できません。再送信せず" })).toBeVisible();
+  await expect(page.getByText("sensitive-provider-message", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("confidential_table", { exact: false })).toHaveCount(0);
   await expect(page.getByRole("alert", { name: "業務の運用状態" })).toHaveCount(0);
+  await expect(page.getByLabel("目的", { exact: true })).toHaveValue("通常障害と運用モードの区別");
+  expect(submits, "generic 5xx must not trigger automatic duplicate POST").toBe(1);
 });
