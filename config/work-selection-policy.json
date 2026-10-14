@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    350
+    414
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-14: User explicitly stopped repeated investigation of historical Preview login HTTP503 and directed return to the original WBS. #521 remains OPEN as an unverified historical incident; strict Preview test #38413988883 4/4 browser tests and 6/6 unretried logins passed, but actual Google OIDC activation/individual-Ray root cause is NOT proven. #343 Stage1-6 completed, remaining original cross-cutting WORKHUB #350 Error/Empty/Recovery/Accessibility acceptance is next focus. #632 unauthorized automatic Preview D1 migration remains unresolved and blocks any migration-bearing main merges; no schema/migrations in #350. Formal authenticated business ST, physical devices and screen-reader ST deferred. No Preview/Production/Remote D1/Secrets authorization or WBS/milestone rewrite."
+  "notes": "2026-10-14: WORKHUB original Stage1–6 and cross-cutting #350 Error/Empty/Recovery/Accessibility are code/CI complete and CLOSED; formal integrated/physical accessibility ST is independently tracked in #694 (Not Run), not an individual implementation Issue closure gate. The next previously planned implementation lane under #132 Admin/Operations Portal is Stage6 #414 Admin Operations Overview, specifically its unfinished representative status-card shared contract; #418 and #99 are closed, while #41 Stage5 Users & Access representative UI wording still needs separate evidence reconciliation. #430 P1 Operations Failure Safety applies across Admin slices, not a newer standalone feature priority. #632 historic unauthorized automatic Preview D1 migration trigger was already remediated in merged PR #650: current workflow manual owner dispatch only with SHA and exact plan; #632 remains OPEN for unverified GitHub preview Environment reviewer protection and remote risks. #521 historical Preview 503 is recurrence-only/out of P1; OIDC activation is not current work. #419/#420/#431 are later Admin Stages, #475 separate external validation, backlog #594/#595/#689 does not preempt. No changes to WBS milestones, Preview/Production deployment, Remote D1, Migration, Secrets or Cloudflare resources. This policy transition itself is reviewed and merged separately under #597 approved governance exception."
 }
