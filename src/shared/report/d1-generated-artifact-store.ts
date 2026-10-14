@@ -25,6 +25,21 @@ const isConstraintError = (error: unknown): boolean =>
 export class D1GeneratedArtifactStore implements GeneratedArtifactStore {
   constructor(private readonly db: D1Database) {}
 
+  /** Scoped status lookup only; never return object IDs, failure codes or report content. */
+  async findLatestOriginalStatus(input: {
+    environment: string; resourceType: string; resourceId: string; reportKey: string;
+  }): Promise<{ status: GeneratedArtifact["status"]; expiresAt?: string } | null> {
+    const row = await this.db.prepare(`
+      SELECT status, expires_at
+      FROM generated_artifacts
+      WHERE environment = ? AND resource_type = ? AND resource_id = ?
+        AND report_key = ? AND generation_intent = 'original'
+      ORDER BY requested_at DESC, id DESC LIMIT 1
+    `).bind(input.environment, input.resourceType, input.resourceId, input.reportKey)
+      .first<{ status: GeneratedArtifact["status"]; expires_at: string | null }>();
+    return row ? { status: row.status, ...(row.expires_at ? { expiresAt: row.expires_at } : {}) } : null;
+  }
+
   async get(id: string, environment: string): Promise<GeneratedArtifact | null> {
     const row = await this.db.prepare(`
       SELECT id, environment, report_key, definition_version, template_key, template_version,
