@@ -13,6 +13,7 @@ interface Member {
 }
 interface Props {
   readonly members: readonly Member[];
+  readonly ready: boolean;
   readonly onRefresh: () => Promise<boolean>;
 }
 
@@ -26,7 +27,7 @@ const safeFailure = (status: number): string => {
 };
 
 /** WORKHUB Stage5's deliberately narrow UI. No system_admin assignment/demotion. */
-export default function MembershipOperationsPanel({ members, onRefresh }: Props) {
+export default function MembershipOperationsPanel({ members, ready, onRefresh }: Props) {
   const [action, setAction] = useState<Action>("role");
   const [selectedId, setSelectedId] = useState("");
   const [addId, setAddId] = useState("");
@@ -39,9 +40,9 @@ export default function MembershipOperationsPanel({ members, onRefresh }: Props)
   const inFlight = useRef(false);
   const selected = members.find(item => item.userId === selectedId) ?? null;
   const isAllowedTarget = Boolean(selected && selected.role !== "system_admin");
-  const validInput = action === "add"
+  const validInput = ready && (action === "add"
     ? /^[A-Za-z0-9_.:-]{1,128}$/u.test(addId) && ASSIGNABLE_ROLES.includes(addRole)
-    : isAllowedTarget && (action === "remove" || (selected?.role !== nextRole && ASSIGNABLE_ROLES.includes(nextRole)));
+    : isAllowedTarget && (action === "remove" || (selected?.role !== nextRole && ASSIGNABLE_ROLES.includes(nextRole))));
   const clear = () => {
     setConfirmed(false);
     setReason("");
@@ -49,7 +50,7 @@ export default function MembershipOperationsPanel({ members, onRefresh }: Props)
 
   const execute = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!confirmed || !reason.trim() || !validInput || inFlight.current) return;
+    if (!ready || !confirmed || !reason.trim() || !validInput || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setMessage(null);
@@ -109,24 +110,25 @@ export default function MembershipOperationsPanel({ members, onRefresh }: Props)
   return <section className="admin-retry-panel" aria-labelledby="admin-membership-actions-title">
     <h3 id="admin-membership-actions-title">所属・ロールの管理</h3>
     <p>対象Scope：<strong>{SCOPE_ID}</strong>。既存ユーザーの所属追加、一般ロール変更・所属削除ができます。特権管理者のRole付与・変更・削除はこの画面から行えません。</p>
+    {!ready && <p role="status">所属情報の確認が完了するまで、管理操作を実行できません。</p>}
     <form aria-label="所属・ロール変更の確認" onSubmit={event => { void execute(event); }}>
       <label>操作の種類
-        <select value={action} disabled={busy} onChange={event => { setAction(event.target.value as Action); clear(); setMessage(null); }}>
+        <select value={action} disabled={busy || !ready} onChange={event => { setAction(event.target.value as Action); clear(); setMessage(null); }}>
           <option value="role">所属ロールの変更</option>
           <option value="add">既存ユーザーをScopeに追加</option>
           <option value="remove">Scopeから所属を削除</option>
         </select>
       </label>
       {action === "add" ? <>
-        <label>既存ユーザーID<input value={addId} maxLength={128} required disabled={busy}
+        <label>既存ユーザーID<input value={addId} maxLength={128} required disabled={busy || !ready}
           onChange={event => { setAddId(event.target.value); clear(); }} placeholder="例：workhub-demo-haru" /></label>
-        <label>付与する一般ロール<select value={addRole} disabled={busy}
+        <label>付与する一般ロール<select value={addRole} disabled={busy || !ready}
           onChange={event => { setAddRole(event.target.value as Role); clear(); }}>
           {ASSIGNABLE_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
         </select></label>
       </> : <>
         <label>対象の所属ユーザー
-          <select value={selectedId} required disabled={busy}
+          <select value={selectedId} required disabled={busy || !ready}
             onChange={event => { setSelectedId(event.target.value); clear(); }}>
             <option value="">対象を選択</option>
             {members.filter(item => item.role !== "system_admin").map(item =>
@@ -135,14 +137,14 @@ export default function MembershipOperationsPanel({ members, onRefresh }: Props)
         </label>
         {selected && <p>対象：<strong>{selected.displayName || selected.userId}</strong> / 現在のRole：<strong>{selected.role}</strong></p>}
         {action === "role" && <label>変更後の一般ロール
-          <select value={nextRole} disabled={busy} onChange={event => { setNextRole(event.target.value as Role); clear(); }}>
+          <select value={nextRole} disabled={busy || !ready} onChange={event => { setNextRole(event.target.value as Role); clear(); }}>
             {ASSIGNABLE_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
           </select>
         </label>}
       </>}
-      <label>操作理由<textarea required value={reason} maxLength={200} disabled={busy}
+      <label>操作理由<textarea required value={reason} maxLength={200} disabled={busy || !ready}
         onChange={event => setReason(event.target.value)} placeholder="変更申請・承認などの根拠" /></label>
-      <label><input type="checkbox" checked={confirmed} disabled={busy}
+      <label><input type="checkbox" checked={confirmed} disabled={busy || !ready}
         onChange={event => setConfirmed(event.target.checked)} />
         対象ID・Scope・現在のRole・変更内容を確認しました
       </label>
