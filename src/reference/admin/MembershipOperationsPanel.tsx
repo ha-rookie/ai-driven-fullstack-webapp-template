@@ -110,7 +110,7 @@ export default function MembershipOperationsPanel({ members, ready, onRefresh }:
   return <section className="admin-retry-panel" aria-labelledby="admin-membership-actions-title">
     <h3 id="admin-membership-actions-title">所属・ロールの管理</h3>
     <p>対象Scope：<strong>{SCOPE_ID}</strong>。既存ユーザーの所属追加、一般ロール変更・所属削除ができます。特権管理者のRole付与・変更・削除はこの画面から行えません。</p>
-    {!ready && <p role="status">所属情報の確認が完了するまで、管理操作を実行できません。</p>}
+    {!ready && <p>所属情報の確認が完了するまで、管理操作を実行できません。</p>}
     <form aria-label="所属・ロール変更の確認" onSubmit={event => { void execute(event); }}>
       <label>操作の種類
         <select value={action} disabled={busy || !ready} onChange={event => { setAction(event.target.value as Action); clear(); setMessage(null); }}>
