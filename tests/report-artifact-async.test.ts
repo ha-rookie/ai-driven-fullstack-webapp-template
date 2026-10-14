@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { executeAsyncJob, InMemoryAsyncJobStateStore, type AsyncJobEnvelope, type AsyncJobPublisher } from "../src/shared/async-job";
 import { InMemoryObjectStorage } from "../src/shared/object-storage";
+import { handleReportArtifactDownload } from "../src/worker/http/report-artifact-download";
 import {
   AsyncReportGenerationService,
   InMemoryGeneratedArtifactStore,
@@ -135,4 +136,56 @@ test("terminal async job failure marks report artifact failed but retryable fail
   const failed = await artifacts.get(requested.artifact.id, "test");
   assert.equal(failed?.status, "failed");
   assert.equal(failed?.failureCode, "invalid_report_definition");
+});
+
+// #350 G: the business approval is already committed; a report is only a
+// derived artifact. Terminal report failure must never masquerade as a
+// fresh request or cause another business mutation.
+test("WORKHUB report terminal failure does not requeue original or invalidate business outcome", async () => {
+  const artifacts = new InMemoryGeneratedArtifactStore();
+  const storage = new InMemoryObjectStorage({ environment: "test" });
+  const publisher = new CapturePublisher();
+  let sequence = 0;
+  const service = new AsyncReportGenerationService({
+    environment: "test", artifacts, publisher,
+    authorizer: { assertCanGenerate() {} },
+    generateId: () => `report-failure-${++sequence}`,
+    now: () => new Date("2026-10-06T01:00:00.000Z"),
+  });
+  // Immutable approved decision/snapshot is the authoritative input, not a
+  // status inferred from report output.
+  const approvedDecision = Object.freeze({ state: "completed", version: 7, transitionCount: 1 });
+  const original = await service.request({ principalId: "user-1", definition, viewModel, outputType: "html" });
+  const execution = await executeAsyncReportJob({
+    envelope: original.job,
+    store: new InMemoryAsyncJobStateStore(),
+    handler: async () => { throw new Error("renderer storage provider down"); },
+    artifacts,
+    retryPolicy: { maxAttempts: 2, baseDelayMs: 1_000, maxDelayMs: 1_000 },
+    leaseMs: 30_000,
+    clock: { now: () => new Date("2026-10-06T01:00:01.000Z") },
+    idGenerator: { generate: () => "lease-report-failed" },
+    classifyError: () => ({ retryable: false, code: "renderer_unavailable" }),
+  });
+  assert.equal(execution.kind, "failed");
+  assert.equal((await artifacts.get(original.artifact.id, "test"))?.status, "failed");
+  assert.equal((await artifacts.get(original.artifact.id, "test"))?.failureCode, "renderer_unavailable");
+
+  await assert.rejects(
+    service.request({ principalId: "user-1", definition, viewModel, outputType: "html" }),
+    /terminally failed; reconciliation required/,
+  );
+  assert.equal(publisher.jobs.length, 1, "terminal failure must not publish a duplicate report job");
+  assert.deepEqual(approvedDecision, { state: "completed", version: 7, transitionCount: 1 });
+  assert.equal(viewModel.sourceSnapshot.sourceVersion, "7");
+  assert.equal(viewModel.data.label, "approved");
+
+  const response = await handleReportArtifactDownload({
+    request: new Request("https://example.test/api/workhub/reports/" + original.artifact.id),
+    requestId: "report-failure-case", principalId: "user-1", environment: "test",
+    artifactId: original.artifact.id, artifacts, storage,
+    authorizer: { canDownload: () => true },
+    filename: () => "approved-report.html",
+  });
+  assert.equal(response.status, 404, "failed artifact must never be served as ready");
 });
