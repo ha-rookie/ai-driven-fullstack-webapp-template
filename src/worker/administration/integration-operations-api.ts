@@ -1,4 +1,4 @@
-import { isRuntimeEnvironment } from "../../shared/runtime";
+import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import { requireAuthenticatedUser, requireScopedAuthorization, type RolePolicy } from "../authorization";
 import { apiErrorResponse } from "../http";
 
@@ -98,8 +98,12 @@ export const handleIntegrationOperationsApi = async (
     }
   }
 
-  const environment = env.RUNTIME_ENVIRONMENT;
-  if (!environment || !isRuntimeEnvironment(environment)) {
+  // Same local-only resolution as the WORKHUB login/Overview route.
+  // A remote hostname with missing or invalid runtime configuration still fails closed.
+  let environment: string;
+  try {
+    environment = resolveWorkhubRuntimeEnvironment(request, env.RUNTIME_ENVIRONMENT);
+  } catch {
     return error(requestId, 503, "runtime_environment_required", "Runtime environment is unavailable");
   }
 
@@ -264,6 +268,27 @@ export const handleIntegrationOperationsApi = async (
         failureCode: safeFailureCode(row.failure_code),
       };
     });
+    // #419: latest locally recorded terminal-state updates, NOT provider receipts.
+    // Reuse the existing environment + status index; never infer connection health.
+    const history = await env.DB.prepare(`
+      SELECT status, MAX(updated_at) AS latest_updated_at
+      FROM integration_outbox
+      WHERE environment = ? AND status IN ('delivered', 'dead_letter')
+      GROUP BY status
+    `).bind(environment).all<{ status: string; latest_updated_at: string | null }>();
+    let lastDeliveredUpdatedAt: string | null = null;
+    let lastDeadLetterUpdatedAt: string | null = null;
+    for (const row of history.results ?? []) {
+      if (!["delivered", "dead_letter"].includes(row.status)
+        || typeof row.latest_updated_at !== "string"
+        || row.latest_updated_at.length > 64
+        || !Number.isFinite(Date.parse(row.latest_updated_at))) {
+        throw new Error("Invalid local delivery timestamp");
+      }
+      if (row.status === "delivered") lastDeliveredUpdatedAt = row.latest_updated_at;
+      else lastDeadLetterUpdatedAt = row.latest_updated_at;
+    }
+
     return response({
       coverage: "environment",
       environment,
@@ -273,6 +298,12 @@ export const handleIntegrationOperationsApi = async (
       items,
       attentionItems,
       sampleLimit: MAX_RECENT,
+      deliveryEvidence: {
+        kind: "local_outbox_state",
+        lastDeliveredUpdatedAt,
+        lastDeadLetterUpdatedAt,
+        providerReceipt: "unverified",
+      },
     });
   } catch {
     return error(requestId, 503, "integration_operations_unavailable", "Integration operations are unavailable");
