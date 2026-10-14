@@ -32,10 +32,19 @@ const overviewFixture = (sources: Record<string, unknown> = {}) => JSON.stringif
 
 test("#414 live local Overview API authenticates admin, bounds source data and rejects mutation", async ({ page }) => {
   await login(page);
-  const endpoint = "/api/admin/operations/overview?scopeId=workhub-company";
-  const response = await page.request.get(endpoint);
-  expect(response.status()).toBe(200);
-  const body = await response.json() as Record<string, unknown>;
+  // Use browser fetch, just like the WORKHUB page. The standalone Playwright
+  // request client does not carry the browser's login session in this harness.
+  const result = await page.evaluate(async () => {
+    const endpoint = "/api/admin/operations/overview?scopeId=workhub-company";
+    const response = await fetch(endpoint);
+    const body: unknown = await response.json();
+    const noMutation = await fetch(endpoint, { method: "POST" });
+    const wrongScope = await fetch("/api/admin/operations/overview?scopeId=another-tenant");
+    return { status: response.status, body, postStatus: noMutation.status,
+      wrongScopeStatus: wrongScope.status };
+  });
+  expect(result.status).toBe(200);
+  const body = result.body as Record<string, unknown>;
   expect(body.schemaVersion).toBe(1);
   expect(body.scopeId).toBe("workhub-company");
   expect(body).toHaveProperty("jobs.kind");
@@ -43,10 +52,8 @@ test("#414 live local Overview API authenticates admin, bounds source data and r
   expect(body).toHaveProperty("database.kind");
   expect(body).toHaveProperty("outbox.kind");
   expect(JSON.stringify(body)).not.toMatch(/tokenHash|token_hash|redeemToken|requestId|actorId|rawProviderSecret|payloadFingerprint/iu);
-  const noMutation = await page.request.post(endpoint);
-  expect(noMutation.status()).toBe(405);
-  const wrongScope = await page.request.get("/api/admin/operations/overview?scopeId=another-tenant");
-  expect(wrongScope.status()).toBe(403);
+  expect(result.postStatus).toBe(405);
+  expect(result.wrongScopeStatus).toBe(403);
 });
 
 test("overview summarizes bounded authorized signals without claiming complete health", async ({ page }) => {
@@ -255,8 +262,9 @@ test("overview shows degraded and denied sources as non-healthy, then refreshes 
 
 test("non-admin user never mounts operational overview or loads privileged overview data", async ({ page }) => {
   await login(page, "aoi");
-  const directOverview = await page.request.get("/api/admin/operations/overview?scopeId=workhub-company");
-  expect(directOverview.status()).toBe(403);
+  const directOverviewStatus = await page.evaluate(async () =>
+    (await fetch("/api/admin/operations/overview?scopeId=workhub-company")).status);
+  expect(directOverviewStatus).toBe(403);
   let privilegedReads = 0;
   let outboxReads = 0;
   await page.route("**/api/admin/integrations/outbox?**", (route) => {
