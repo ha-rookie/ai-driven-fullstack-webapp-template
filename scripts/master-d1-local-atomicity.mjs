@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { getPlatformProxy } from "wrangler";
@@ -28,6 +28,10 @@ try {
     "--types", "node,@cloudflare/workers-types", "--strict", "--skipLibCheck",
   ], { stdio: "inherit" });
   writeFileSync(join(compiled, "package.json"), '{"type":"commonjs"}');
+  // Compiled Worker imports shared reporting dependencies. Node resolves them
+  // relative to /tmp/.../compiled, not from this harness in the repo root.
+  // Reuse npm ci dependencies; keep the local D1 test isolated and offline.
+  symlinkSync(resolve("node_modules"), join(compiled, "node_modules"), "dir");
   const require = createRequire(import.meta.url);
   const { D1MasterDataStore } = require(join(compiled, "worker/master-data/d1-store.js"));
   const { handleMasterDataViewerApi } = require(join(compiled, "worker/administration/master-data-viewer-api.js"));
