@@ -48,7 +48,7 @@ interface FailedOutboxPage {
   readonly environment: string;
   readonly observedAt: string;
   readonly pageLimit: 20;
-  readonly items: readonly OutboxSummary["items"][number][];
+  readonly items: OutboxSummary["items"];
   readonly nextCursor: string | null;
   readonly providerReceipt: "unverified";
 }
