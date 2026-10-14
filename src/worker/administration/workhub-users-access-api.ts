@@ -145,14 +145,14 @@ export const handleWorkhubUsersAccessApi = async (
           return apiErrorResponse({ status: 400, code: "invalid_role", message: "Choose a different permitted role" }, requestId);
         }
         const result = await changeMembershipRoleSafely(env.DB, rolePolicy, privilegedPolicy, {
-          actorId, userId: targetUserId, scopeId: SCOPE_ID, nextRole: obj.nextRole, reason,
+          actorId, userId: targetUserId, scopeId: SCOPE_ID, nextRole: obj.nextRole, expectedRole: existing.role, reason,
         });
         audit({ category: "authorization", action: "admin.membership.role_change", outcome: "success",
           actorId, scopeId: SCOPE_ID, resourceType: "user", resourceId: targetUserId, reason });
         return respond({ result });
       }
       const result = await removeScopeMembershipSafely(env.DB, privilegedPolicy, {
-        actorId, userId: targetUserId, scopeId: SCOPE_ID, reason,
+        actorId, userId: targetUserId, scopeId: SCOPE_ID, expectedRole: existing.role, reason,
       });
       audit({ category: "authorization", action: "admin.membership.remove", outcome: "success",
         actorId, scopeId: SCOPE_ID, resourceType: "user", resourceId: targetUserId, reason });
