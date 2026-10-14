@@ -46,6 +46,16 @@ const isActiveApprovalDelegation = (grant: ApprovalDelegationGrant | null): bool
 interface NotificationRecord { readonly id: string; readonly notificationType: string; readonly actionTarget: string | null; readonly version: number; readonly readAt: string | null; readonly createdAt: string; }
 interface TimelineActivity { readonly id: string; readonly activityType: string; readonly occurredAt: string; }
 interface SearchResultRecord { readonly resourceType: string; readonly resourceId: string; readonly category: string; readonly title: string; readonly snippet?: string; readonly actionTarget?: string; }
+// Search is an authorization-filtered read projection. A malformed successful
+// response is unavailable, NOT a confirmed zero-result query.
+const isSearchResultRecord = (value: unknown): value is SearchResultRecord => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return ["resourceType", "resourceId", "category", "title"].every(
+    key => typeof item[key] === "string" && (item[key] as string).length > 0,
+  ) && (item.snippet == null || typeof item.snippet === "string")
+    && (item.actionTarget == null || typeof item.actionTarget === "string");
+};
 interface CompanyAnnouncement {
   readonly id: string; readonly title: string; readonly body: string; readonly authorId: string;
   readonly publishedAt: string; readonly importance: "normal" | "important" | "critical";
@@ -548,6 +558,9 @@ function TravelWorkspace() {
         `/api/workhub/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(searchCategory)}`,
       );
       if (version !== searchRequestVersion.current) return;
+      if (!Array.isArray(response?.results) || !response.results.every(isSearchResultRecord)) {
+        throw new Error("invalid_search_response");
+      }
       setSearchResults(response.results);
       setSearchState("ready");
     } catch {
@@ -756,6 +769,7 @@ function TravelWorkspace() {
           {searchState === "loading" ? <p role="status">検索しています…</p> :
             searchState === "error" ? <div role="alert"><p>検索結果を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void search()}>再検索</button></div> :
             searchResults.length === 0 ? <div className="workhub-search-empty">
+              <p><strong>まだ、この条件では見つかりませんでした。</strong></p>
               <p>「{searchText.trim()}」に一致する結果はありません（カテゴリ：{SEARCH_CATEGORY_LABELS[searchCategory] ?? "未指定"}）。</p>
               <p>検索語やカテゴリを変えて、もう一度検索してください。</p>
               {searchCategory !== "all" && <button className="workhub-secondary-button" type="button" onClick={() => {
