@@ -31,6 +31,7 @@ for (const scenario of errorScenarios) {
       return route.fulfill({
         status: 503,
         contentType: "application/json",
+        headers: { "x-request-id": "workhub-request-350" },
         body: JSON.stringify({ error: { code: scenario.code, message: "sensitive-internal-provider-diagnostics" } }),
       });
     });
@@ -54,6 +55,11 @@ for (const scenario of errorScenarios) {
     await expect(notice).toContainText(scenario.heading);
     await expect(notice).toContainText(scenario.guidance);
     await expect(notice).toContainText("この画面からの変更操作は再送信しません");
+    const reference = notice.getByRole("textbox", { name: "お問い合わせ時の識別番号" });
+    await expect(reference).toHaveValue("workhub-request-350");
+    await expect(reference).toHaveAttribute("readonly", "");
+    await reference.focus();
+    expect(await reference.evaluate((input: HTMLInputElement) => input.selectionStart === 0 && input.selectionEnd === input.value.length)).toBe(true);
     await expect(notice.getByRole("button", { name: "画面を再読み込み" })).toBeVisible();
     await expect(page.getByLabel("目的", { exact: true })).toHaveValue(purpose);
     await expect(submit).toBeDisabled();
