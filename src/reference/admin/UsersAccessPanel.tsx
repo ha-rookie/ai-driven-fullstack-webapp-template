@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import MembershipOperationsPanel from "./MembershipOperationsPanel";
 
 /**
  * #99 Stage5: a bounded, read-only administrator view.
@@ -89,13 +90,15 @@ export default function UsersAccessPanel() {
       });
       if (!response.ok) {
         setMembers({ kind: "error", status: response.status });
-        return;
+        return false;
       }
       const value: unknown = await response.json();
-      setMembers(isMembersResponse(value)
-        ? { kind: "ready", data: value } : { kind: "error", status: null });
+      const valid = isMembersResponse(value);
+      setMembers(valid ? { kind: "ready", data: value } : { kind: "error", status: null });
+      return valid;
     } catch {
       setMembers({ kind: "error", status: null });
+      return false;
     }
   };
 
@@ -186,7 +189,7 @@ export default function UsersAccessPanel() {
       </div>
       <div className="admin-audit-scope"><span>Scope</span><strong>{SCOPE_ID}</strong></div>
     </div>
-    <p className="admin-audit-note">最大50件の先頭表示です。全ユーザー検索や全件表示ではありません。管理者以外の無効化・再有効化のみ、理由と確認を記録して操作できます。Membership・Role・Invitationの変更は未接続です。</p>
+    <p className="admin-audit-note">最大50件の先頭表示です。全ユーザー検索や全件表示ではありません。管理者以外の無効化・再有効化、一般ユーザーの所属追加・削除・Role変更を理由と確認つきで操作できます。Invitationの発行・取消は未接続です。</p>
     <button type="button" onClick={() => { void loadMembers(); }} disabled={members.kind === "loading"}>所属ユーザーを再取得</button>
     {members.kind === "loading" && <p role="status" className="admin-audit-state">所属ユーザーを取得しています…</p>}
     {members.kind === "error" && <p role="alert" className="admin-audit-state is-error">所属ユーザーを取得できませんでした。{failure(members.status)}</p>}
@@ -211,6 +214,7 @@ export default function UsersAccessPanel() {
           </table>
         </div>}
       {members.data.hasMore && <p role="status" className="admin-audit-note">51件目以降はこの画面に表示されません。50件で全件とは限りません。</p>}
+      <MembershipOperationsPanel members={members.data.members} onRefresh={loadMembers} />
     </>}
     {operation && <form className="admin-retry-panel" aria-label="ユーザー状態変更の確認"
       onSubmit={(event) => { event.preventDefault(); void executeLifecycle(); }}>
