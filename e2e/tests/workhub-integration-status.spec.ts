@@ -138,3 +138,53 @@ test("#419 non-admin cannot mount integration evidence or read underlying API", 
   await page.goto("/admin");
   await expect(page.getByTestId("integration-status")).toHaveCount(0);
 });
+
+test("#419 local failed-Outbox pages are bounded, authorized, read-only and fail closed", async ({ page }) => {
+  await login(page);
+  const actual = await page.evaluate(async () => {
+    const url = "/api/admin/integrations/outbox/_failures?scopeId=workhub-company";
+    const result = await fetch(url);
+    const body: unknown = await result.json();
+    const badCursor = await fetch(url + "&cursor=bad%20cursor");
+    const duplicate = await fetch(url + "&cursor=YWJj&cursor=YWJj");
+    const badScope = await fetch("/api/admin/integrations/outbox/_failures?scopeId=other-company");
+    const noMutation = await fetch(url, { method: "POST" });
+    return { status: result.status, body, cache: result.headers.get("cache-control"),
+      invalidCursorStatus: badCursor.status, duplicateStatus: duplicate.status,
+      badScopeStatus: badScope.status, mutationStatus: noMutation.status };
+  });
+  expect(actual.status).toBe(200);
+  expect(actual.cache).toBe("no-store");
+  const body = actual.body as Record<string, unknown>;
+  expect(body.coverage).toBe("environment");
+  expect(body.providerReceipt).toBe("unverified");
+  expect(body.pageLimit).toBe(20);
+  expect(Array.isArray(body.items)).toBe(true);
+  const items = body.items as Record<string, unknown>[];
+  expect(items.length).toBeLessThanOrEqual(20);
+  for (const item of items) {
+    expect(["dead_letter", "retry_wait"]).toContain(item.status);
+    expect(typeof item.outboxId).toBe("string");
+    expect(item).not.toHaveProperty("payload");
+    expect(item).not.toHaveProperty("destinationKey");
+  }
+  expect(body.nextCursor === null || typeof body.nextCursor === "string").toBe(true);
+  expect(JSON.stringify(body)).not.toMatch(/sensitive-provider-credential|destinationKey|rawProviderResponse/iu);
+  expect(actual.invalidCursorStatus).toBe(400);
+  expect(actual.duplicateStatus).toBe(400);
+  expect(actual.badScopeStatus).toBe(403);
+  expect(actual.mutationStatus).toBe(405);
+  if (typeof body.nextCursor === "string") {
+    const next = await page.evaluate(async cursor =>
+      (await fetch("/api/admin/integrations/outbox/_failures?scopeId=workhub-company&cursor="
+        + encodeURIComponent(cursor))).status, body.nextCursor);
+    expect(next).toBe(200);
+  }
+});
+
+test("#419 non-admin cannot read paged failed Outbox history", async ({ page }) => {
+  await login(page, "aoi");
+  const denied = await page.evaluate(async () =>
+    (await fetch("/api/admin/integrations/outbox/_failures?scopeId=workhub-company")).status);
+  expect(denied).toBe(403);
+});

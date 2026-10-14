@@ -168,6 +168,22 @@ test("overview summarizes bounded authorized signals without claiming complete h
       ], nextCursor: null }),
     }),
   }));
+  await page.route("**/api/admin/integrations/outbox/_failures?**", route => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        coverage: "environment", environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+        pageLimit: 20, providerReceipt: "unverified",
+        items: cursor === null
+          ? [{ outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
+            updatedAt: "2026-10-10T00:00:00.000Z", failureCode: "other" }]
+          : [{ outboxId: "old-safe-1", status: "retry_wait", attemptCount: 3,
+            updatedAt: "2026-10-09T00:00:00.000Z", failureCode: "provider_unavailable" }],
+        nextCursor: cursor === null ? "c2" : null,
+        rawProviderSecret: "never-render-paged",
+      }),
+    });
+  });
   await page.goto("/admin");
   const summary = page.locator("#admin-operations-overview");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
@@ -197,6 +213,19 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(detail).toContainText("外部配送結果：未照合");
   await expect(page.locator("#admin-integration-outbox").getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
 
+  await page.locator("#admin-integration-outbox")
+    .getByRole("button", { name: "直近8件より前の失敗記録を確認" }).click();
+  const paged = page.getByTestId("failed-outbox-pages");
+  await expect(paged).toContainText("safe-1");
+  await expect(paged).not.toContainText("never-render-paged");
+  await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
+  await expect(paged.getByTestId("outbox-detail")).toContainText("Version: 3");
+  await paged.getByRole("button", { name: "次の20件" }).click();
+  await expect(paged).toContainText("old-safe-1");
+  await expect(paged).not.toContainText("never-render-paged");
+  await paged.getByRole("button", { name: "前の20件" }).click();
+  await expect(paged).toContainText("safe-1");
+  await expect(paged.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
   await expect(page.locator("#admin-integration-outbox")).not.toContainText("sensitive-provider-credential");
   await expect(card(page, "Metrics / Alert").locator("strong")).toHaveText("未接続");
   await expect(summary.getByTestId("operations-overview-environment")).toContainText("Server Environment: local");
