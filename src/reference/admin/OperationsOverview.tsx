@@ -52,6 +52,21 @@ interface FailedOutboxPage {
   readonly nextCursor: string | null;
   readonly providerReceipt: "unverified";
 }
+interface BlockedRecoveryOperation {
+  readonly operationId: "INTEGRATION_RECONCILE" | "DELIVERY_RETRY";
+  readonly risk: "CONTROLLED_CHANGE" | "HUMAN_GATE";
+  readonly policyDecision: "DENY";
+  readonly executable: false;
+  readonly guardReason: "policy_denied";
+  readonly blockingReason: "provider_reconcile_adapter_not_registered" | "provider_receipt_unverified";
+}
+interface RecoveryReadiness {
+  readonly kind: "policy_readiness_not_execution_preview";
+  readonly policyVersion: "operations-policy-v1";
+  readonly providerOutcome: "unverified";
+  readonly reconcile: BlockedRecoveryOperation;
+  readonly retry: BlockedRecoveryOperation;
+}
 interface OutboxDetail {
   readonly coverage: "environment";
   readonly environment: string;
@@ -73,6 +88,8 @@ interface OutboxDetail {
     readonly providerOutcome: "unverified";
     readonly manualRetryAllowed: false;
   };
+  /** Older local fixtures may omit this; absence must never enable recovery. */
+  readonly recoveryReadiness?: RecoveryReadiness;
 }
 interface AuditSnapshot {
   readonly items: readonly { readonly category: string; readonly action: string }[];
@@ -186,6 +203,17 @@ const hasFailedOutboxPage = (value: unknown): value is FailedOutboxPage =>
     && typeof item.updatedAt === "string" && item.updatedAt.length <= 64
     && Number.isFinite(Date.parse(item.updatedAt))
     && safeFailureCodes.has(String(item.failureCode)));
+const hasBlockedRecovery = (value: unknown, id: "INTEGRATION_RECONCILE" | "DELIVERY_RETRY",
+  blocker: "provider_reconcile_adapter_not_registered" | "provider_receipt_unverified"): value is BlockedRecoveryOperation =>
+  isRecord(value) && value.operationId === id && value.policyDecision === "DENY"
+  && (value.risk === "CONTROLLED_CHANGE" || value.risk === "HUMAN_GATE")
+  && value.executable === false && value.guardReason === "policy_denied"
+  && value.blockingReason === blocker;
+const hasRecoveryReadiness = (value: unknown): value is RecoveryReadiness =>
+  isRecord(value) && value.kind === "policy_readiness_not_execution_preview"
+  && value.policyVersion === "operations-policy-v1" && value.providerOutcome === "unverified"
+  && hasBlockedRecovery(value.reconcile, "INTEGRATION_RECONCILE", "provider_reconcile_adapter_not_registered")
+  && hasBlockedRecovery(value.retry, "DELIVERY_RETRY", "provider_receipt_unverified");
 const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
   isRecord(value) && value.coverage === "environment"
   && typeof value.environment === "string" && typeof value.observedAt === "string"
@@ -201,7 +229,8 @@ const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
   && ["reconcile_external_first", "await_scheduled_retry", "observe_in_progress", "queued", "none"]
     .includes(String(value.decision.nextAction))
   && value.decision.providerOutcome === "unverified"
-  && value.decision.manualRetryAllowed === false;
+  && value.decision.manualRetryAllowed === false
+  && (value.recoveryReadiness === undefined || hasRecoveryReadiness(value.recoveryReadiness));
 
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
@@ -389,6 +418,22 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
           <p>更新：{detail.data.outbox.updatedAt} / 診断コード：{detail.data.outbox.failureCode}</p>
           <p><strong>次の確認：</strong>{actionLabel[detail.data.decision.nextAction]}</p>
           <p>外部配送結果：未照合。再送可否は判断できません（この画面では再送しません）。</p>
+          <div data-testid="integration-recovery-readiness">
+            <h5>照合・再送の共通Risk Policy判定（参照専用）</h5>
+            {detail.data.recoveryReadiness
+              ? <>
+                <p>Policy: {detail.data.recoveryReadiness.policyVersion}。これは実行承認・再送可能通知ではありません。</p>
+                <p>外部結果の照合：<strong>禁止（DENY）</strong>。
+                  Provider照合Adapterが未登録です。
+                  Risk: {detail.data.recoveryReadiness.reconcile.risk}。</p>
+                <p>手動再送：<strong>禁止（DENY）</strong>。
+                  Provider受領証跡が未確認です。
+                  Risk: {detail.data.recoveryReadiness.retry.risk}。</p>
+                <p>次に必要なこと：外部Providerの受領結果を検証できるAdapter・証跡と、
+                  二重送信防止/承認/監査を含む#429/#430の実行経路を接続してから再評価します。</p>
+              </>
+              : <p>操作のPolicy判断は取得できません。照合・再送はできません。</p>}
+          </div>
         </>}
   </div>;
 };
