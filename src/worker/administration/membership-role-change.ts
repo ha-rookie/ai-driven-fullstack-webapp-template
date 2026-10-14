@@ -11,6 +11,8 @@ export interface MembershipRoleChangeInput {
   readonly userId: string;
   readonly scopeId: string;
   readonly nextRole: string;
+  /** Optional caller-observed role, for stale-form rejection in safe service. */
+  readonly expectedRole?: string;
   readonly reason: string;
   readonly now?: Date;
 }
