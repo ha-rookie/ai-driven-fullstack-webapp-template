@@ -126,7 +126,7 @@ export const handleIntegrationOperationsApi = async (
 
   // Same local-only resolution as the WORKHUB login/Overview route.
   // A remote hostname with missing or invalid runtime configuration still fails closed.
-  let environment: string;
+  let environment: ReturnType<typeof resolveWorkhubRuntimeEnvironment>;
   try {
     environment = resolveWorkhubRuntimeEnvironment(request, env.RUNTIME_ENVIRONMENT);
   } catch {
