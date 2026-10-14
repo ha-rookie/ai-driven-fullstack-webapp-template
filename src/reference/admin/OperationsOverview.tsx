@@ -43,6 +43,15 @@ interface OutboxSummary {
     readonly failureCode: string;
   }[];
 }
+interface FailedOutboxPage {
+  readonly coverage: "environment";
+  readonly environment: string;
+  readonly observedAt: string;
+  readonly pageLimit: 20;
+  readonly items: readonly OutboxSummary["items"][number][];
+  readonly nextCursor: string | null;
+  readonly providerReceipt: "unverified";
+}
 interface OutboxDetail {
   readonly coverage: "environment";
   readonly environment: string;
@@ -158,6 +167,25 @@ const hasOutboxSummary = (value: unknown): value is OutboxSummary =>
     && (item.status === "retry_wait" || item.status === "dead_letter")
     && Number.isSafeInteger(item.attemptCount) && Number(item.attemptCount) >= 0
     && typeof item.updatedAt === "string" && typeof item.failureCode === "string");
+const safeFailureCodes = new Set([
+  "event_missing", "delivery_exception", "retryable_failure", "permanent_failure",
+  "provider_unavailable", "destination_disabled", "other",
+]);
+const hasFailedOutboxPage = (value: unknown): value is FailedOutboxPage =>
+  isRecord(value) && value.coverage === "environment"
+  && typeof value.environment === "string" && typeof value.observedAt === "string"
+  && value.pageLimit === 20 && value.providerReceipt === "unverified"
+  && (value.nextCursor === null || (typeof value.nextCursor === "string"
+    && /^[A-Za-z0-9_-]{1,512}$/u.test(value.nextCursor)))
+  && Array.isArray(value.items) && value.items.length <= 20
+  && value.items.every((item: unknown) => isRecord(item)
+    && typeof item.outboxId === "string"
+    && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/u.test(item.outboxId)
+    && (item.status === "retry_wait" || item.status === "dead_letter")
+    && Number.isSafeInteger(item.attemptCount) && Number(item.attemptCount) >= 0
+    && typeof item.updatedAt === "string" && item.updatedAt.length <= 64
+    && Number.isFinite(Date.parse(item.updatedAt))
+    && safeFailureCodes.has(String(item.failureCode)));
 const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
   isRecord(value) && value.coverage === "environment"
   && typeof value.environment === "string" && typeof value.observedAt === "string"
@@ -365,9 +393,58 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
   </div>;
 };
 
+/** Browse local failed Outbox states beyond the eight-row overview sample. */
+function FailedOutboxPages({ environment }: { readonly environment: string }) {
+  const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
+  const [page, setPage] = useState<Probe<FailedOutboxPage> | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const cursor = cursors[cursors.length - 1];
+  useEffect(() => {
+    let active = true;
+    setPage(null);
+    setSelected(null);
+    const query = params({ scopeId: SCOPE_ID, ...(cursor ? { cursor } : {}) });
+    void read("/api/admin/integrations/outbox/_failures?" + query, hasFailedOutboxPage)
+      .then(result => {
+        if (active) setPage(result.kind === "ready" && result.data.environment !== environment
+          ? { kind: "unknown" } : result);
+      });
+    return () => { active = false; };
+  }, [environment, cursor]);
+  return <div className="admin-audit-state" data-testid="failed-outbox-pages">
+    <h4>失敗記録を20件ずつ確認（現在のOutbox状態のみ）</h4>
+    <p>外部Providerの全失敗履歴ではありません。配送結果の受領照合・再送はできません。
+      検索途中に配送状態が更新されると、ページ間の結果は変わる場合があります。</p>
+    {page === null ? <p role="status">失敗記録を取得中…</p>
+      : page.kind !== "ready" ? <p role="status">{unavailableLabel(page)}。0件や正常とは判定しません。</p>
+      : <>
+        {page.data.items.length === 0
+          ? <p>該当する現在記録はありません（Providerの正常性は未確認）。</p>
+          : <ul>{page.data.items.map(item => <li key={item.outboxId}>
+            <code>{item.outboxId}</code> — {item.status} / 試行 {item.attemptCount} 回
+            {" / " + item.failureCode + " / " + item.updatedAt}{" "}
+            <button type="button" onClick={() => setSelected(item.outboxId)}>
+              既存の個別詳細を確認
+            </button>
+          </li>)}</ul>}
+        <div className="admin-retry-actions">
+          <button type="button" disabled={cursors.length === 1}
+            onClick={() => setCursors(values => values.slice(0, -1))}>前の20件</button>
+          <button type="button" disabled={!page.data.nextCursor}
+            onClick={() => {
+              if (page.data.nextCursor) setCursors(values => [...values, page.data.nextCursor]);
+            }}>次の20件</button>
+        </div>
+        {selected && page.data.items.some(item => item.outboxId === selected)
+          ? <OutboxDetailPanel key={selected} outboxId={selected} environment={environment} /> : null}
+      </>}
+  </div>;
+}
+
 export default function OperationsOverview() {
   const [generation, setGeneration] = useState(0);
   const [selectedOutboxId, setSelectedOutboxId] = useState<string | null>(null);
+  const [showFailedPages, setShowFailedPages] = useState(false);
   const [state, setState] = useState<
     | { readonly kind: "loading" }
     | { readonly kind: "ready"; readonly data: OverviewSnapshot }
@@ -419,6 +496,13 @@ export default function OperationsOverview() {
         </li>)}</ul>
         : <p>{outboxSnapshot ? "該当する現在記録はありません（外部連携の正常性は未確認）。"
           : ready?.outbox.kind === "denied" ? "閲覧不可" : "取得できません／未確認"}</p>}
+      {outboxSnapshot ? <>
+        <button type="button" onClick={() => setShowFailedPages(value => !value)}>
+          {showFailedPages ? "追加の失敗記録を閉じる" : "直近8件より前の失敗記録を確認"}
+        </button>
+        {showFailedPages && <FailedOutboxPages key={outboxSnapshot.environment}
+          environment={outboxSnapshot.environment} />}
+      </> : null}
       {outboxSnapshot ? <div data-testid="outbox-watch">
         <h4>未配送の確認候補（障害確定ではありません）</h4>
         <p>送信待ちで予定時刻到達：{outboxSnapshot.watch.duePending} 件
