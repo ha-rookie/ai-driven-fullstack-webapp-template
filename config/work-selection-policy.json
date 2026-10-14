@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    350
+    99
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-14: User explicitly stopped repeated investigation of historical Preview login HTTP503 and directed return to the original WBS. #521 remains OPEN as an unverified historical incident; strict Preview test #38413988883 4/4 browser tests and 6/6 unretried logins passed, but actual Google OIDC activation/individual-Ray root cause is NOT proven. #343 Stage1-6 completed, remaining original cross-cutting WORKHUB #350 Error/Empty/Recovery/Accessibility acceptance is next focus. #632 unauthorized automatic Preview D1 migration remains unresolved and blocks any migration-bearing main merges; no schema/migrations in #350. Formal authenticated business ST, physical devices and screen-reader ST deferred. No Preview/Production/Remote D1/Secrets authorization or WBS/milestone rewrite."
+  "notes": "2026-10-14: WORKHUB original Stage1–6 and cross-cutting #350 are code/CI complete and CLOSED; formal ST and physical accessibility acceptance remain separate #694 (Not Run). The existing #132 Admin/Operations Portal WBS requires Stage5 Users & Access representative UI (#99 existing scope) before Stage6 #414. Main source src/reference/admin/AdminPortal.tsx currently shows only the disabled '後続Issueで接続' placeholder for Users & Access; actual user lifecycle/session/membership/role/invitation representative UI is unconnected. #99 was reopened on factual acceptance evidence (issue comment 6162983198) without discarding its existing completed Portal Shell; #99 is the next WBS focus. #418 Master Data and other Stage5 work are closed; Stage6 #414 Overview and Stages7–9 #419/#420/#431 follow, and #430 P1 Failure Safety applies cross-cutting to all Admin slices. #632 auto Preview D1 migration trigger was already removed via merged PR #650, but GitHub preview Environment reviewer protection remains unverified: remote operations retain separate Human Gate and #632 is OPEN. #521 historical Preview 503 remains recurrence-only and OIDC is not current work. #475 external adoption, #594/#595 optional additions, #689 future backlog and #694 ST do not preempt this WBS priority. No changes to milestones, Runtime, Preview/Production deployment, Remote D1/Migrations, Secrets, or Cloudflare resources. This governance selection transition under #597's base-main approved exception requires CI and explicit head-SHA merge approval before #99 implementation."
 }
