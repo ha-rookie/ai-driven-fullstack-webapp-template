@@ -119,3 +119,16 @@ test("#414 routing is GET-only, fixed-scope and authorization gated", async () =
     new Request(base + "?scopeId=workhub-company"), env, "req-4", opts);
   assert.equal(anonymous?.status, 401);
 });
+
+test("#414 local-only runtime fallback stays compatible with WORKHUB without masking remote misconfiguration", async () => {
+  const local = await handleWorkhubOperationsOverviewApi(
+    new Request("http://127.0.0.1/api/admin/operations/overview?scopeId=workhub-company"),
+    { DB: noSessionDb }, "req-local-runtime", opts,
+  );
+  assert.equal(local?.status, 401, "local hostname resolves to local before authentication");
+  const remote = await handleWorkhubOperationsOverviewApi(
+    new Request("https://public.example/api/admin/operations/overview?scopeId=workhub-company"),
+    { DB: noSessionDb }, "req-remote-runtime", opts,
+  );
+  assert.equal(remote?.status, 503, "missing remote runtime must fail closed");
+});
