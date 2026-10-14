@@ -15,6 +15,11 @@ class FakeD1Database {
   readonly rows: Record<string, unknown>[] = [];
   prepare(sql: string) { return new Statement(this, sql); }
   first(sql: string, values: unknown[]) {
+    if (sql.includes("SELECT status, expires_at")) {
+      return this.rows.filter(r => r.environment === values[0] && r.resource_type === values[1]
+        && r.resource_id === values[2] && r.report_key === values[3] && r.generation_intent === "original")
+        .sort((a, b) => String(b.requested_at).localeCompare(String(a.requested_at)) || String(b.id).localeCompare(String(a.id)))[0] ?? null;
+    }
     if (sql.includes("WHERE environment = ? AND id = ?")) {
       return this.rows.find((r) => r.environment === values[0] && r.id === values[1]) ?? null;
     }
@@ -73,4 +78,23 @@ test("D1 generated artifact store persists optional expiry metadata", async () =
   const store = new D1GeneratedArtifactStore(db as unknown as D1Database);
   assert.equal(await store.create(artifact({ expiresAt: "2026-11-01T00:00:00.000Z" })), true);
   assert.equal((await store.get("artifact-1", "test"))?.expiresAt, "2026-11-01T00:00:00.000Z");
+});
+
+test("#350 latest-original read status is environment/resource/report scoped and excludes reissues", async () => {
+  const db = new FakeD1Database();
+  const store = new D1GeneratedArtifactStore(db as unknown as D1Database);
+  const key = "workhub.travel-approval";
+  const original = artifact({ reportKey: key, status: "failed", failureCode: "provider_internals" });
+  assert.equal(await store.create(original), true);
+  assert.equal(await store.create(artifact({ id: "reissue", objectIdentifier: "reissue-object", reportKey: key,
+    generationIntent: "reissue", sourceSnapshotId: "snapshot-2", status: "ready",
+    requestedAt: "2026-10-07T00:00:00.000Z" })), true);
+  const lookup = (resourceId: string, environment = "test", reportKey = key) =>
+    store.findLatestOriginalStatus({ environment, resourceType: "workhub.travel_request", resourceId, reportKey });
+  assert.deepEqual(await lookup("travel-1"), { status: "failed" });
+  assert.deepEqual(await lookup("travel-2"), null);
+  assert.deepEqual(await lookup("travel-1", "production"), null);
+  assert.deepEqual(await lookup("travel-1", "test", "different-report"), null);
+  assert.equal("failureCode" in (await lookup("travel-1") ?? {}), false);
+  assert.equal("objectIdentifier" in (await lookup("travel-1") ?? {}), false);
 });
