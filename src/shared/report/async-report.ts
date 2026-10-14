@@ -90,6 +90,13 @@ export class AsyncReportGenerationService {
       }
     }
 
+    // A terminally failed historical original is not a fresh job request.
+    // Do not re-publish the same deterministic identity (or replay the
+    // successful business action) as a misleading recovery attempt.
+    if (artifact.status === "failed") {
+      throw new Error("report artifact is terminally failed; reconciliation required");
+    }
+
     const identity = jobIdentity(this.options.environment, artifact.id);
     const job = await createAsyncJobEnvelope({
       type: ASYNC_REPORT_JOB_TYPE,
