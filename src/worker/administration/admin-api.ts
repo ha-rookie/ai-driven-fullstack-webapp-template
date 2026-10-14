@@ -125,6 +125,7 @@ const decodePart = (value: string): string | null => {
 interface Route {
   readonly scopeId: string;
   readonly kind:
+    | "membership-list"
     | "membership-create"
     | "membership-remove"
     | "membership-role"
@@ -143,7 +144,7 @@ const resolveRoute = (pathname: string): Route | null => {
   if (!scopeId) return null;
   const rest = base[2];
 
-  if (rest === "memberships") return { scopeId, kind: "membership-create" };
+  if (rest === "memberships") return { scopeId, kind: "membership-list" };
   if (rest === "invitations") return { scopeId, kind: "invitation-issue" };
 
   const membershipRole = rest.match(/^memberships\/([^/]+)\/role$/);
@@ -191,6 +192,7 @@ const expectedMethod = (kind: Route["kind"]): string => {
       return "DELETE";
     case "membership-role":
       return "PATCH";
+    case "membership-list":
     case "active-sessions":
       return "GET";
   }
@@ -290,6 +292,28 @@ export const handleAdministrationApi = async (
         fromCsrfFailure(csrf, { ...securityContext, actorId }),
       );
       return csrfGuardFailureResponse(csrf, requestId);
+    }
+  }
+
+  if (route.kind === "membership-list") {
+    // #99: bounded, scope-local administration read model; no global user listing.
+    // Permission was already checked above for this request and scope.
+    try {
+      const result = await db.prepare(
+        "SELECT u.id AS userId, u.display_name AS displayName, u.status AS status, m.role AS role FROM scope_memberships m JOIN users u ON u.id=m.user_id WHERE m.scope_id=? ORDER BY u.id LIMIT 51",
+      ).bind(route.scopeId).all<{
+        userId: string; displayName: string | null; status: "active" | "disabled"; role: string;
+      }>();
+      return new Response(JSON.stringify({
+        scopeId: route.scopeId,
+        members: result.results.slice(0, 50),
+        hasMore: result.results.length > 50,
+        limit: 50,
+      }), {
+        headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+      });
+    } catch {
+      return error(requestId, "administration_unavailable", "Administration is unavailable", 503);
     }
   }
 
