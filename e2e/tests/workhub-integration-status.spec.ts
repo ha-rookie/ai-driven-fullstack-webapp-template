@@ -28,6 +28,19 @@ test("#419 live local Outbox API is authorized, read-only and does not claim pro
   const evidence = body.deliveryEvidence as Record<string, unknown>;
   expect(evidence.kind).toBe("local_outbox_state");
   expect(evidence.providerReceipt).toBe("unverified");
+  const projection = body.connectionStatus as Record<string, unknown>;
+  expect(projection.schemaVersion).toBe(1);
+  expect(projection.source).toBe("no_provider_monitor_registered");
+  expect(projection.coverage).toBe("capability_categories");
+  expect(projection.connections).toEqual([
+    { capability: "outbound_delivery", connectionState: "unknown",
+      monitoringState: "not_monitored", providerCheckAt: null, safeFailureCode: null },
+    { capability: "inbound_webhook", connectionState: "unknown",
+      monitoringState: "not_monitored", providerCheckAt: null, safeFailureCode: null },
+    { capability: "external_document_storage", connectionState: "unknown",
+      monitoringState: "not_monitored", providerCheckAt: null, safeFailureCode: null },
+  ]);
+  expect(JSON.stringify(projection)).not.toMatch(/accessToken|refreshToken|secret|destinationKey|providerResponse/iu);
   for (const key of ["lastDeliveredUpdatedAt", "lastDeadLetterUpdatedAt"]) {
     expect(evidence).toHaveProperty(key);
     expect(evidence[key] === null || typeof evidence[key] === "string").toBe(true);
@@ -51,6 +64,19 @@ test("#419 local Outbox evidence is distinct from unverified external receipt an
         providerReceipt: "unverified", rawProviderSecret: "must-not-appear",
       },
       credential: "must-not-appear",
+      connectionStatus: {
+        schemaVersion: 1, coverage: "capability_categories",
+        source: "no_provider_monitor_registered",
+        connections: [
+          { capability: "outbound_delivery", connectionState: "unknown",
+            monitoringState: "not_monitored", providerCheckAt: null, safeFailureCode: null },
+          { capability: "inbound_webhook", connectionState: "unknown",
+            monitoringState: "not_monitored", providerCheckAt: null, safeFailureCode: null },
+          { capability: "external_document_storage", connectionState: "unknown",
+            monitoringState: "not_monitored", providerCheckAt: null, safeFailureCode: null },
+        ],
+        rawProviderSecret: "must-not-appear",
+      },
     }),
   }));
   await page.goto("/admin");
@@ -59,8 +85,14 @@ test("#419 local Outbox evidence is distinct from unverified external receipt an
   await expect(panel).toContainText("Dead Letter状態の最終更新");
   await expect(panel).toContainText("外部Providerの受領照合:");
   await expect(panel).toContainText("未照合");
-  await expect(panel).toContainText("外部ストレージ接続状態:");
-  await expect(panel).toContainText("未監視");
+  const connections = panel.getByTestId("integration-connection-status");
+  await expect(connections).toContainText("Provider共通の接続状態");
+  await expect(connections).toContainText("外部配送：");
+  await expect(connections).toContainText("受信Webhook：");
+  await expect(connections).toContainText("外部文書ストレージ：");
+  await expect(connections).toContainText("未監視");
+  await expect(connections).toContainText("接続状態：不明");
+  await expect(connections.locator("li")).toHaveCount(3);
   await expect(panel).not.toContainText("must-not-appear");
   await expect(panel.getByRole("link", { name: /失敗記録と個別の確認方針/u }))
     .toHaveAttribute("href", "#admin-integration-outbox");
@@ -68,6 +100,33 @@ test("#419 local Outbox evidence is distinct from unverified external receipt an
   unavailable = true;
   await panel.getByRole("button", { name: "状態を再取得" }).click();
   await expect(panel).toContainText("配送記録は取得できません");
+  await expect(panel).not.toContainText("配送完了状態の最終更新");
+});
+
+test("#419 malformed provider-neutral status does not become ready or healthy", async ({ page }) => {
+  await login(page);
+  await page.route("**/api/admin/integrations/outbox?**", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", environment: "local", observedAt: "2026-10-15T00:00:00.000Z",
+      deliveryEvidence: {
+        kind: "local_outbox_state", lastDeliveredUpdatedAt: null,
+        lastDeadLetterUpdatedAt: null, providerReceipt: "unverified",
+      },
+      connectionStatus: {
+        schemaVersion: 1, coverage: "capability_categories",
+        source: "no_provider_monitor_registered",
+        connections: [
+          { capability: "outbound_delivery", connectionState: "ready",
+            monitoringState: "monitored", providerCheckAt: "2026-10-15T00:00:00Z" },
+        ],
+      },
+    }),
+  }));
+  await page.goto("/admin");
+  const panel = page.getByTestId("integration-status");
+  await expect(panel).toContainText("配送記録は取得できません");
+  await expect(panel).not.toContainText("Provider共通の接続状態");
   await expect(panel).not.toContainText("配送完了状態の最終更新");
 });
 

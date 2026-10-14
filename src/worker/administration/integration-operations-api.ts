@@ -1,6 +1,7 @@
 import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import { requireAuthenticatedUser, requireScopedAuthorization, type RolePolicy } from "../authorization";
 import { apiErrorResponse } from "../http";
+import { unmonitoredConnectionProjection } from "./integration-connection-projection";
 
 const INTEGRATION_VIEW_ACTION = "integrations:view";
 const ROUTE = "/api/admin/integrations/outbox";
@@ -304,6 +305,7 @@ export const handleIntegrationOperationsApi = async (
         lastDeadLetterUpdatedAt,
         providerReceipt: "unverified",
       },
+      connectionStatus: unmonitoredConnectionProjection(),
     });
   } catch {
     return error(requestId, 503, "integration_operations_unavailable", "Integration operations are unavailable");
