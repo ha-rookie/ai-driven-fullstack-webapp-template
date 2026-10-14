@@ -607,3 +607,45 @@
   .workhub-social-list { grid-template-columns: minmax(0, 1fr); }
 }
 @media print { .workhub-social { display: none !important; } }
+
+/* #350 F: A confirmed empty queue is a quiet, positive state, not a loading
+   failure. Keep status explicit and legible without relying on color. */
+.workhub-my-work-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid #c8e2dc;
+  border-radius: 12px;
+  background: linear-gradient(115deg, #f0faf6, #fbfdf9);
+  color: #355864;
+}
+
+.workhub-my-work-empty-symbol {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border-radius: 50%;
+  background: #d3eee1;
+  color: #205e51;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.workhub-my-work-empty-title {
+  margin: 0 0 6px;
+  color: #1b5355;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.workhub-my-work-empty p:not(.workhub-my-work-empty-title) {
+  margin: 0 0 8px;
+}
+
+.workhub-my-work-empty small {
+  line-height: 1.65;
+}
