@@ -116,7 +116,8 @@ const isOperationModeCode = (value: unknown): value is WorkhubOperationModeCode 
   typeof value === "string" && operationModeCodes.some(code => code === value);
 
 class WorkhubApiError extends Error {
-  constructor(message: string, readonly status: number, readonly operationModeCode: WorkhubOperationModeCode | null = null) {
+  constructor(message: string, readonly status: number, readonly operationModeCode: WorkhubOperationModeCode | null = null,
+    readonly requestReference: string | null = null) {
     super(message);
     this.name = "WorkhubApiError";
   }
@@ -132,10 +133,19 @@ async function apiJson<T = unknown>(path: string, init?: RequestInit): Promise<T
     // semantics. A generic 503 (including authentication) is NOT maintenance.
     const modeCode = response.status === 503 && isOperationModeCode(payload.error?.code)
       ? payload.error.code : null;
-    throw new WorkhubApiError(
-      modeCode ? operationModeMessages[modeCode] : payload.error?.message ?? `Request failed (${response.status})`,
-      response.status, modeCode,
-    );
+    // Display only bounded, printable server references; never echo provider diagnostics.
+    const rawReference = response.headers.get("x-request-id");
+    const requestReference = rawReference && /^[a-zA-Z0-9_.:-]{1,128}$/u.test(rawReference) ? rawReference : null;
+    // Never echo arbitrary provider/SQL/stack details on 5xx. An uncertain
+    // mutation must not be blindly replayed, even if the backend timed out.
+    const readOnlyRequest = ["GET", "HEAD", "OPTIONS"].includes((init?.method ?? "GET").toUpperCase());
+    const message = modeCode ? operationModeMessages[modeCode]
+      : response.status >= 500
+        ? readOnlyRequest
+          ? "情報を取得できませんでした。時間をおいて現在の状態を再確認してください。"
+          : "サーバーで問題が発生しました。処理が完了したか確認できません。再送信せず、現在の状態を確認してください。"
+        : payload.error?.message ?? `Request failed (${response.status})`;
+    throw new WorkhubApiError(message, response.status, modeCode, requestReference);
   }
   return response.json() as Promise<T>;
 }
@@ -252,6 +262,7 @@ function TravelWorkspace() {
   // This is only a local UX lock after a specific server rejection; server
   // authorization/operation-mode enforcement remains the security boundary.
   const [operationModeBlocked, setOperationModeBlocked] = useState<WorkhubOperationModeCode | null>(null);
+  const [operationModeRequestReference, setOperationModeRequestReference] = useState<string | null>(null);
   const pendingTravelDraft = useRef<TravelRequestRecord | null>(null);
   const focusDelegationAfterRead = useRef(false);
   const focusMyWorkAfterDecision = useRef(false);
@@ -376,6 +387,7 @@ function TravelWorkspace() {
     catch (caught) {
       if (caught instanceof WorkhubApiError && caught.operationModeCode) {
         setOperationModeBlocked(caught.operationModeCode);
+        setOperationModeRequestReference(caught.requestReference);
       }
       setMessage(caught instanceof Error ? caught.message : "処理に失敗しました。");
     }
@@ -798,6 +810,10 @@ function TravelWorkspace() {
             operationModeBlocked === "service_in_maintenance" ? "メンテナンス中" : "運用状態を確認できません"}</strong>
           <p>{operationModeMessages[operationModeBlocked]}</p>
           <p>この画面からの変更操作は再送信しません。画面を再読み込みすると、サーバーに現在の状態を確認できます。</p>
+          {operationModeRequestReference && <label>お問い合わせ時の識別番号
+            <input aria-label="お問い合わせ時の識別番号" type="text" readOnly value={operationModeRequestReference}
+              onFocus={event => event.currentTarget.select()} />
+          </label>}
           <button className="workhub-secondary-button" type="button" onClick={() => window.location.reload()}>画面を再読み込み</button>
         </aside>}
         {message && !operationModeBlocked && <div className="workhub-demo-note" role="status"><strong>WORKHUB</strong><span>{message}</span></div>}
