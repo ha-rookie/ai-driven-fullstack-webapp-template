@@ -39,12 +39,13 @@ export interface DeveloperGuideScenario {
   readonly id: string;
   readonly ja: string;
   readonly en: string;
-  readonly kind: "implemented-reference" | "reference-mock" | "catalog-only";
+  readonly kind: "implemented-reference" | "partial-reference" | "reference-mock" | "catalog-only";
   readonly personaJa: string;
   readonly personaEn: string;
   readonly screens: readonly DeveloperScreenId[];
   readonly noteJa: string;
   readonly noteEn: string;
+  readonly evidenceDoc?: string;
 }
 /** Only journeys evidenced by the linked UI are marked implemented-reference. */
 export const developerGuideScenarios: readonly DeveloperGuideScenario[] = [
@@ -87,6 +88,17 @@ export const developerGuideScenarios: readonly DeveloperGuideScenario[] = [
     screens: ["apps", "secondary-journeys"],
     noteJa: "社員・総務のデモ手続きのみ。IT資産の交換・在庫連携は行わない",
     noteEn: "Demo handoff only; no actual asset replacement or inventory integration",
+  },
+  {
+    id: "scenario.workhub.error-recovery",
+    ja: "エラー・空状態から安全に復旧する（部分実装）",
+    en: "Recover safely from errors and empty states (partial)",
+    kind: "partial-reference",
+    personaJa: "申請者・承認者・Reference評価者", personaEn: "Requester, approver, Reference evaluator",
+    screens: ["requests", "request-detail", "my-work", "search", "notifications"],
+    noteJa: "404／権限拒否／承認競合／通知不達／検索・タスク空状態／運用モードのローカル受入あり。帳票失敗の利用者画面と正式System Testは未完了。ここからは失敗を起こさない静的ガイドです",
+    noteEn: "Local acceptance exists for 404, hidden access, stale approval, notification/search/task read failures and mode copy. End-user report failure UI and formal System Test remain incomplete. This guide does not trigger failures.",
+    evidenceDoc: "docs/reference/WORKHUB_ERROR_RECOVERY_ACCEPTANCE.md",
   },
   {
     id: "newcomer-onboarding",
