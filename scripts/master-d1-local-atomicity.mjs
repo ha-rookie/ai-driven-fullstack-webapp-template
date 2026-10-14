@@ -24,7 +24,7 @@ try {
     "src/worker/auth/application-session.ts",
     "src/worker.ts",
     "--outDir", compiled, "--rootDir", "src", "--target", "ES2023",
-    "--module", "CommonJS", "--moduleResolution", "Node",
+    "--module", "CommonJS", "--moduleResolution", "Node", "--esModuleInterop",
     "--types", "node,@cloudflare/workers-types", "--strict", "--skipLibCheck",
   ], { stdio: "inherit" });
   writeFileSync(join(compiled, "package.json"), '{"type":"commonjs"}');
