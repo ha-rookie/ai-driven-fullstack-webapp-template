@@ -105,8 +105,18 @@ const readRememberedUserId = (): string => { try { return localStorage.getItem(R
 const persistRememberedUserId = (remember: boolean, userId: string): void => { try { if (remember) localStorage.setItem(REMEMBERED_USER_ID_KEY, userId); else localStorage.removeItem(REMEMBERED_USER_ID_KEY); } catch { /* browser storage is optional */ } };
 const loginFailureMessage = (status: number): string => status === 401 ? "ユーザーIDまたはパスワードを確認してください。" : status === 429 ? "ログイン試行が一時的に制限されています。しばらくしてから再度お試しください。" : status === 400 || status === 413 || status === 415 ? "入力内容を確認してください。" : "現在ログインできません。時間をおいて再度お試しください。";
 
+const operationModeCodes = ["operation_read_only", "service_in_maintenance", "operation_mode_unavailable"] as const;
+type WorkhubOperationModeCode = (typeof operationModeCodes)[number];
+const operationModeMessages: Readonly<Record<WorkhubOperationModeCode, string>> = {
+  operation_read_only: "現在は読み取り専用です。内容の閲覧は続けられますが、変更や提出は受け付けられません。操作を繰り返さず、再開後に状態をご確認ください。",
+  service_in_maintenance: "現在メンテナンス中のため、業務操作を受け付けられません。操作を繰り返さず、再開後に現在の状態をご確認ください。",
+  operation_mode_unavailable: "運用状態を確認できないため、業務操作を受け付けられません。再送信せず、状態を確認できるまでお待ちください。",
+};
+const isOperationModeCode = (value: unknown): value is WorkhubOperationModeCode =>
+  typeof value === "string" && operationModeCodes.some(code => code === value);
+
 class WorkhubApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly operationModeCode: WorkhubOperationModeCode | null = null) {
     super(message);
     this.name = "WorkhubApiError";
   }
@@ -116,7 +126,17 @@ async function apiJson<T = unknown>(path: string, init?: RequestInit): Promise<T
   const headers = new Headers(init?.headers); headers.set("accept", "application/json"); if (init?.body) headers.set("content-type", "application/json");
   if (init?.method && !["GET", "HEAD", "OPTIONS"].includes(init.method.toUpperCase())) { const csrfResponse = await fetch("/api/auth/csrf", { credentials: "same-origin" }); if (!csrfResponse.ok) throw new Error("CSRF token unavailable"); const csrfPayload = await csrfResponse.json() as { csrfToken: string }; headers.set("x-csrf-token", csrfPayload.csrfToken); }
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
-  if (!response.ok) { const payload = await response.json().catch(() => ({})) as { error?: { message?: string } }; throw new WorkhubApiError(payload.error?.message ?? `Request failed (${response.status})`, response.status); }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: { message?: string; code?: string } };
+    // Only a known backend OperationModeGuard rejection carries operational
+    // semantics. A generic 503 (including authentication) is NOT maintenance.
+    const modeCode = response.status === 503 && isOperationModeCode(payload.error?.code)
+      ? payload.error.code : null;
+    throw new WorkhubApiError(
+      modeCode ? operationModeMessages[modeCode] : payload.error?.message ?? `Request failed (${response.status})`,
+      response.status, modeCode,
+    );
+  }
   return response.json() as Promise<T>;
 }
 
@@ -229,6 +249,9 @@ function TravelWorkspace() {
   const [delegationState, setDelegationState] = useState<"loading" | "ready" | "error">("loading");
   const activeDelegation = isActiveApprovalDelegation(delegation);
   const mutationInFlight = useRef(false);
+  // This is only a local UX lock after a specific server rejection; server
+  // authorization/operation-mode enforcement remains the security boundary.
+  const [operationModeBlocked, setOperationModeBlocked] = useState<WorkhubOperationModeCode | null>(null);
   const pendingTravelDraft = useRef<TravelRequestRecord | null>(null);
   const focusDelegationAfterRead = useRef(false);
   const focusMyWorkAfterDecision = useRef(false);
@@ -342,14 +365,20 @@ function TravelWorkspace() {
   const loadMyRequests = useCallback(async () => { if (!isAoi) return; setMyRequestsState("loading"); try { const result = await apiJson<{ items: UnifiedMyRequest[] }>("/api/workhub/my-requests"); setMyRequests(result.items); setMyRequestsState("ready"); } catch { setMyRequestsState("error"); } }, [isAoi]);
   const openRequest = useCallback(async (id: string) => { const detail = await apiJson<{ request: TravelRequestRecord; workflow: WorkflowRecord | null; returnComment: string | null }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}`); const history = await apiJson<{ items: TimelineActivity[] }>(`/api/workhub/travel-requests/${encodeURIComponent(id)}/timeline`); setSelectedRequest(detail.request); setSelectedWorkflow(detail.workflow); setReturnComment(detail.workflow?.state === "awaiting_resubmission" ? detail.returnComment : null); setTimeline(history.items ?? []); setDestinationOfficeItemId(detail.request.destinationOfficeItemId); setStartDate(detail.request.startDate); setEndDate(detail.request.endDate); setPurpose(detail.request.purpose); return detail; }, []);
   useEffect(() => { void Promise.all([apiJson<{ items: OfficeOption[] }>("/api/workhub/offices").then((result) => { setOffices(result.items); setDestinationOfficeItemId((current) => current || result.items[0]?.itemId || ""); }), loadNotifications(), loadMyWork(), loadMyRequests(), loadAnnouncements(), loadDelegation(), loadPeople(), loadDocuments(), loadSocial()]).catch(() => setMessage("WORKHUBの業務データを読み込めませんでした。")); }, [loadMyWork, loadMyRequests, loadNotifications, loadAnnouncements, loadDelegation, loadPeople, loadDocuments, loadSocial]);
-  const run = async (operation: () => Promise<void>) => {
+  const run = async (operation: () => Promise<void>, allowBlockedRead = false) => {
     // A React state update does not synchronously block two rapid click events.
-    if (mutationInFlight.current) return;
+    // Never reattempt a mutation in this page after explicit read-only/maintenance denial.
+    if (mutationInFlight.current || (operationModeBlocked && !allowBlockedRead)) return;
     mutationInFlight.current = true;
     setBusy(true);
     setMessage(null);
     try { await operation(); }
-    catch (caught) { setMessage(caught instanceof Error ? caught.message : "処理に失敗しました。"); }
+    catch (caught) {
+      if (caught instanceof WorkhubApiError && caught.operationModeCode) {
+        setOperationModeBlocked(caught.operationModeCode);
+      }
+      setMessage(caught instanceof Error ? caught.message : "処理に失敗しました。");
+    }
     finally { mutationInFlight.current = false; setBusy(false); }
   };
   const publishAnnouncement = (event: FormEvent<HTMLFormElement>) => {
@@ -637,7 +666,7 @@ function TravelWorkspace() {
     const detail = await openRequest(selectedRequest.id);
     if (detail.request.status !== "submitted") throw new Error("提出済みの申請だけ印刷できます。");
     requestAnimationFrame(() => window.print());
-  });
+  }, true);
   const prepareCecilSubmissionReview = () => {
     const current: CecilTravelDraft = { destinationOfficeItemId, startDate, endDate, purpose };
     const validation = validateCecilTravelDraft(current, offices);
@@ -764,7 +793,14 @@ function TravelWorkspace() {
             <p>仕事の入口を、ひとつに。今日やることから始めましょう。</p>
           </div>
         </section>
-        {message && <div className="workhub-demo-note" role="status"><strong>WORKHUB</strong><span>{message}</span></div>}
+        {operationModeBlocked && <aside className="workhub-operation-mode-notice" role="alert" aria-label="業務の運用状態">
+          <strong>{operationModeBlocked === "operation_read_only" ? "読み取り専用モード" :
+            operationModeBlocked === "service_in_maintenance" ? "メンテナンス中" : "運用状態を確認できません"}</strong>
+          <p>{operationModeMessages[operationModeBlocked]}</p>
+          <p>この画面からの変更操作は再送信しません。画面を再読み込みすると、サーバーに現在の状態を確認できます。</p>
+          <button className="workhub-secondary-button" type="button" onClick={() => window.location.reload()}>画面を再読み込み</button>
+        </aside>}
+        {message && !operationModeBlocked && <div className="workhub-demo-note" role="status"><strong>WORKHUB</strong><span>{message}</span></div>}
         {searchState !== "idle" && <section className="workhub-search-panel workhub-global-search-results" aria-live="polite" aria-label="検索結果">
           {searchState === "loading" ? <p role="status">検索しています…</p> :
             searchState === "error" ? <div role="alert"><p>検索結果を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void search()}>再検索</button></div> :
@@ -817,7 +853,7 @@ function TravelWorkspace() {
                   <p>現在、対応が必要なタスクはありません。</p>
                   <small>確認済みの承認タスクが0件です。新しい依頼が届いたらここに表示されます。</small>
                 </div>
-              </div> : <div className="workhub-task-list">{myWork.slice(0, 3).map((entry) => <article className="workhub-task-item" key={entry.workItem.id} aria-label={`${entry.request.purpose}の出張承認タスク`}><h3>{entry.request.purpose}</h3>{entry.workItem && isMei && <small>Renの代理として操作・記録します</small>}<span>{entry.request.startDate} → {entry.request.endDate}</span><label className="workhub-return-reason-input">差戻し理由<textarea aria-label={`${entry.request.purpose}の差戻し理由`} value={returnReasons[entry.workItem.id] ?? ""} onChange={(event) => setReturnReasons((current) => ({ ...current, [entry.workItem.id]: event.target.value }))} maxLength={2000} rows={2} placeholder="修正してほしい箇所を具体的に入力" disabled={busy} /></label><div className="workhub-inline-actions"><button className="workhub-secondary-button" type="button" disabled={busy} aria-label={`${entry.request.purpose}：差し戻す`} onClick={() => decide(entry, "return")}>差し戻す</button><button className="workhub-primary-button" type="button" disabled={busy} aria-label={`${entry.request.purpose}：承認する`} onClick={() => decide(entry, "approve")}>承認する</button></div></article>)}</div>
+              </div> : <div className="workhub-task-list">{myWork.slice(0, 3).map((entry) => <article className="workhub-task-item" key={entry.workItem.id} aria-label={`${entry.request.purpose}の出張承認タスク`}><h3>{entry.request.purpose}</h3>{entry.workItem && isMei && <small>Renの代理として操作・記録します</small>}<span>{entry.request.startDate} → {entry.request.endDate}</span><label className="workhub-return-reason-input">差戻し理由<textarea aria-label={`${entry.request.purpose}の差戻し理由`} value={returnReasons[entry.workItem.id] ?? ""} onChange={(event) => setReturnReasons((current) => ({ ...current, [entry.workItem.id]: event.target.value }))} maxLength={2000} rows={2} placeholder="修正してほしい箇所を具体的に入力" disabled={busy} /></label><div className="workhub-inline-actions"><button className="workhub-secondary-button" type="button" disabled={busy || operationModeBlocked !== null} aria-label={`${entry.request.purpose}：差し戻す`} onClick={() => decide(entry, "return")}>差し戻す</button><button className="workhub-primary-button" type="button" disabled={busy || operationModeBlocked !== null} aria-label={`${entry.request.purpose}：承認する`} onClick={() => decide(entry, "approve")}>承認する</button></div></article>)}</div>
             ) : isAoi ? (
               myRequestsState === "loading" ? <p role="status">対応が必要な申請を確認しています…</p>
               : myRequestsState === "error" ? <div role="alert"><p>申請状況を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadMyRequests()}>再読み込み</button></div>
@@ -963,7 +999,7 @@ function TravelWorkspace() {
           <small className="workhub-reference-note">自分の申請を最大20件表示。進捗はこの出張に明示的に紐づけた精算のみを集計し、支払完了は意味しません。状態は一覧更新で再取得します。</small>
         </section>}
         <section className="workhub-home-grid" id="workhub-requests" aria-label="出張申請 Reference Scenario">
-          {isAoi && <article className="workhub-home-card workhub-home-card-primary" id="workhub-travel-form"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "出張申請"}</h2>{cecilDraftPrepared && !awaitingResubmission && <p role="status" className="workhub-reference-note">Ask CECILで準備した値を入力欄へ反映しました。まだ保存・提出されていません。内容を確認してから本人が提出を判断してください。</p>}{awaitingResubmission && <div className="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>{returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</p></div>}<div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => { setDestinationOfficeItemId(event.target.value); setCecilTravelReview(null); }}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); setCecilTravelReview(null); }} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => { setEndDate(event.target.value); setCecilTravelReview(null); }} /></label><label>目的<textarea id="workhub-travel-purpose" aria-label="目的" value={purpose} onChange={(event) => { setPurpose(event.target.value); setCecilTravelReview(null); }} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy} onClick={updateAndResubmit}>修正して再申請</button> : <button ref={cecilSubmitButtonRef} className="workhub-primary-button" type="button" disabled={busy} onClick={cecilDraftPrepared ? prepareCecilSubmissionReview : () => createAndSubmit()}>{cecilDraftPrepared ? "提出前に内容を確認" : "出張申請を提出"}</button>}</div>{cecilDraftPrepared && cecilTravelReview && !awaitingResubmission && <CecilTravelReview draft={cecilTravelReview} actor={user?.displayName ?? "ログイン中の本人"} officeLabel={offices.find(office => office.itemId === cecilTravelReview.destinationOfficeItemId)?.label ?? "選択できない出張先"} submitting={busy} onCancel={cancelCecilSubmissionReview} onConfirm={() => createAndSubmit(cecilTravelReview)} />}</article>}
+          {isAoi && <article className="workhub-home-card workhub-home-card-primary" id="workhub-travel-form"><span className="workhub-card-label">REQUESTS / 出張したい</span><h2>{awaitingResubmission ? "出張申請を修正" : "出張申請"}</h2>{cecilDraftPrepared && !awaitingResubmission && <p role="status" className="workhub-reference-note">Ask CECILで準備した値を入力欄へ反映しました。まだ保存・提出されていません。内容を確認してから本人が提出を判断してください。</p>}{awaitingResubmission && <div className="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>{returnComment?.trim() || "理由の記載がありません。承認者に確認してください。"}</p></div>}<div className="workhub-business-form"><label>行先<select aria-label="行先" value={destinationOfficeItemId} onChange={(event) => { setDestinationOfficeItemId(event.target.value); setCecilTravelReview(null); }}>{offices.map((office) => <option key={office.itemId} value={office.itemId}>{office.label} ({office.code})</option>)}</select></label><label>開始日<input aria-label="開始日" type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); setCecilTravelReview(null); }} /></label><label>終了日<input aria-label="終了日" type="date" value={endDate} onChange={(event) => { setEndDate(event.target.value); setCecilTravelReview(null); }} /></label><label>目的<textarea id="workhub-travel-purpose" aria-label="目的" value={purpose} onChange={(event) => { setPurpose(event.target.value); setCecilTravelReview(null); }} /></label>{awaitingResubmission ? <button className="workhub-primary-button" type="button" disabled={busy || operationModeBlocked !== null} onClick={updateAndResubmit}>修正して再申請</button> : <button ref={cecilSubmitButtonRef} className="workhub-primary-button" type="button" disabled={busy || operationModeBlocked !== null} onClick={cecilDraftPrepared ? prepareCecilSubmissionReview : () => createAndSubmit()}>{cecilDraftPrepared ? "提出前に内容を確認" : "出張申請を提出"}</button>}</div>{cecilDraftPrepared && cecilTravelReview && !awaitingResubmission && <CecilTravelReview draft={cecilTravelReview} actor={user?.displayName ?? "ログイン中の本人"} officeLabel={offices.find(office => office.itemId === cecilTravelReview.destinationOfficeItemId)?.label ?? "選択できない出張先"} submitting={busy || operationModeBlocked !== null} onCancel={cancelCecilSubmissionReview} onConfirm={() => createAndSubmit(cecilTravelReview)} />}</article>}
           <article className="workhub-home-card" id="workhub-notifications"><span className="workhub-card-label">NOTIFICATIONS</span><h2>通知 {notificationState === "ready" && unreadCount > 0 ? `(${unreadCount})` : ""}</h2>{
             notificationState === "loading" ? <p role="status">通知を確認しています…</p>
             : notificationState === "error" ? <div role="alert"><p>通知を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadNotifications()}>通知を再読み込み</button></div>
