@@ -14,10 +14,13 @@ export const projectWorkhubTravelReportStatus = (
   now: Date = new Date(),
 ): WorkhubTravelReportStatus => {
   if (!artifact) return { state: "not_generated" };
-  if (artifact.status === "ready" && artifact.expiresAt
-    && Number.isFinite(Date.parse(artifact.expiresAt))
-    && Date.parse(artifact.expiresAt) <= now.getTime()) {
-    return { state: "expired" };
+  if (artifact.status === "ready" && artifact.expiresAt !== undefined) {
+    const expiry = Date.parse(artifact.expiresAt);
+    // Corrupted expiry cannot be advertised as a safely downloadable report.
+    if (!Number.isFinite(expiry) || new Date(expiry).toISOString() !== artifact.expiresAt) {
+      return { state: "unavailable" };
+    }
+    if (expiry <= now.getTime()) return { state: "expired" };
   }
   return { state: artifact.status };
 };
