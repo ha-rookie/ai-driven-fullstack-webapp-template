@@ -145,3 +145,82 @@ test("#99 ordinary employee cannot mutate another user lifecycle", async ({ page
   }, target);
   expect(nonAdminStatus).toBe(403);
 });
+
+
+test("#99 membership and role action form requires confirmation and refreshes current role", async ({ page }) => {
+  await login(page, "kai");
+  await page.goto("/admin");
+  const panel = page.locator("#admin-users-and-access");
+  const form = panel.getByRole("form", { name: "所属・ロール変更の確認" });
+  await expect(form).toBeVisible();
+  let changed = false;
+  let patches = 0;
+  await page.route("**/api/admin/scopes/workhub-company/memberships", async route => {
+    if (route.request().method() !== "GET" || !changed) return route.continue();
+    const response = await route.fetch();
+    const data = await response.json() as { members: { userId: string; role: string }[] };
+    return route.fulfill({ response, json: {
+      ...data, members: data.members.map(member => member.userId === "workhub-demo-aoi" ? { ...member, role: "manager" } : member),
+    } });
+  });
+  await page.route("**/api/admin/scopes/workhub-company/memberships/workhub-demo-aoi/role", route => {
+    patches++;
+    changed = true;
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: '{"result":{"kind":"changed","nextRole":"manager"}}' });
+  });
+  await form.getByLabel("対象の所属ユーザー").selectOption("workhub-demo-aoi");
+  await form.getByLabel("変更後の一般ロール").selectOption("manager");
+  const submit = form.getByRole("button", { name: "ロール変更を実行" });
+  await expect(submit).toBeDisabled();
+  await form.getByLabel("操作理由").fill("業務担当変更による申請");
+  await expect(submit).toBeDisabled();
+  await form.getByRole("checkbox").check();
+  await submit.click();
+  await expect(panel.getByRole("status")).toContainText("現在の一覧を再取得しました");
+  await expect(panel.locator("tr").filter({ hasText: "workhub-demo-aoi" })).toContainText("manager");
+  expect(patches).toBe(1);
+});
+
+test("#99 membership API blocks arbitrary roles, privileged target, missing proof and ordinary employees", async ({ page }) => {
+  await login(page, "kai");
+  const base = "/api/admin/scopes/workhub-company/memberships";
+  const noProof = await page.evaluate(async path => (await fetch(path, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirmed: true, reason: "CSRF拒否", userId: "workhub-demo-haru", role: "employee" }),
+  })).status, base);
+  expect(noProof).toBe(403);
+
+  const rejected = await page.evaluate(async path => {
+    const res = await fetch("/api/auth/csrf");
+    const { csrfToken } = await res.json() as { csrfToken: string };
+    const options = { headers: { "content-type": "application/json", "x-csrf-token": csrfToken } };
+    const invalidRole = await fetch(path, { ...options, method: "POST",
+      body: JSON.stringify({ confirmed: true, reason: "不正な特権付与テスト", userId: "workhub-demo-haru", role: "system_admin" }) });
+    const privileged = await fetch(path + "/workhub-demo-kai", { ...options, method: "DELETE",
+      body: JSON.stringify({ confirmed: true, reason: "管理者削除不可", expectedRole: "system_admin" }) });
+    const privilegedRole = await fetch(path + "/workhub-demo-kai/role", { ...options, method: "PATCH",
+      body: JSON.stringify({ confirmed: true, reason: "管理者降格不可", expectedRole: "system_admin", nextRole: "employee" }) });
+    return [invalidRole.status, privileged.status, privilegedRole.status];
+  }, base);
+  expect(rejected).toEqual([400, 403, 403]);
+});
+
+test("#99 ordinary user cannot change scope membership or role through direct API", async ({ page }) => {
+  await login(page, "aoi");
+  const result = await page.evaluate(async () => {
+    const csrf = await fetch("/api/auth/csrf");
+    const { csrfToken } = await csrf.json() as { csrfToken: string };
+    const options = { headers: { "content-type": "application/json", "x-csrf-token": csrfToken } };
+    const changedRole = await fetch("/api/admin/scopes/workhub-company/memberships/workhub-demo-haru/role", {
+      ...options, method: "PATCH",
+      body: JSON.stringify({ confirmed: true, reason: "許可なし", expectedRole: "newcomer", nextRole: "manager" }),
+    });
+    const remove = await fetch("/api/admin/scopes/workhub-company/memberships/workhub-demo-haru", {
+      ...options, method: "DELETE",
+      body: JSON.stringify({ confirmed: true, reason: "許可なし", expectedRole: "newcomer" }),
+    });
+    return [changedRole.status, remove.status];
+  });
+  expect(result).toEqual([403, 403]);
+});
