@@ -44,7 +44,7 @@ test("returns null outside the administration API namespace", async () => {
 test("rejects unsupported methods before authentication", async () => {
   const response = await handleAdministrationApi(
     new Request("https://example.test/api/admin/scopes/scope-1/memberships", {
-      method: "GET",
+      method: "PUT",
     }),
     dbWithoutSession,
     audit,
