@@ -49,7 +49,7 @@ test("#99 one-time invite issuance requires confirmation and expires from browse
   const form = panel.getByRole("form", { name: "招待発行の確認" });
   const button = form.getByRole("button", { name: "招待を発行する" });
   await expect(button).toBeDisabled();
-  await form.getByLabel("発行理由").fill("部門担当の権限付与申請");
+  await form.getByRole("textbox", { name: "発行理由", exact: true }).fill("部門担当の権限付与申請");
   await expect(button).toBeDisabled();
   await form.getByRole("checkbox").check();
   await button.click();
@@ -80,7 +80,7 @@ test("#99 invitation revoke confirms target and re-reads list without shared D1 
   await form.getByLabel("対象の招待").selectOption(invite.id);
   const button = form.getByRole("button", { name: "この招待を取り消す" });
   await expect(button).toBeDisabled();
-  await form.getByLabel("取消理由").fill("予定変更");
+  await form.getByRole("textbox", { name: "取消理由", exact: true }).fill("予定変更");
   await form.getByRole("checkbox").check();
   await button.click();
   await expect(panel.locator("tr").filter({ hasText: invite.id })).toContainText("revoked");
