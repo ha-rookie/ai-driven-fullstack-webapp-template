@@ -255,10 +255,13 @@ function TravelWorkspace() {
     setMyWorkState("loading");
     try {
       const result = await apiJson<{ items: MyWorkEntry[] }>("/api/workhub/my-work");
+      // Invalid or unavailable readbacks are unknown, never a genuine empty queue.
+      if (!Array.isArray(result?.items)) throw new Error("invalid_my_work_response");
       setMyWork(result.items);
       setMyWorkState("ready");
       return true;
     } catch {
+      setMyWork([]);
       setMyWorkState("error");
       return false;
     }
@@ -530,6 +533,7 @@ function TravelWorkspace() {
     });
   };
   const retryDelegationRead = () => { focusDelegationAfterRead.current = true; void loadDelegation(); };
+  const retryMyWorkRead = () => { focusMyWorkAfterDecision.current = true; void loadMyWork(); };
   const openNotification = (notification: NotificationRecord) => void run(async () => { if (!notification.readAt) await apiJson(`/api/workhub/notifications/${notification.id}/read`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version }) }); const target = notification.actionTarget?.match(/^resource:travel_request:(.+)$/u)?.[1]; if (target && isAoi) await openRequest(target); await loadNotifications(); });
   const search = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
@@ -792,8 +796,14 @@ function TravelWorkspace() {
               activeDelegation ? "Renからの代理承認が有効です。出張承認タスクを確認できます。" : "出張承認の代理権限はありません。"}</p>}
             {canReviewTravel ? (
               myWorkState === "loading" ? <p role="status">承認タスクを読み込んでいます…</p>
-              : myWorkState === "error" ? <div role="alert"><p>承認タスクを取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadMyWork()}>再読み込み</button></div>
-              : myWork.length === 0 ? <p className="workhub-empty-state">現在、対応が必要なタスクはありません。</p> : <div className="workhub-task-list">{myWork.slice(0, 3).map((entry) => <article className="workhub-task-item" key={entry.workItem.id} aria-label={`${entry.request.purpose}の出張承認タスク`}><h3>{entry.request.purpose}</h3>{entry.workItem && isMei && <small>Renの代理として操作・記録します</small>}<span>{entry.request.startDate} → {entry.request.endDate}</span><label className="workhub-return-reason-input">差戻し理由<textarea aria-label={`${entry.request.purpose}の差戻し理由`} value={returnReasons[entry.workItem.id] ?? ""} onChange={(event) => setReturnReasons((current) => ({ ...current, [entry.workItem.id]: event.target.value }))} maxLength={2000} rows={2} placeholder="修正してほしい箇所を具体的に入力" disabled={busy} /></label><div className="workhub-inline-actions"><button className="workhub-secondary-button" type="button" disabled={busy} aria-label={`${entry.request.purpose}：差し戻す`} onClick={() => decide(entry, "return")}>差し戻す</button><button className="workhub-primary-button" type="button" disabled={busy} aria-label={`${entry.request.purpose}：承認する`} onClick={() => decide(entry, "approve")}>承認する</button></div></article>)}</div>
+              : myWorkState === "error" ? <div role="alert"><p>承認タスクを取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={retryMyWorkRead}>再読み込み</button></div>
+              : myWork.length === 0 ? <div className="workhub-my-work-empty" role="status">
+                <span className="workhub-my-work-empty-symbol" aria-hidden="true">✓</span>
+                <div><p className="workhub-my-work-empty-title">いま、あなたを待っている仕事はありません。</p>
+                  <p>現在、対応が必要なタスクはありません。</p>
+                  <small>確認済みの承認タスクが0件です。新しい依頼が届いたらここに表示されます。</small>
+                </div>
+              </div> : <div className="workhub-task-list">{myWork.slice(0, 3).map((entry) => <article className="workhub-task-item" key={entry.workItem.id} aria-label={`${entry.request.purpose}の出張承認タスク`}><h3>{entry.request.purpose}</h3>{entry.workItem && isMei && <small>Renの代理として操作・記録します</small>}<span>{entry.request.startDate} → {entry.request.endDate}</span><label className="workhub-return-reason-input">差戻し理由<textarea aria-label={`${entry.request.purpose}の差戻し理由`} value={returnReasons[entry.workItem.id] ?? ""} onChange={(event) => setReturnReasons((current) => ({ ...current, [entry.workItem.id]: event.target.value }))} maxLength={2000} rows={2} placeholder="修正してほしい箇所を具体的に入力" disabled={busy} /></label><div className="workhub-inline-actions"><button className="workhub-secondary-button" type="button" disabled={busy} aria-label={`${entry.request.purpose}：差し戻す`} onClick={() => decide(entry, "return")}>差し戻す</button><button className="workhub-primary-button" type="button" disabled={busy} aria-label={`${entry.request.purpose}：承認する`} onClick={() => decide(entry, "approve")}>承認する</button></div></article>)}</div>
             ) : isAoi ? (
               myRequestsState === "loading" ? <p role="status">対応が必要な申請を確認しています…</p>
               : myRequestsState === "error" ? <div role="alert"><p>申請状況を取得できませんでした。0件とは限りません。</p><button className="workhub-secondary-button" type="button" onClick={() => void loadMyRequests()}>再読み込み</button></div>
