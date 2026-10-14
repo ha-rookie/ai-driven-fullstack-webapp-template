@@ -130,9 +130,11 @@ test("#99 lifecycle API rejects absent CSRF, privilege self-change and ordinary 
   });
   expect(selfStatus).toBe(403);
 
-  await page.goto("/");
-  await page.getByRole("button", { name: /ログアウト/u }).first().click();
+});
+
+test("#99 ordinary employee cannot mutate another user lifecycle", async ({ page }) => {
   await login(page, "aoi");
+  const target = "/api/admin/scopes/workhub-company/users/workhub-demo-ren/disable";
   const nonAdminStatus = await page.evaluate(async url => {
     const csrf = await fetch("/api/auth/csrf");
     const { csrfToken } = await csrf.json() as { csrfToken: string };
