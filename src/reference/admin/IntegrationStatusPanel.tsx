@@ -13,10 +13,25 @@ interface LocalEvidence {
   readonly lastDeadLetterUpdatedAt: string | null;
   readonly providerReceipt: "unverified";
 }
+type ConnectionCapability = "outbound_delivery" | "inbound_webhook" | "external_document_storage";
+interface ConnectionObservation {
+  readonly capability: ConnectionCapability;
+  readonly connectionState: "unknown";
+  readonly monitoringState: "not_monitored";
+  readonly providerCheckAt: null;
+  readonly safeFailureCode: null;
+}
+interface ConnectionProjection {
+  readonly schemaVersion: 1;
+  readonly coverage: "capability_categories";
+  readonly source: "no_provider_monitor_registered";
+  readonly connections: readonly ConnectionObservation[];
+}
 interface Snapshot {
   readonly environment: string;
   readonly observedAt: string;
   readonly evidence: LocalEvidence;
+  readonly connections: ConnectionProjection;
 }
 type State =
   | { readonly kind: "loading" }
@@ -29,10 +44,45 @@ const timestamp = (value: unknown): value is string | null =>
   value === null || (typeof value === "string" && value.length <= 64
     && Number.isFinite(Date.parse(value)));
 
+const connectionCapabilities: readonly ConnectionCapability[] = [
+  "outbound_delivery", "inbound_webhook", "external_document_storage",
+];
+const connectionLabel: Readonly<Record<ConnectionCapability, string>> = {
+  outbound_delivery: "外部配送",
+  inbound_webhook: "受信Webhook",
+  external_document_storage: "外部文書ストレージ",
+};
+/** No generic provider fields are accepted from untrusted HTTP JSON. */
+const decodeConnections = (value: unknown): ConnectionProjection | null => {
+  if (!record(value) || value.schemaVersion !== 1
+    || value.coverage !== "capability_categories"
+    || value.source !== "no_provider_monitor_registered"
+    || !Array.isArray(value.connections)
+    || value.connections.length !== connectionCapabilities.length) return null;
+  const connections: ConnectionObservation[] = [];
+  for (const capability of connectionCapabilities) {
+    const item = value.connections.find((entry: unknown) =>
+      record(entry) && entry.capability === capability);
+    if (!record(item) || item.connectionState !== "unknown"
+      || item.monitoringState !== "not_monitored"
+      || item.providerCheckAt !== null || item.safeFailureCode !== null
+      || value.connections.filter((entry: unknown) =>
+        record(entry) && entry.capability === capability).length !== 1) return null;
+    connections.push({
+      capability, connectionState: "unknown", monitoringState: "not_monitored",
+      providerCheckAt: null, safeFailureCode: null,
+    });
+  }
+  return { schemaVersion: 1, coverage: "capability_categories",
+    source: "no_provider_monitor_registered", connections };
+};
+
 const decode = (value: unknown): Snapshot | null => {
   if (!record(value) || value.coverage !== "environment"
     || typeof value.environment !== "string" || !value.environment
     || typeof value.observedAt !== "string" || !record(value.deliveryEvidence)) return null;
+  const connections = decodeConnections(value.connectionStatus);
+  if (connections === null) return null;
   const evidence = value.deliveryEvidence;
   if (evidence.kind !== "local_outbox_state" || evidence.providerReceipt !== "unverified"
     || !timestamp(evidence.lastDeliveredUpdatedAt)
@@ -40,6 +90,7 @@ const decode = (value: unknown): Snapshot | null => {
   return {
     environment: value.environment,
     observedAt: value.observedAt,
+    connections,
     evidence: {
       kind: "local_outbox_state",
       lastDeliveredUpdatedAt: evidence.lastDeliveredUpdatedAt,
@@ -94,7 +145,15 @@ export default function IntegrationStatusPanel() {
       <p>配送完了状態の最終更新: <strong>{dateLabel(state.data.evidence.lastDeliveredUpdatedAt)}</strong></p>
       <p>Dead Letter状態の最終更新: <strong>{dateLabel(state.data.evidence.lastDeadLetterUpdatedAt)}</strong></p>
       <p>外部Providerの受領照合: <strong>未照合</strong>（Outboxの配送完了は、受信先での処理成功を保証しません）</p>
-      <p>外部ストレージ接続状態: <strong>未監視</strong>（#335 Provider Adapter未接続）</p>
+      <div data-testid="integration-connection-status" aria-label="Provider共通の接続観測状態">
+        <h3>Provider共通の接続状態</h3>
+        <p>現在はProvider監視が未接続です。接続成功・障害なし・外部受領成功を意味しません。</p>
+        <ul>{state.data.connections.connections.map(item =>
+          <li key={item.capability} data-connection-capability={item.capability}>
+            {connectionLabel[item.capability]}：<strong>未監視</strong>（接続状態：不明）
+          </li>)}</ul>
+        <p>外部文書ストレージの実Provider Adapterは#335の後続実装です。</p>
+      </div>
       <a href="#admin-integration-outbox">失敗記録と個別の確認方針へ移動 →</a>
     </div>}
   </section>;
