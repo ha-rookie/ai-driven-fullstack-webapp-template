@@ -178,6 +178,45 @@ test("explicit UNKNOWN adapter result never goes to retry_wait", async () => {
   assert.equal(row?.failureCode, "delivery_outcome_unknown", "raw provider code is not stored");
 });
 
+test("malformed provider adapter result is quarantined as UNKNOWN, not silently retried", async () => {
+  // Runtime adapters (including JavaScript/third-party implementations) may
+  // violate the TypeScript contract. A malformed response is not evidence of
+  // non-delivery and must never enter retry_wait.
+  const malformed: readonly unknown[] = [
+    undefined,
+    null,
+    {},
+    { kind: "timeout", failureCode: "raw-provider-response", retryAfterMs: 1 },
+  ];
+  for (const candidate of malformed) {
+    const { clock, store, service } = fixture();
+    const created = await service.enqueue(input);
+    let deliveries = 0;
+    const adapter: IntegrationDeliveryAdapter = {
+      async deliver() {
+        deliveries += 1;
+        return candidate as Awaited<ReturnType<IntegrationDeliveryAdapter["deliver"]>>;
+      },
+    };
+    const relay = () => relayOutboxOnce({
+      environment: "test", outboxId: created.outbox.id, store, adapter, clock,
+    });
+    assert.deepEqual(await relay(), { kind: "unknown", failureCode: "delivery_outcome_unknown" });
+    const quarantined = await store.getOutbox(created.outbox.id, "test");
+    assert.equal(quarantined?.status, "dead_letter");
+    assert.equal(quarantined?.failureCode, "delivery_outcome_unknown");
+    clock.advance(60_000);
+    assert.deepEqual(await relay(), { kind: "duplicate_terminal", status: "dead_letter" });
+    assert.equal(deliveries, 1, "an invalid Provider outcome never schedules a second send");
+    const result = await redriveDeadLetterOutbox({
+      environment: "test", outboxId: created.outbox.id, actorId: "admin-1",
+      reasonCode: "provider_fixed", store, clock, authorize: () => true,
+    });
+    assert.deepEqual(result, { kind: "denied" });
+    assert.deepEqual(await store.getOutbox(created.outbox.id, "test"), quarantined);
+  }
+});
+
 test("#51 async relay classifies ambiguous provider result as nonretryable; no delivery repeats", async () => {
   const { clock, store, service } = fixture();
   const created = await service.enqueue(input);
