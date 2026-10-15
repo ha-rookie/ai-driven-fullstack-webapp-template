@@ -117,6 +117,7 @@ export type RelayOutboxResult =
   | { readonly kind: "delivered" }
   | { readonly kind: "retryable_failure"; readonly failureCode: string; readonly retryAfterMs: number }
   | { readonly kind: "permanent_failure"; readonly failureCode: string }
+  | { readonly kind: "unknown"; readonly failureCode: "delivery_outcome_unknown" }
   | { readonly kind: "duplicate_terminal"; readonly status: "delivered" | "dead_letter" }
   | { readonly kind: "not_due"; readonly retryAfterMs: number }
   | { readonly kind: "conflict" }
@@ -166,14 +167,29 @@ export const relayOutboxOnce = async (input: {
     return { kind: "permanent_failure", failureCode: "event_missing" };
   }
 
+  // The adapter may have sent the request before an exception/timeout. Its
+  // outcome is UNKNOWN, not a safe automatic retry. Quarantine in the durable
+  // dead-letter lane pending independent provider reconciliation; do not infer
+  // that the provider rejected the message.
   let delivery;
   try {
     delivery = await input.adapter.deliver({ event, destinationKey: processing.destinationKey, attempt: processing.attemptCount });
   } catch {
-    delivery = { kind: "retryable_failure" as const, failureCode: "delivery_exception" };
+    delivery = { kind: "unknown" as const };
   }
 
   const completedAt = clock.now();
+  if (delivery.kind === "unknown") {
+    const unknown: OutboxRecord = {
+      ...processing, status: "dead_letter", deadLetteredAt: completedAt.toISOString(),
+      failureCode: "delivery_outcome_unknown", version: processing.version + 1,
+      updatedAt: completedAt.toISOString(),
+    };
+    if (!await input.store.compareAndSetOutbox({
+      record: unknown, expectedVersion: processing.version, expectedStatus: "processing",
+    })) return { kind: "conflict" };
+    return { kind: "unknown", failureCode: "delivery_outcome_unknown" };
+  }
   if (delivery.kind === "delivered") {
     const delivered: OutboxRecord = { ...processing, status: "delivered", deliveredAt: completedAt.toISOString(), failureCode: null, version: processing.version + 1, updatedAt: completedAt.toISOString() };
     if (!await input.store.compareAndSetOutbox({ record: delivered, expectedVersion: processing.version, expectedStatus: "processing" })) return { kind: "conflict" };
