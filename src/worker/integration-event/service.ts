@@ -171,11 +171,24 @@ export const relayOutboxOnce = async (input: {
   // outcome is UNKNOWN, not a safe automatic retry. Quarantine in the durable
   // dead-letter lane pending independent provider reconciliation; do not infer
   // that the provider rejected the message.
-  let delivery;
+  // Treat runtime-invalid adapter results as UNKNOWN as well. TypeScript
+  // declarations cannot guarantee a third-party Provider adapter's return
+  // value; an unrecognized kind must never fall through to retry_wait.
+  let delivery: Awaited<ReturnType<IntegrationDeliveryAdapter["deliver"]>> = { kind: "unknown" };
   try {
-    delivery = await input.adapter.deliver({ event, destinationKey: processing.destinationKey, attempt: processing.attemptCount });
+    const candidate: unknown = await input.adapter.deliver({
+      event, destinationKey: processing.destinationKey, attempt: processing.attemptCount,
+    });
+    if (
+      candidate !== null && typeof candidate === "object" && "kind" in candidate
+      && (candidate.kind === "delivered"
+        || candidate.kind === "retryable_failure"
+        || candidate.kind === "permanent_failure")
+    ) {
+      delivery = candidate as Awaited<ReturnType<IntegrationDeliveryAdapter["deliver"]>>;
+    }
   } catch {
-    delivery = { kind: "unknown" as const };
+    delivery = { kind: "unknown" };
   }
 
   const completedAt = clock.now();
