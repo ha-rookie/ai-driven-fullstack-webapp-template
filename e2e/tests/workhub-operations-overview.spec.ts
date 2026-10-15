@@ -318,7 +318,7 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(unified).toContainText("inbound-1");
   await expect(unified).toContainText("送信Outbox");
   await expect(unified).toContainText("受信Webhook");
-  await expect(unified).toContainText("外部文書ストレージ");
+  await expect(unified).toContainText("外部ストレージ");
   await expect(unified).not.toContainText("never-show-queue-raw-payload");
   await expect(unified).not.toContainText("never-show-queue-credential");
   await expect(unified.getByRole("button", { name: /再送|再処理|再実行/u })).toHaveCount(0);
