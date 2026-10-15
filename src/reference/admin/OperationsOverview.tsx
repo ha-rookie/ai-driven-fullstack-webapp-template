@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import InboundWebhookFailures from "./InboundWebhookFailures";
 
 /**
  * #414: bounded read-only projection from existing server-authorized APIs.
@@ -478,6 +479,7 @@ export default function OperationsOverview() {
   const [generation, setGeneration] = useState(0);
   const [selectedOutboxId, setSelectedOutboxId] = useState<string | null>(null);
   const [showFailedPages, setShowFailedPages] = useState(false);
+  const [showInboundFailures, setShowInboundFailures] = useState(false);
   const [state, setState] = useState<
     | { readonly kind: "loading" }
     | { readonly kind: "ready"; readonly data: OverviewSnapshot }
@@ -500,6 +502,8 @@ export default function OperationsOverview() {
   const environment = ready
     ? ready.master.kind === "ready" ? ready.master.data.environment : unavailableLabel(ready.master)
     : "取得中";
+  const inboundEnvironment = ready?.master.kind === "ready"
+    ? ready.master.data.environment : outboxSnapshot?.environment ?? null;
 
   return <section id="admin-operations-overview" className="admin-audit-panel admin-operations-overview"
     aria-labelledby="admin-operations-overview-title">
@@ -559,6 +563,20 @@ export default function OperationsOverview() {
           .some((item) => item.outboxId === selectedOutboxId)
         ? <OutboxDetailPanel key={selectedOutboxId} outboxId={selectedOutboxId}
             environment={outboxSnapshot.environment} /> : null}
+    </section>
+    <section id="admin-integration-inbound" className="admin-overview-outbox"
+      aria-label="受信Webhookの失敗記録">
+      <h3>受信Webhookの失敗記録</h3>
+      <p>送信Outboxとは別の、受信側の失敗・Dead Letterを調べます。
+        既存D1の受信処理記録が対象で、Providerの疎通監視や外部ストレージの障害を示すものではありません。</p>
+      {inboundEnvironment ? <>
+        <button type="button" onClick={() => setShowInboundFailures(value => !value)}>
+          {showInboundFailures ? "受信失敗記録を閉じる" : "受信失敗記録を確認"}
+        </button>
+        {showInboundFailures
+          ? <InboundWebhookFailures key={inboundEnvironment} environment={inboundEnvironment} />
+          : null}
+      </> : <p>環境情報を取得できないため確認できません。</p>}
     </section>
     <p className="admin-overview-footnote" data-testid="operations-overview-environment">
       Server Environment: <strong>{environment}</strong> / Scope: {SCOPE_ID} / Application Version: 未提供

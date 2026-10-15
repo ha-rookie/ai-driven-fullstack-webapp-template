@@ -8,6 +8,9 @@ import { unmonitoredConnectionProjection } from "./integration-connection-projec
 const INTEGRATION_VIEW_ACTION = "integrations:view";
 const ROUTE = "/api/admin/integrations/outbox";
 const FAILURE_PAGE_ROUTE = ROUTE + "/_failures";
+const INBOUND_ROUTE = "/api/admin/integrations/inbound";
+const INBOUND_FAILURE_PAGE_ROUTE = INBOUND_ROUTE + "/_failures";
+const INBOUND_PROVIDER_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/u;
 const FAILURE_PAGE_SIZE = 20;
 const MAX_RECENT = 8;
 const MAX_SCOPE_LENGTH = 128;
@@ -87,6 +90,42 @@ const response = (payload: unknown): Response =>
 const safeFailureCode = (value: string | null): string =>
   value !== null && safeFailureCodes.has(value) ? value : "other";
 
+// A verifier/mapper may emit arbitrary diagnostic codes. Do not echo them.
+const inboundFailureCodes = new Set(["business_processing_failed", "other"]);
+const safeInboundFailureCode = (value: string | null): string =>
+  value !== null && inboundFailureCodes.has(value) ? value : "other";
+
+interface InboundFailureRow {
+  readonly id: string;
+  readonly provider_key: string;
+  readonly status: string;
+  readonly attempt_count: number;
+  readonly received_at: string;
+  readonly updated_at: string;
+  readonly failure_code: string | null;
+  readonly version: number;
+}
+
+const validInboundFailureRow = (row: InboundFailureRow): boolean =>
+  OUTBOX_ID_PATTERN.test(row.id) && INBOUND_PROVIDER_PATTERN.test(row.provider_key)
+  && (row.status === "failed" || row.status === "dead_letter")
+  && Number.isSafeInteger(row.attempt_count) && row.attempt_count >= 0
+  && Number.isSafeInteger(row.version) && row.version > 0
+  && [row.received_at, row.updated_at].every(
+    (value) => typeof value === "string" && value.length <= 64
+      && Number.isFinite(Date.parse(value)),
+  );
+
+const inboundFailureProjection = (row: InboundFailureRow) => {
+  if (!validInboundFailureRow(row)) throw new Error("Invalid inbound failure row");
+  return {
+    receiptId: row.id, providerKey: row.provider_key, status: row.status,
+    attemptCount: row.attempt_count, receivedAt: row.received_at,
+    updatedAt: row.updated_at, version: row.version,
+    failureCode: safeInboundFailureCode(row.failure_code),
+  };
+};
+
 /** Keyset cursor matches the existing Audit read-only pagination approach. */
 interface FailureCursor { readonly updatedAt: string; readonly id: string }
 const encodeFailureCursor = (cursor: FailureCursor): string =>
@@ -152,19 +191,29 @@ export const handleIntegrationOperationsApi = async (
   options: IntegrationOperationsOptions = {},
 ): Promise<Response | null> => {
   const url = new URL(request.url);
-  if (url.pathname !== ROUTE && !url.pathname.startsWith(ROUTE + "/")) return null;
+  const inboundRoute = url.pathname === INBOUND_ROUTE || url.pathname.startsWith(INBOUND_ROUTE + "/");
+  if (!inboundRoute && url.pathname !== ROUTE && !url.pathname.startsWith(ROUTE + "/")) return null;
   if (request.method !== "GET") return error(requestId, 405, "method_not_allowed", "Method not allowed");
 
-  // Individual reads remain within the same authorized single-scope endpoint.
+  // Both read families inherit the existing single-Scope/Environment guard.
   let outboxId: string | null = null;
+  let inboundReceiptId: string | null = null;
   const failurePage = url.pathname === FAILURE_PAGE_ROUTE;
-  if (url.pathname !== ROUTE && !failurePage) {
-    const encodedId = url.pathname.slice(ROUTE.length + 1);
-    try {
-      outboxId = decodeURIComponent(encodedId);
-    } catch {
+  const inboundFailurePage = url.pathname === INBOUND_FAILURE_PAGE_ROUTE;
+  if (inboundRoute && url.pathname === INBOUND_ROUTE) {
+    return error(requestId, 404, "integration_summary_unavailable", "Integration summary unavailable");
+  }
+  if (inboundRoute && !inboundFailurePage) {
+    const encodedId = url.pathname.slice(INBOUND_ROUTE.length + 1);
+    try { inboundReceiptId = decodeURIComponent(encodedId); }
+    catch { return error(requestId, 400, "invalid_integration_query", "Integration query is invalid"); }
+    if (!OUTBOX_ID_PATTERN.test(inboundReceiptId)) {
       return error(requestId, 400, "invalid_integration_query", "Integration query is invalid");
     }
+  } else if (!inboundRoute && url.pathname !== ROUTE && !failurePage) {
+    const encodedId = url.pathname.slice(ROUTE.length + 1);
+    try { outboxId = decodeURIComponent(encodedId); }
+    catch { return error(requestId, 400, "invalid_integration_query", "Integration query is invalid"); }
     if (!OUTBOX_ID_PATTERN.test(outboxId)) {
       return error(requestId, 400, "invalid_integration_query", "Integration query is invalid");
     }
@@ -181,7 +230,7 @@ export const handleIntegrationOperationsApi = async (
 
   // No arbitrary filters or pagination: a fixed, bounded operational observation only.
   if ([...url.searchParams.keys()].some((key) =>
-    key !== "scopeId" && !(failurePage && key === "cursor"))
+    key !== "scopeId" && !((failurePage || inboundFailurePage) && key === "cursor"))
     || url.searchParams.getAll("scopeId").length !== 1
     || url.searchParams.getAll("cursor").length > 1) {
     return error(requestId, 400, "invalid_integration_query", "Integration query is invalid");
@@ -217,6 +266,59 @@ export const handleIntegrationOperationsApi = async (
   }
 
   try {
+    // Read actual persisted inbound webhook failures, not provider monitoring.
+    // A receipt records no raw body; there is intentionally no replay action.
+    if (inboundFailurePage) {
+      let cursor: FailureCursor | null;
+      try { cursor = decodeFailureCursor(url.searchParams.get("cursor")); }
+      catch { return error(requestId, 400, "invalid_integration_query", "Integration query is invalid"); }
+      const sql = `
+        SELECT id, provider_key, status, attempt_count, received_at,
+          updated_at, failure_code, version
+        FROM inbound_webhook_receipts
+        WHERE environment = ? AND status IN ('failed', 'dead_letter')
+          ${cursor ? "AND (updated_at < ? OR (updated_at = ? AND id < ?))" : ""}
+        ORDER BY updated_at DESC, id DESC
+        LIMIT ?
+      `;
+      const args: (string | number)[] = [environment];
+      if (cursor) args.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
+      args.push(FAILURE_PAGE_SIZE + 1);
+      const result = await env.DB.prepare(sql).bind(...args).all<InboundFailureRow>();
+      const rows = result.results ?? [];
+      if (rows.length > FAILURE_PAGE_SIZE + 1) throw new Error("Inbound failure page exceeds bound");
+      const hasMore = rows.length > FAILURE_PAGE_SIZE;
+      const items = rows.slice(0, FAILURE_PAGE_SIZE).map(inboundFailureProjection);
+      const last = items.at(-1);
+      return response({
+        coverage: "environment", source: "local_inbound_receipt",
+        environment, observedAt: new Date().toISOString(),
+        pageLimit: FAILURE_PAGE_SIZE, items,
+        nextCursor: hasMore && last
+          ? encodeFailureCursor({ updatedAt: last.updatedAt, id: last.receiptId }) : null,
+        replayAvailable: false,
+      });
+    }
+    if (inboundReceiptId !== null) {
+      const row = await env.DB.prepare(`
+        SELECT id, provider_key, status, attempt_count, received_at,
+          updated_at, failure_code, version
+        FROM inbound_webhook_receipts
+        WHERE environment = ? AND id = ? AND status IN ('failed', 'dead_letter')
+        LIMIT 1
+      `).bind(environment, inboundReceiptId).first<InboundFailureRow>();
+      if (!row) return error(requestId, 404, "inbound_receipt_not_found", "Inbound receipt not found");
+      return response({
+        coverage: "environment", source: "local_inbound_receipt",
+        environment, observedAt: new Date().toISOString(),
+        receipt: inboundFailureProjection(row),
+        decision: {
+          nextAction: "inspect_processing_failure",
+          manualRetryAllowed: false, replayAvailable: false,
+          rationale: "Verified receipt metadata cannot safely replay a provider event.",
+        },
+      });
+    }
     if (failurePage) {
       // The exact same authorized single-Scope/Environment boundary as the
       // existing Outbox summary and detail. Never expose destination/payload.
