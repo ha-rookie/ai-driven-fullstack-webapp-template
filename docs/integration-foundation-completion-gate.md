@@ -51,6 +51,7 @@ The Core does not load or expose the underlying secret value and does not choose
 Rules:
 
 - only `dead_letter` may be re-driven
+- **except** `dead_letter` quarantined with `delivery_outcome_unknown`: generic redrive unconditionally denies it even when the authorizer allows, pending separate provider-verified reconciliation
 - an explicit authorizer is mandatory
 - original Integration Event ID and Outbox ID are preserved
 - previous attempt count is preserved
