@@ -79,7 +79,7 @@ const defaultPolicy: RolePolicy = {
 
 const safeFailureCodes = new Set([
   "event_missing", "delivery_exception", "retryable_failure", "permanent_failure",
-  "provider_unavailable", "destination_disabled",
+  "provider_unavailable", "destination_disabled", "delivery_outcome_unknown",
 ]);
 
 const error = (requestId: string, status: number, code: string, message: string): Response =>
