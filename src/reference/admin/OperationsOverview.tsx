@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import InboundWebhookFailures from "./InboundWebhookFailures";
+import InboundWebhookFailures, { ReceiptDetail } from "./InboundWebhookFailures";
+import IntegrationFailureQueue, { type FailureSelection } from "./IntegrationFailureQueue";
 
 /**
  * #414: bounded read-only projection from existing server-authorized APIs.
@@ -480,6 +481,8 @@ export default function OperationsOverview() {
   const [selectedOutboxId, setSelectedOutboxId] = useState<string | null>(null);
   const [showFailedPages, setShowFailedPages] = useState(false);
   const [showInboundFailures, setShowInboundFailures] = useState(false);
+  const [showUnifiedFailures, setShowUnifiedFailures] = useState(false);
+  const [unifiedSelection, setUnifiedSelection] = useState<FailureSelection | null>(null);
   const [state, setState] = useState<
     | { readonly kind: "loading" }
     | { readonly kind: "ready"; readonly data: OverviewSnapshot }
@@ -515,13 +518,36 @@ export default function OperationsOverview() {
       </div>
       <div className="admin-overview-refresh">
         <button type="button" disabled={state.kind === "loading"}
-          onClick={() => { setSelectedOutboxId(null); setGeneration((value) => value + 1); }}>最新状態を確認</button>
+          onClick={() => { setSelectedOutboxId(null); setUnifiedSelection(null); setGeneration((value) => value + 1); }}>最新状態を確認</button>
         <small>{ready ? "取得日時: " + new Date(ready.updatedAt).toLocaleString("ja-JP") : "取得中…"}</small>
       </div>
     </div>
     <div className="admin-overview-grid" aria-label="運用状況の概要">
       {cards.map((item) => <StatusCard key={item.title} {...item} />)}
     </div>
+    <section id="admin-integration-failure-queue" className="admin-overview-outbox"
+      aria-label="送受信の統合失敗キュー">
+      <h3>送受信の失敗をまとめて確認</h3>
+      <p>送信Outboxと受信Webhookのローカル失敗記録を、同じ時系列で一次切り分けします。
+        外部文書ストレージのProvider監視や、外部での配送結果照合は対象外です。</p>
+      {inboundEnvironment ? <>
+        <button type="button" onClick={() => {
+          setShowUnifiedFailures(open => !open);
+          setUnifiedSelection(null);
+        }}>{showUnifiedFailures ? "統合失敗キューを閉じる" : "送受信の失敗をまとめて確認"}</button>
+        {showUnifiedFailures ? <>
+          <IntegrationFailureQueue key={inboundEnvironment + ":" + generation}
+            environment={inboundEnvironment} onSelect={setUnifiedSelection} />
+          {unifiedSelection && <div data-testid="unified-failure-detail">
+            {unifiedSelection.source === "outbound_delivery"
+              ? <OutboxDetailPanel key={"outbound:" + unifiedSelection.id}
+                  outboxId={unifiedSelection.id} environment={inboundEnvironment} />
+              : <ReceiptDetail key={"inbound:" + unifiedSelection.id}
+                  receiptId={unifiedSelection.id} environment={inboundEnvironment} />}
+          </div>}
+        </> : null}
+      </> : <p>環境情報を取得できないため統合キューを表示できません。</p>}
+    </section>
     <section id="admin-integration-outbox" className="admin-overview-outbox" aria-label="外部連携の失敗記録">
       <h3>直近の外部連携失敗記録</h3>
       <p>Outboxに残っている失敗・再試行待ちの最新{outboxSnapshot?.sampleLimit ?? 8}件まで。Providerの稼働監視や配送履歴全件ではありません。</p>
