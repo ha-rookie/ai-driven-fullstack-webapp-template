@@ -10,6 +10,7 @@ const ROUTE = "/api/admin/integrations/outbox";
 const FAILURE_PAGE_ROUTE = ROUTE + "/_failures";
 const INBOUND_ROUTE = "/api/admin/integrations/inbound";
 const INBOUND_FAILURE_PAGE_ROUTE = INBOUND_ROUTE + "/_failures";
+const UNIFIED_FAILURE_ROUTE = "/api/admin/integrations/failures";
 const INBOUND_PROVIDER_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/u;
 const FAILURE_PAGE_SIZE = 20;
 const MAX_RECENT = 8;
@@ -147,6 +148,57 @@ const decodeFailureCursor = (value: string | null): FailureCursor | null => {
   } catch { throw new TypeError("Invalid failure cursor"); }
 };
 
+/**
+ * #419: A single bounded work queue over two existing LOCAL failure stores.
+ * Separate 21-row index-backed queries avoid scanning or buffering whole tables.
+ * Provider-side failures, pre-verification webhook rejection and #335 storage
+ * do not enter this result. Each entry opens its existing authorized detail.
+ */
+type LocalFailureSource = "outbound_delivery" | "inbound_webhook";
+interface UnifiedFailureCursor extends FailureCursor { readonly source: LocalFailureSource }
+interface UnifiedOutboundFailureRow {
+  readonly id: string;
+  readonly status: string;
+  readonly attempt_count: number;
+  readonly updated_at: string;
+  readonly failure_code: string | null;
+  readonly version: number;
+}
+const sourceValid = (value: unknown): value is LocalFailureSource =>
+  value === "outbound_delivery" || value === "inbound_webhook";
+const encodeUnifiedFailureCursor = (value: UnifiedFailureCursor): string =>
+  btoa(JSON.stringify(value)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
+const decodeUnifiedFailureCursor = (value: string | null): UnifiedFailureCursor | null => {
+  if (value === null) return null;
+  if (!/^[A-Za-z0-9_-]{1,512}$/u.test(value)) throw new TypeError("Invalid failure cursor");
+  try {
+    const b64 = value.replaceAll("-", "+").replaceAll("_", "/");
+    const parsed: unknown = JSON.parse(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, "=")));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new TypeError("Invalid cursor");
+    const fields = parsed as Record<string, unknown>;
+    if (!sourceValid(fields.source) || typeof fields.updatedAt !== "string"
+      || fields.updatedAt.length > 64 || !Number.isFinite(Date.parse(fields.updatedAt))
+      || typeof fields.id !== "string" || !OUTBOX_ID_PATTERN.test(fields.id)) {
+      throw new TypeError("Invalid failure cursor fields");
+    }
+    return { updatedAt: fields.updatedAt, source: fields.source, id: fields.id };
+  } catch { throw new TypeError("Invalid failure cursor"); }
+};
+const descending = (a: string, b: string): number => a > b ? -1 : a < b ? 1 : 0;
+/** Match ORDER BY updated_at DESC, source DESC, id DESC using SQLite's binary ordering. */
+const unifiedCursorWhere = (source: LocalFailureSource, cursor: UnifiedFailureCursor | null) => {
+  if (!cursor) return { sql: "", args: [] as string[] };
+  if (source === cursor.source) {
+    return {
+      sql: " AND (updated_at < ? OR (updated_at = ? AND id < ?))",
+      args: [cursor.updatedAt, cursor.updatedAt, cursor.id],
+    };
+  }
+  return source < cursor.source
+    ? { sql: " AND updated_at <= ?", args: [cursor.updatedAt] }
+    : { sql: " AND updated_at < ?", args: [cursor.updatedAt] };
+};
+
 type OutboxStatus = "pending" | "processing" | "retry_wait" | "delivered" | "dead_letter";
 
 interface OutboxDetailRow {
@@ -192,7 +244,9 @@ export const handleIntegrationOperationsApi = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   const inboundRoute = url.pathname === INBOUND_ROUTE || url.pathname.startsWith(INBOUND_ROUTE + "/");
-  if (!inboundRoute && url.pathname !== ROUTE && !url.pathname.startsWith(ROUTE + "/")) return null;
+  const unifiedFailureRoute = url.pathname === UNIFIED_FAILURE_ROUTE;
+  if (!unifiedFailureRoute && !inboundRoute
+    && url.pathname !== ROUTE && !url.pathname.startsWith(ROUTE + "/")) return null;
   if (request.method !== "GET") return error(requestId, 405, "method_not_allowed", "Method not allowed");
 
   // Both read families inherit the existing single-Scope/Environment guard.
@@ -230,7 +284,7 @@ export const handleIntegrationOperationsApi = async (
 
   // No arbitrary filters or pagination: a fixed, bounded operational observation only.
   if ([...url.searchParams.keys()].some((key) =>
-    key !== "scopeId" && !((failurePage || inboundFailurePage) && key === "cursor"))
+    key !== "scopeId" && !((failurePage || inboundFailurePage || unifiedFailureRoute) && key === "cursor"))
     || url.searchParams.getAll("scopeId").length !== 1
     || url.searchParams.getAll("cursor").length > 1) {
     return error(requestId, 400, "invalid_integration_query", "Integration query is invalid");
@@ -266,6 +320,74 @@ export const handleIntegrationOperationsApi = async (
   }
 
   try {
+    if (unifiedFailureRoute) {
+      let cursor: UnifiedFailureCursor | null;
+      try { cursor = decodeUnifiedFailureCursor(url.searchParams.get("cursor")); }
+      catch { return error(requestId, 400, "invalid_integration_query", "Integration query is invalid"); }
+      const outgoing = unifiedCursorWhere("outbound_delivery", cursor);
+      const incoming = unifiedCursorWhere("inbound_webhook", cursor);
+      // Each source is independently bounded by the existing indexed time order.
+      // Failure in either source fails the WHOLE queue closed (not falsely empty).
+      const [outboxRows, inboundRows] = await Promise.all([
+        env.DB.prepare(`
+          SELECT id, status, attempt_count, updated_at, failure_code, version
+          FROM integration_outbox
+          WHERE environment = ? AND status IN ('retry_wait', 'dead_letter')
+            ${outgoing.sql}
+          ORDER BY updated_at DESC, id DESC LIMIT ?
+        `).bind(environment, ...outgoing.args, FAILURE_PAGE_SIZE + 1).all<UnifiedOutboundFailureRow>(),
+        env.DB.prepare(`
+          SELECT id, provider_key, status, attempt_count, received_at,
+            updated_at, failure_code, version
+          FROM inbound_webhook_receipts
+          WHERE environment = ? AND status IN ('failed', 'dead_letter')
+            ${incoming.sql}
+          ORDER BY updated_at DESC, id DESC LIMIT ?
+        `).bind(environment, ...incoming.args, FAILURE_PAGE_SIZE + 1).all<InboundFailureRow>(),
+      ]);
+      const outbound = (outboxRows.results ?? []).map(row => {
+        if (!OUTBOX_ID_PATTERN.test(row.id)
+          || (row.status !== "retry_wait" && row.status !== "dead_letter")
+          || !Number.isSafeInteger(row.attempt_count) || row.attempt_count < 0
+          || !Number.isSafeInteger(row.version) || row.version < 1
+          || typeof row.updated_at !== "string" || row.updated_at.length > 64
+          || !Number.isFinite(Date.parse(row.updated_at))) throw new Error("Invalid outbound failure");
+        return {
+          source: "outbound_delivery" as const, id: row.id, status: row.status,
+          attemptCount: row.attempt_count, updatedAt: row.updated_at,
+          version: row.version, failureCode: safeFailureCode(row.failure_code),
+          providerKey: null,
+        };
+      });
+      const inbound = (inboundRows.results ?? []).map(row => {
+        const safe = inboundFailureProjection(row);
+        return {
+          source: "inbound_webhook" as const, id: safe.receiptId,
+          status: safe.status, attemptCount: safe.attemptCount,
+          updatedAt: safe.updatedAt, version: safe.version,
+          failureCode: safe.failureCode, providerKey: safe.providerKey,
+        };
+      });
+      if (outbound.length > FAILURE_PAGE_SIZE + 1 || inbound.length > FAILURE_PAGE_SIZE + 1) {
+        throw new Error("Failure queue query exceeded bound");
+      }
+      const sorted = [...outbound, ...inbound].sort((a, b) =>
+        descending(a.updatedAt, b.updatedAt)
+        || descending(a.source, b.source)
+        || descending(a.id, b.id));
+      const items = sorted.slice(0, FAILURE_PAGE_SIZE);
+      const last = items.at(-1);
+      return response({
+        coverage: "environment", source: "local_failure_queue",
+        environment, observedAt: new Date().toISOString(),
+        pageLimit: FAILURE_PAGE_SIZE, sources: ["outbound_delivery", "inbound_webhook"],
+        items, nextCursor: sorted.length > FAILURE_PAGE_SIZE && last
+          ? encodeUnifiedFailureCursor({
+            updatedAt: last.updatedAt, source: last.source, id: last.id,
+          }) : null,
+        providerReceipt: "unverified", manualRetryAllowed: false,
+      });
+    }
     // Read actual persisted inbound webhook failures, not provider monitoring.
     // A receipt records no raw body; there is intentionally no replay action.
     if (inboundFailurePage) {

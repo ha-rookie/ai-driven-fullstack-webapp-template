@@ -535,6 +535,75 @@ try {
       "inbound listing/detail must not mutate receipt or retry processing");
     console.log("Wrangler Local D1 inbound webhook failure list/detail passed: 22 paged, auth, scope/environment, masked and read-only");
 
+    // #419: true merged observation over 22 inbound + 13 outbound CURRENT failures.
+    // Records share timestamps across sources: preserve composite keyset ordering.
+    const queueUrl = baseUrl + "/api/admin/integrations/failures?scopeId=workhub-company";
+    const queueGet = (session, url = queueUrl, method = "GET") => fetch(url, {
+      method, headers: session ? { cookie: "app_session=" + session.token } : {},
+    });
+    const queueFirstResponse = await queueGet(admin);
+    assert.equal(queueFirstResponse.status, 200);
+    assert.equal(queueFirstResponse.headers.get("cache-control"), "no-store");
+    const queueFirst = await queueFirstResponse.json();
+    assert.deepEqual(queueFirst.sources, ["outbound_delivery", "inbound_webhook"]);
+    assert.equal(queueFirst.source, "local_failure_queue");
+    assert.equal(queueFirst.coverage, "environment");
+    assert.equal(queueFirst.environment, "test");
+    assert.equal(queueFirst.manualRetryAllowed, false);
+    assert.equal(queueFirst.providerReceipt, "unverified");
+    assert.equal(queueFirst.pageLimit, 20);
+    assert.equal(queueFirst.items.length, 20);
+    assert.equal(queueFirst.items[0].id, "ib-dead");
+    assert.ok(queueFirst.nextCursor);
+    const queueSecondResponse = await queueGet(admin,
+      queueUrl + "&cursor=" + encodeURIComponent(queueFirst.nextCursor));
+    assert.equal(queueSecondResponse.status, 200);
+    const queueSecond = await queueSecondResponse.json();
+    assert.equal(queueSecond.items.length, 15, "second page includes both existing transports");
+    assert.equal(queueSecond.nextCursor, null);
+    const queueItems = [...queueFirst.items, ...queueSecond.items];
+    assert.equal(queueItems.length, 35, "the whole local failure queue has 22 inbound + 13 outbound");
+    assert.equal(new Set(queueItems.map(row => row.source + ":" + row.id)).size, 35);
+    assert.equal(queueItems.filter(row => row.source === "inbound_webhook").length, 22);
+    assert.equal(queueItems.filter(row => row.source === "outbound_delivery").length, 13);
+    assert.ok(queueItems.some(row =>
+      row.source === "outbound_delivery" && row.id === "r-9" && row.failureCode === "other"));
+    assert.ok(queueItems.some(row =>
+      row.source === "inbound_webhook" && row.id === "ib-dead" && row.failureCode === "other"));
+    assert.ok(!queueItems.some(row => ["pd-0", "ib-prod", "ib-ok", "done"].includes(row.id)));
+    assert.ok(queueItems.every(row => !("payload" in row) && !("replayKey" in row)
+      && !("destinationKey" in row) && !("providerEventId" in row)));
+    assert.ok(!JSON.stringify(queueItems).includes("sensitive-provider-credential")
+      && !JSON.stringify(queueItems).includes("private-replay-token")
+      && !JSON.stringify(queueItems).includes("private.business.event"));
+    const orderKey = row => [row.updatedAt, row.source, row.id];
+    for (let i = 1; i < queueItems.length; i++) {
+      const before = orderKey(queueItems[i - 1]);
+      const after = orderKey(queueItems[i]);
+      assert.ok(before[0] > after[0]
+        || (before[0] === after[0] && (before[1] > after[1]
+          || (before[1] === after[1] && before[2] > after[2]))),
+      "composite keyset must remain globally sorted across equal timestamps and channels");
+    }
+    assert.equal((await queueGet(null)).status, 401);
+    assert.equal((await queueGet(observer)).status, 403);
+    assert.equal((await queueGet(admin, queueUrl + "&cursor=bad!")).status, 400);
+    assert.equal((await queueGet(admin, queueUrl + "&cursor=YWJj")).status, 400);
+    assert.equal((await queueGet(admin, queueUrl + "&cursor=a&cursor=b")).status, 400);
+    assert.equal((await queueGet(admin, queueUrl + "&status=failed")).status, 400);
+    assert.equal((await queueGet(admin,
+      baseUrl + "/api/admin/integrations/failures?scopeId=other-company")).status, 403);
+    assert.equal((await queueGet(admin, queueUrl, "POST")).status, 405);
+    const sourceAfterQueue = await db.prepare(
+      "SELECT version,status FROM integration_outbox WHERE id='dl-1' AND environment='test'",
+    ).first();
+    assert.deepEqual(sourceAfterQueue, { version: 1, status: "dead_letter" });
+    const inboundAfterQueue = await db.prepare(
+      "SELECT version,status FROM inbound_webhook_receipts WHERE id='ib-dead' AND environment='test'",
+    ).first();
+    assert.deepEqual(inboundAfterQueue, { version: 3, status: "dead_letter" });
+    console.log("Wrangler Local D1 unified integration failure queue passed: 35 merged / 2 pages / same timestamp / auth / masking / no mutations");
+
     await assertWorkerRead(projectSchedule, admin, ["schedule"]);
     await assertWorkerRead(projectRetire, admin, ["retire"]);
     await assertWorkerRead(projectReadOnly, admin, []);
@@ -580,6 +649,8 @@ try {
       "inbound failure list must revoke privileges on the same live session");
     assert.equal((await inboundGet(admin, inboundDetailUrl)).status, 403,
       "inbound failure detail must revoke privileges on the same live session");
+    assert.equal((await queueGet(admin)).status, 403,
+      "cross-channel failure queue must revoke privileges on the same live session");
   } finally {
     await new Promise((resolve, reject) =>
       httpServer.close((err) => err ? reject(err) : resolve()));
