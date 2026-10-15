@@ -179,7 +179,7 @@ const hasOutboxSummary = (value: unknown): value is OutboxSummary =>
     && typeof item.updatedAt === "string" && typeof item.failureCode === "string");
 const safeFailureCodes = new Set([
   "event_missing", "delivery_exception", "retryable_failure", "permanent_failure",
-  "provider_unavailable", "destination_disabled", "other",
+  "provider_unavailable", "destination_disabled", "delivery_outcome_unknown", "other",
 ]);
 const hasFailedOutboxPage = (value: unknown): value is FailedOutboxPage =>
   isRecord(value) && value.coverage === "environment"
@@ -404,6 +404,11 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
           <p>再試行可能になる予定時刻：{detail.data.outbox.availableAt}
             {" / 最終試行：" + (detail.data.outbox.lastAttemptAt ?? "記録なし")}</p>
           <p>更新：{detail.data.outbox.updatedAt} / 診断コード：{detail.data.outbox.failureCode}</p>
+          {detail.data.outbox.failureCode === "delivery_outcome_unknown" && (
+            <p data-testid="delivery-outcome-unknown"><strong>配送結果不明・自動再送停止：</strong>
+              タイムアウト等の後に外部Providerが受領済みの可能性があります。
+              既存Redriveも拒否されます。外部側の結果が確認されるまで再送しないでください。</p>
+          )}
           <p><strong>次の確認：</strong>{actionLabel[detail.data.decision.nextAction]}</p>
           <p>外部配送結果：未照合。再送可否は判断できません（この画面では再送しません）。</p>
           <p data-testid="outbox-operation-gate">
