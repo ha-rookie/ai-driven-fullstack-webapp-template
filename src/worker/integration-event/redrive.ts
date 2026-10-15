@@ -54,6 +54,10 @@ export const redriveDeadLetterOutbox = async (input: {
   if (current.status !== "dead_letter") {
     return { kind: "not_dead_letter", status: current.status };
   }
+  // Even a caller-supplied allow decision cannot clear an ambiguous external
+  // outcome. This helper has no authenticated provider-receipt evidence; a
+  // distinct #419 reconciliation operation must be implemented before redrive.
+  if (current.failureCode === "delivery_outcome_unknown") return { kind: "denied" };
 
   const authorized = await input.authorize({
     environment: input.environment,

@@ -37,7 +37,7 @@ const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/u;
 const providerPattern = /^[a-z][a-z0-9._-]{0,63}$/u;
 const allowedOutboxCodes = new Set([
   "event_missing", "delivery_exception", "retryable_failure",
-  "permanent_failure", "provider_unavailable", "destination_disabled", "other",
+  "permanent_failure", "provider_unavailable", "destination_disabled", "delivery_outcome_unknown", "other",
 ]);
 const allowedInboundCodes = new Set(["business_processing_failed", "other"]);
 const validItem = (value: unknown): value is FailureItem => {

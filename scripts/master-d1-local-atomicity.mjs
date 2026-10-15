@@ -276,6 +276,12 @@ try {
     id.startsWith("pending-future-") ? "2099-01-01T00:00:00.000Z" : createdAt, 1,
     id === "r-9" ? "sensitive-provider-credential" : "provider_unavailable", 1, createdAt, createdAt)));
 
+  // A provider exception may mean accepted-but-response-lost. Keep the existing
+  // dead-letter record for manual reconciliation; never claim retry eligibility.
+  await db.prepare(
+    "UPDATE integration_outbox SET failure_code = ? WHERE environment = ? AND id = ?",
+  ).bind("delivery_outcome_unknown", "test", "dl-1").run();
+
   // Existing #304 inbound receipt persistence: no new schema or live Provider.
   // 22 current failures exceed one page, while processed/other Environment
   // records must never appear. Tokens/event identity are not read by the API.
@@ -454,6 +460,19 @@ try {
       + "/api/admin/integrations/outbox/dl-1?scopeId=other-company")).status, 403);
     assert.equal((await db.prepare("SELECT version FROM integration_outbox WHERE id='dl-1' AND environment='test'")
       .first()).version, 1, "read-only detail never modifies Outbox");
+    const unknownDeliveryDetail = await outboxGet(admin,
+      baseUrl + "/api/admin/integrations/outbox/dl-1?scopeId=workhub-company");
+    assert.equal(unknownDeliveryDetail.status, 200);
+    const unknownDeliveryBody = await unknownDeliveryDetail.json();
+    assert.equal(unknownDeliveryBody.outbox.status, "dead_letter");
+    assert.equal(unknownDeliveryBody.outbox.failureCode, "delivery_outcome_unknown");
+    assert.equal(unknownDeliveryBody.decision.nextAction, "reconcile_external_first");
+    assert.equal(unknownDeliveryBody.decision.manualRetryAllowed, false);
+    assert.equal(unknownDeliveryBody.decision.operationGate.policyDecision, "DENY");
+    assert.equal(unknownDeliveryBody.decision.operationGate.blocker, "provider_receipt_unverified");
+    assert.equal((await db.prepare(
+      "SELECT version FROM integration_outbox WHERE id = ? AND environment = ?",
+    ).bind("dl-1", "test").first()).version, 1);
     console.log("Wrangler Local D1 Outbox detail passed: read only, reconcile guidance, mask, cross-environment denial");
 
     // Actual Worker HTTP + real isolated D1 inbound webhook failure drilldown.

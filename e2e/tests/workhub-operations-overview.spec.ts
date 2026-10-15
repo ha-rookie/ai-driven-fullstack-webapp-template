@@ -115,7 +115,7 @@ test("overview summarizes bounded authorized signals without claiming complete h
       outbox: { outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
         availableAt: "2026-10-09T00:00:00.000Z", lastAttemptAt: "2026-10-09T00:00:00.000Z",
         deliveredAt: null, deadLetteredAt: "2026-10-10T00:00:00.000Z",
-        updatedAt: "2026-10-10T00:00:00.000Z", version: 3, failureCode: "other" },
+        updatedAt: "2026-10-10T00:00:00.000Z", version: 3, failureCode: "delivery_outcome_unknown" },
       decision: { nextAction: "reconcile_external_first", providerOutcome: "unverified",
         manualRetryAllowed: false,
         operationGate: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
@@ -281,6 +281,8 @@ test("overview summarizes bounded authorized signals without claiming complete h
   const detail = page.getByTestId("outbox-detail");
   await expect(detail).toContainText("外部サービス側の配送結果を照合してください");
   await expect(detail).toContainText("Version: 3");
+  await expect(detail.getByTestId("delivery-outcome-unknown")).toContainText("自動再送停止");
+  await expect(detail.getByTestId("delivery-outcome-unknown")).toContainText("既存Redriveも拒否されます");
   await expect(detail).toContainText("外部配送結果：未照合");
   await expect(detail.getByTestId("outbox-operation-gate")).toContainText("共通Operations Core判定：再送禁止");
   await expect(detail.getByTestId("outbox-operation-gate")).toContainText("CONTROLLED_CHANGE");

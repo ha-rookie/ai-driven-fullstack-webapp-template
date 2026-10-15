@@ -46,6 +46,11 @@ export const createIntegrationOutboxRelayJobHandler = (input: {
   if (result.kind === "retryable_failure") {
     throw new AsyncJobExecutionError({ retryable: true, code: result.failureCode });
   }
+  if (result.kind === "unknown") {
+    // A provider may already have accepted the payload. Never reschedule a
+    // blind send: only a separate verified reconcile operation may resolve it.
+    throw new AsyncJobExecutionError({ retryable: false, code: result.failureCode });
+  }
   if (result.kind === "not_due") {
     throw new AsyncJobExecutionError({ retryable: true, code: "outbox_not_due" });
   }

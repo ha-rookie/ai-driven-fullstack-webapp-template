@@ -59,8 +59,13 @@ export interface IntegrationDeliveryRequest {
   readonly attempt: number;
 }
 
+/**
+ * retryable_failure is ONLY valid when an adapter has positive evidence that
+ * delivery had no external side effect. An HTTP timeout, exception or ambiguous
+ * response must return unknown (or throw), never retryable_failure.
+ */
 export interface IntegrationDeliveryResult {
-  readonly kind: "delivered" | "retryable_failure" | "permanent_failure";
+  readonly kind: "delivered" | "retryable_failure" | "permanent_failure" | "unknown";
   readonly failureCode?: string;
   readonly retryAfterMs?: number;
   readonly providerRequestId?: string;
