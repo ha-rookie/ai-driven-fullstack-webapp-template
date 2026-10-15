@@ -187,6 +187,18 @@ test("malformed provider adapter result is quarantined as UNKNOWN, not silently 
     null,
     {},
     { kind: "timeout", failureCode: "raw-provider-response", retryAfterMs: 1 },
+    // Recognized discriminators must not launder arbitrary Provider values
+    // into D1, nor treat an invalid scheduling hint as safe non-delivery.
+    { kind: "retryable_failure", failureCode: "Bearer raw-api-token", retryAfterMs: 1 },
+    { kind: "retryable_failure", failureCode: { rawCredential: "secret" }, retryAfterMs: 1 },
+    { kind: "retryable_failure", failureCode: "unknown_provider_message", retryAfterMs: 1 },
+    { kind: "retryable_failure", failureCode: "provider_unavailable", retryAfterMs: "1000" },
+    { kind: "retryable_failure", failureCode: "provider_unavailable", retryAfterMs: 0 },
+    { kind: "retryable_failure", failureCode: "provider_unavailable", retryAfterMs: -1 },
+    { kind: "retryable_failure", failureCode: "provider_unavailable", retryAfterMs: Number.NaN },
+    { kind: "retryable_failure", failureCode: "provider_unavailable", retryAfterMs: Number.MAX_SAFE_INTEGER + 1 },
+    { kind: "permanent_failure", failureCode: "raw-client-secret-value" },
+    { kind: "permanent_failure", failureCode: ["secret"] },
   ];
   for (const candidate of malformed) {
     const { clock, store, service } = fixture();
@@ -215,6 +227,41 @@ test("malformed provider adapter result is quarantined as UNKNOWN, not silently 
     assert.deepEqual(result, { kind: "denied" });
     assert.deepEqual(await store.getOutbox(created.outbox.id, "test"), quarantined);
   }
+});
+
+test("known safe delivery codes preserve existing retry/default and dead-letter behavior", async () => {
+  const first = fixture();
+  const retrying = await first.service.enqueue(input);
+  const safeRetry = await relayOutboxOnce({
+    environment: "test", outboxId: retrying.outbox.id, store: first.store,
+    adapter: { async deliver() { return { kind: "retryable_failure" }; } }, clock: first.clock,
+  });
+  assert.deepEqual(safeRetry, {
+    kind: "retryable_failure", failureCode: "retryable_failure", retryAfterMs: 30_000,
+  });
+  const pending = await first.store.getOutbox(retrying.outbox.id, "test");
+  assert.equal(pending?.status, "retry_wait");
+  assert.equal(pending?.failureCode, "retryable_failure");
+
+  const second = fixture();
+  const terminated = await second.service.enqueue(input);
+  assert.deepEqual(await relayOutboxOnce({
+    environment: "test", outboxId: terminated.outbox.id, store: second.store,
+    adapter: { async deliver() { return { kind: "permanent_failure" }; } }, clock: second.clock,
+  }), { kind: "permanent_failure", failureCode: "permanent_failure" });
+  assert.equal((await second.store.getOutbox(terminated.outbox.id, "test"))?.status, "dead_letter");
+
+  const third = fixture();
+  const capped = await third.service.enqueue(input);
+  const result = await relayOutboxOnce({
+    environment: "test", outboxId: capped.outbox.id, store: third.store,
+    adapter: { async deliver() {
+      return { kind: "retryable_failure", failureCode: "provider_unavailable",
+        retryAfterMs: 48 * 60 * 60 * 1000 };
+    } }, clock: third.clock,
+  });
+  assert.deepEqual(result, { kind: "retryable_failure",
+    failureCode: "provider_unavailable", retryAfterMs: 24 * 60 * 60 * 1000 });
 });
 
 test("#51 async relay classifies ambiguous provider result as nonretryable; no delivery repeats", async () => {

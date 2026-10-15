@@ -74,6 +74,12 @@ External delivery happens before the local Outbox can be marked `delivered`. A c
 
 Permanent adapter failures move the Outbox to `dead_letter`. **Only provider-verified non-delivery** may be returned as `retryable_failure` and move to `retry_wait`; #51 then owns retry execution. An adapter must never classify a network timeout, exception, or ambiguous provider response as proven non-delivery.
 
+## Adapter outcome payload validation — #419/#430
+
+Provider Adapters are a runtime trust boundary; TypeScript types alone do not validate JavaScript, third-party SDK or network-derived results. `relayOutboxOnce` only acts on explicit `delivered`, `retryable_failure` or `permanent_failure` discriminators. For failure kinds, the optional `failureCode` must be one of the **versioned safe codes** recognized by the relay (including reference-only `temporary` / `provider_rejected`), never a raw Provider message or credential. A missing code uses its known kind-specific generic code. A present malformed/unrecognized code never reaches D1 or jobs: the outcome is quarantined as `delivery_outcome_unknown`.
+
+An optional `retryAfterMs` must be a positive safe integer when supplied; absent means the existing default (30 seconds), and a valid large value is capped at 24 hours. A present zero/negative/non-numeric/unsafe value is not interpreted as permission to retry. A malformed recognized-kind result, like a missing/unrecognized kind, is quarantined as UNKNOWN, not rescheduled. This is runtime-shape validation, **not** proof that an adapter truthfully classified non-delivery: adapters must independently substantiate `retryable_failure`, and actual Provider receipt reconciliation remains unimplemented.
+
 ## UNKNOWN external delivery outcome — #419/#430 fail-safe
 
 If the adapter throws (including timeout after the request may have reached the provider), explicitly reports `unknown`, or returns a **missing / unrecognized runtime outcome** (for example, a malformed Provider response), `relayOutboxOnce` records the durable `dead_letter` status with the **distinguishing** safe failure code `delivery_outcome_unknown`. This is a **quarantine for investigation**, not proof of permanent rejection or proof of failure. The #51 job classifies this result as non-retryable so an automatic scheduled re-send cannot duplicate a possibly accepted external side effect. A repeat relay call will see terminal `dead_letter` and will not invoke the Provider again.

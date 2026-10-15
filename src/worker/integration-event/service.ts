@@ -13,6 +13,13 @@ const DESTINATION_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/;
 const SENSITIVE_TERMS = ["authorization", "cookie", "credential", "password", "secret", "session", "token"] as const;
 const DEFAULT_RETRY_AFTER_MS = 30_000;
 const MAX_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
+// Never persist raw Provider diagnostic text (including credential-like strings).
+// Extend this versioned list only after auditing a new provider-neutral code.
+const SAFE_DELIVERY_FAILURE_CODES = new Set([
+  "event_missing", "delivery_exception", "retryable_failure", "permanent_failure",
+  "provider_unavailable", "destination_disabled", "delivery_outcome_unknown",
+  "provider_rejected", "temporary", "other",
+]);
 
 const assertIdentifier = (value: string, name: string): void => {
   if (!IDENTIFIER_PATTERN.test(value)) throw new TypeError(`${name} must be a bounded opaque identifier`);
@@ -124,9 +131,24 @@ export type RelayOutboxResult =
   | { readonly kind: "missing" };
 
 const normalizeRetryAfter = (value: number | undefined): number =>
-  Number.isSafeInteger(value) && value !== undefined && value > 0
-    ? Math.min(value, MAX_RETRY_AFTER_MS)
-    : DEFAULT_RETRY_AFTER_MS;
+  value === undefined ? DEFAULT_RETRY_AFTER_MS : Math.min(value, MAX_RETRY_AFTER_MS);
+
+// A known discriminator with malformed fields is still an untrusted runtime
+// result. Do not interpret an invalid retry hint as a default safe re-send.
+const validDeliveryOutcomePayload = (value: Record<string, unknown>): boolean => {
+  if (value.kind === "delivered") return true;
+  if (value.failureCode !== undefined
+    && (typeof value.failureCode !== "string"
+      || !SAFE_DELIVERY_FAILURE_CODES.has(value.failureCode))) return false;
+  if (value.kind === "retryable_failure") {
+    return value.retryAfterMs === undefined || (
+      typeof value.retryAfterMs === "number"
+      && Number.isSafeInteger(value.retryAfterMs)
+      && value.retryAfterMs > 0
+    );
+  }
+  return value.kind === "permanent_failure";
+};
 
 export const relayOutboxOnce = async (input: {
   readonly environment: string;
@@ -184,6 +206,7 @@ export const relayOutboxOnce = async (input: {
       && (candidate.kind === "delivered"
         || candidate.kind === "retryable_failure"
         || candidate.kind === "permanent_failure")
+      && validDeliveryOutcomePayload(candidate as Record<string, unknown>)
     ) {
       delivery = candidate as Awaited<ReturnType<IntegrationDeliveryAdapter["deliver"]>>;
     }
