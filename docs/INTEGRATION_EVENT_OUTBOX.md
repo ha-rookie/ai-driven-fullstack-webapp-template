@@ -82,6 +82,12 @@ The existing generic `redriveDeadLetterOutbox` helper **unconditionally denies**
 
 Other existing explicit `retryable_failure` adapter results retain the normal backoff behavior, but adapters MUST guarantee no external side effect when emitting them. The system does not offer exactly-once delivery; callers still need stable identities, deduplication, and Provider-specific receipts.
 
+## Local integration failure queue (#419 operator view)
+
+The Admin Operations Overview combines **local** Outbox (`retry_wait` / `dead_letter`) and verified inbound webhook receipt (`failed` / `dead_letter`) records in one bounded, environment-scoped, authorized read-only failure queue. An entry opens its existing separately authorized local detail endpoint. It is **not** a Provider-side error history, an external-storage monitor or proof that the Provider accepted or rejected a message. A zero-row result does not imply healthy integrations.
+
+The UI displays the server's `observedAt` time (not a guaranteed snapshot or SLA time) and has an explicit **refresh this queue** control. Refresh and moving between pages clear the previously selected detail before the next read, so an older row is not mistaken for the current list entry. A denied, malformed or unavailable read must remain unavailable, never be represented as a healthy zero. Refresh performs only the existing GET and must not trigger delivery, replay, reconciliation or any other remote side effect.
+
 ## Environment isolation
 
 Integration Event and Outbox primary/unique keys include `environment`. Preview and Production must not share destinations, secrets, or endpoints by implicit fallback.

@@ -318,6 +318,8 @@ test("overview summarizes bounded authorized signals without claiming complete h
   const unified = page.getByTestId("unified-integration-failures");
   await expect(unified).toContainText("safe-1");
   await expect(unified).toContainText("inbound-1");
+  await expect(unified.getByTestId("unified-queue-observed-at"))
+    .toContainText("2026-10-10T00:00:00.000Z");
   await expect(unified).toContainText("送信Outbox");
   await expect(unified).toContainText("受信Webhook");
   await expect(unified).toContainText("外部ストレージ");
@@ -332,9 +334,18 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(unifiedDetail.getByTestId("inbound-webhook-detail")).toContainText("受信Webhookの個別確認：inbound-1");
   await expect(unifiedDetail).toContainText("再実行不可");
   await unified.getByRole("button", { name: "次の20件" }).click();
+  await expect(unifiedDetail).toHaveCount(0); // Prior-page detail must not survive paging.
   await expect(unified).toContainText("older-queue");
   await unified.getByRole("button", { name: "前の20件" }).click();
   await expect(unified).toContainText("safe-1");
+  await expect(unifiedDetail).toHaveCount(0);
+  await unified.getByRole("button", { name: "個別詳細を確認" }).first().click();
+  await expect(unifiedDetail).toContainText("safe-1");
+  await unified.getByRole("button", { name: "失敗記録を更新" }).click();
+  await expect(unifiedDetail).toHaveCount(0); // Refresh discards stale selection.
+  await expect(unified).toContainText("inbound-1");
+  await expect(unified.getByTestId("unified-queue-observed-at"))
+    .toContainText("キュー取得時点");
   // A corrupt provider key invalidates the WHOLE response, never displays untrusted data.
   queueCorrupted = true;
   await unifiedSection.getByRole("button", { name: "統合失敗キューを閉じる" }).click();

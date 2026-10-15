@@ -21,6 +21,7 @@ interface FailurePage {
   readonly coverage: "environment";
   readonly source: "local_failure_queue";
   readonly environment: string;
+  readonly observedAt: string;
   readonly pageLimit: 20;
   readonly sources: readonly ["outbound_delivery", "inbound_webhook"];
   readonly items: readonly FailureItem[];
@@ -59,6 +60,8 @@ const validPage = (value: unknown): value is FailurePage =>
   record(value) && value.coverage === "environment"
   && value.source === "local_failure_queue"
   && typeof value.environment === "string" && value.environment.length > 0
+  && typeof value.observedAt === "string" && value.observedAt.length <= 64
+  && Number.isFinite(Date.parse(value.observedAt))
   && value.pageLimit === 20 && value.providerReceipt === "unverified"
   && value.manualRetryAllowed === false
   && Array.isArray(value.sources) && value.sources.length === 2
@@ -72,13 +75,16 @@ export default function IntegrationFailureQueue({
   environment, onSelect,
 }: {
   readonly environment: string;
-  readonly onSelect: (selection: FailureSelection) => void;
+  readonly onSelect: (selection: FailureSelection | null) => void;
 }) {
   const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [refreshSequence, setRefreshSequence] = useState(0);
   const cursor = cursors[cursors.length - 1];
   useEffect(() => {
     let active = true;
+    // A detail selected from an older read/page must never remain visible.
+    onSelect(null);
     setState({ kind: "loading" });
     const url = ENDPOINT + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
     void (async () => {
@@ -98,16 +104,22 @@ export default function IntegrationFailureQueue({
       }
     })();
     return () => { active = false; };
-  }, [environment, cursor]);
+  }, [environment, cursor, refreshSequence, onSelect]);
   return <div className="admin-audit-state" data-testid="unified-integration-failures">
     <h4>横断失敗キュー（ローカル送信・受信の2系統）</h4>
     <p>既存Outboxと受信Receiptの失敗を最終更新日時で並べます。
       外部Providerの障害履歴・外部ストレージ・署名検証前の拒否は含みません。
       0件でも正常とは限らず、このキューから再送・再処理はできません。</p>
+    <button type="button" onClick={() => {
+      onSelect(null);
+      setCursors([null]);
+      setRefreshSequence(value => value + 1);
+    }}>失敗記録を更新</button>
     {state.kind === "loading" && <p role="status">失敗記録を取得中…</p>}
     {state.kind === "denied" && <p role="status">閲覧権限がありません</p>}
     {state.kind === "unknown" && <p role="status">両系統の失敗記録を取得できません（0件・正常とは判定しません）</p>}
     {state.kind === "ready" && <>
+      <p data-testid="unified-queue-observed-at">キュー取得時点：{state.page.observedAt}（ローカル記録）</p>
       {state.page.items.length === 0
         ? <p>現在の対象記録は該当なし（Providerの正常性は未確認）</p>
         : <ul>{state.page.items.map(item => <li key={item.source + ":" + item.id}>
@@ -121,10 +133,13 @@ export default function IntegrationFailureQueue({
         </li>)}</ul>}
       <div className="admin-retry-actions">
         <button type="button" disabled={cursors.length === 1}
-          onClick={() => setCursors(values => values.slice(0, -1))}>前の20件</button>
+          onClick={() => { onSelect(null); setCursors(values => values.slice(0, -1)); }}>前の20件</button>
         <button type="button" disabled={!state.page.nextCursor}
           onClick={() => {
-            if (state.page.nextCursor) setCursors(values => [...values, state.page.nextCursor]);
+            if (state.page.nextCursor) {
+              onSelect(null);
+              setCursors(values => [...values, state.page.nextCursor]);
+            }
           }}>次の20件</button>
       </div>
     </>}
