@@ -230,6 +230,35 @@ test("overview summarizes bounded authorized signals without claiming complete h
         rawPayload: "never-show-inbound-payload",
       }),
     }));
+  let queueCorrupted = false;
+  await page.route("**/api/admin/integrations/failures?**", route => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    const items = cursor === null
+      ? [
+        { source: "outbound_delivery", id: "safe-1", status: "dead_letter",
+          attemptCount: 2, updatedAt: "2026-10-10T00:00:00.000Z",
+          version: 3, failureCode: "other", providerKey: null },
+        { source: "inbound_webhook", id: "inbound-1", status: "dead_letter",
+          attemptCount: 3, updatedAt: "2026-10-10T00:00:00.000Z",
+          version: 5, failureCode: "business_processing_failed",
+          providerKey: queueCorrupted ? "untrusted<script>" : "demo.webhook" },
+      ] : [
+        { source: "outbound_delivery", id: "older-queue", status: "retry_wait",
+          attemptCount: 1, updatedAt: "2026-10-09T00:00:00.000Z",
+          version: 2, failureCode: "provider_unavailable", providerKey: null },
+      ];
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        coverage: "environment", source: "local_failure_queue",
+        environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+        pageLimit: 20, sources: ["outbound_delivery", "inbound_webhook"],
+        items, nextCursor: cursor === null ? "queue2" : null,
+        providerReceipt: "unverified", manualRetryAllowed: false,
+        rawPayload: "never-show-queue-raw-payload",
+        secret: "never-show-queue-secret",
+      }),
+    });
+  });
   await page.goto("/admin");
   const summary = page.locator("#admin-operations-overview");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
@@ -281,6 +310,38 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await paged.getByRole("button", { name: "前の20件" }).click();
   await expect(paged).toContainText("safe-1");
   await expect(paged.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+  // #419 unified local queue reuses both existing independently-authorized detail routes.
+  const unifiedSection = page.locator("#admin-integration-failure-queue");
+  await unifiedSection.getByRole("button", { name: "送受信の失敗をまとめて確認" }).click();
+  const unified = page.getByTestId("unified-integration-failures");
+  await expect(unified).toContainText("safe-1");
+  await expect(unified).toContainText("inbound-1");
+  await expect(unified).toContainText("送信Outbox");
+  await expect(unified).toContainText("受信Webhook");
+  await expect(unified).toContainText("外部文書ストレージ");
+  await expect(unified).not.toContainText("never-show-queue-raw-payload");
+  await expect(unified).not.toContainText("never-show-queue-secret");
+  await expect(unified.getByRole("button", { name: /再送|再処理|再実行/u })).toHaveCount(0);
+  await unified.getByRole("button", { name: "個別詳細を確認" }).first().click();
+  const unifiedDetail = page.getByTestId("unified-failure-detail");
+  await expect(unifiedDetail.getByTestId("outbox-detail")).toContainText("個別Outbox確認：safe-1");
+  await expect(unifiedDetail).toContainText("再送禁止");
+  await unified.getByRole("button", { name: "個別詳細を確認" }).nth(1).click();
+  await expect(unifiedDetail.getByTestId("inbound-webhook-detail")).toContainText("受信Webhookの個別確認：inbound-1");
+  await expect(unifiedDetail).toContainText("再実行不可");
+  await unified.getByRole("button", { name: "次の20件" }).click();
+  await expect(unified).toContainText("older-queue");
+  await unified.getByRole("button", { name: "前の20件" }).click();
+  await expect(unified).toContainText("safe-1");
+  // A corrupt provider key invalidates the WHOLE response, never displays untrusted data.
+  queueCorrupted = true;
+  await unifiedSection.getByRole("button", { name: "統合失敗キューを閉じる" }).click();
+  await unifiedSection.getByRole("button", { name: "送受信の失敗をまとめて確認" }).click();
+  await expect(page.getByTestId("unified-integration-failures"))
+    .toContainText("両系統の失敗記録を取得できません");
+  await expect(unifiedSection).not.toContainText("untrusted<script>");
+  await expect(unifiedSection.getByRole("button", { name: /再送|再処理|再実行/u })).toHaveCount(0);
+  await unifiedSection.getByRole("button", { name: "統合失敗キューを閉じる" }).click();
   // An untrusted HTTP response must never turn a forged ALLOW into an action.
   forgedDecision = true;
   await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
