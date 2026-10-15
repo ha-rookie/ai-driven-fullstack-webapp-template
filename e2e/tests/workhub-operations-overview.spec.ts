@@ -255,7 +255,7 @@ test("overview summarizes bounded authorized signals without claiming complete h
         items, nextCursor: cursor === null ? "queue2" : null,
         providerReceipt: "unverified", manualRetryAllowed: false,
         rawPayload: "never-show-queue-raw-payload",
-        secret: "never-show-queue-secret",
+        suppressedProviderCredential: "never-show-queue-credential",
       }),
     });
   });
@@ -320,7 +320,7 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(unified).toContainText("受信Webhook");
   await expect(unified).toContainText("外部文書ストレージ");
   await expect(unified).not.toContainText("never-show-queue-raw-payload");
-  await expect(unified).not.toContainText("never-show-queue-secret");
+  await expect(unified).not.toContainText("never-show-queue-credential");
   await expect(unified.getByRole("button", { name: /再送|再処理|再実行/u })).toHaveCount(0);
   await unified.getByRole("button", { name: "個別詳細を確認" }).first().click();
   const unifiedDetail = page.getByTestId("unified-failure-detail");
