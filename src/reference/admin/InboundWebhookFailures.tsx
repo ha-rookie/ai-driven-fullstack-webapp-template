@@ -84,7 +84,7 @@ const request = async <T,>(path: string, valid: (value: unknown) => value is T):
 const unavailable = (result: Result<unknown>): string =>
   result.kind === "denied" ? "閲覧権限がありません" : "取得できません（正常・0件とは判定しません）";
 
-function ReceiptDetail({ receiptId, environment }: {
+export function ReceiptDetail({ receiptId, environment }: {
   readonly receiptId: string; readonly environment: string;
 }) {
   const [state, setState] = useState<Result<FailureDetail> | null>(null);
