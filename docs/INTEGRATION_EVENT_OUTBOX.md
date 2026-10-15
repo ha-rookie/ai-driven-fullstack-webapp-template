@@ -72,7 +72,15 @@ The same `(environment, integrationEventId, destinationKey)` is unique. A determ
 
 External delivery happens before the local Outbox can be marked `delivered`. A crash or CAS conflict after the provider accepted the request can cause a later retry. This is an inherent at-least-once boundary. Provider adapters should use the stable event identity as an idempotency key when the provider supports it.
 
-Permanent adapter failures move the Outbox to `dead_letter`. Retryable failures move it to `retry_wait`; #51 then owns retry execution.
+Permanent adapter failures move the Outbox to `dead_letter`. **Only provider-verified non-delivery** may be returned as `retryable_failure` and move to `retry_wait`; #51 then owns retry execution. An adapter must never classify a network timeout, exception, or ambiguous provider response as proven non-delivery.
+
+## UNKNOWN external delivery outcome — #419/#430 fail-safe
+
+If the adapter throws (including timeout after the request may have reached the provider) or explicitly reports `unknown`, `relayOutboxOnce` records the durable `dead_letter` status with the **distinguishing** safe failure code `delivery_outcome_unknown`. This is a **quarantine for investigation**, not proof of permanent rejection or proof of failure. The #51 job classifies this result as non-retryable so an automatic scheduled re-send cannot duplicate a possibly accepted external side effect. A repeat relay call will see terminal `dead_letter` and will not invoke the Provider again.
+
+The existing generic `redriveDeadLetterOutbox` helper **unconditionally denies** records with `delivery_outcome_unknown`, even if a caller supplies an authorizer that returns true. This safeguard cannot be bypassed by `reasonCode`, an authorization decision, or advancing a clock. A future #419 integration reconciliation flow must independently verify Provider-side receipt/outcome, include appropriate idempotency and auditable authorization, and only then define a distinct safe transition. **No automatic reconciliation, Provider query, approval issuance, or actual re-send is implemented here**; #335 adapters are still required for real Provider evidence.
+
+Other existing explicit `retryable_failure` adapter results retain the normal backoff behavior, but adapters MUST guarantee no external side effect when emitting them. The system does not offer exactly-once delivery; callers still need stable identities, deduplication, and Provider-specific receipts.
 
 ## Environment isolation
 
