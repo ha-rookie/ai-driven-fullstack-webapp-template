@@ -11,6 +11,7 @@ import {
   IntegrationEventService,
   createIntegrationOutboxRelayJobEnvelope,
   createIntegrationOutboxRelayJobHandler,
+  redriveDeadLetterOutbox,
   relayOutboxOnce,
   type IntegrationDeliveryAdapter,
 } from "../src/worker/integration-event";
@@ -122,6 +123,87 @@ test("permanent delivery failure moves outbox to dead_letter", async () => {
   const record = await store.getOutbox(created.outbox.id, "test");
   assert.equal(record?.status, "dead_letter");
   assert.equal(record?.failureCode, "destination_disabled");
+});
+
+test("provider exception after possible acceptance quarantines as UNKNOWN and blocks blind re-drive", async () => {
+  const { clock, store, service } = fixture();
+  const created = await service.enqueue(input);
+  let deliveries = 0;
+  const adapter: IntegrationDeliveryAdapter = {
+    async deliver() {
+      deliveries += 1;
+      // A provider may have committed its side effect before this exception.
+      throw new Error("response connection interrupted");
+    },
+  };
+  assert.deepEqual(
+    await relayOutboxOnce({ environment: "test", outboxId: created.outbox.id, store, adapter, clock }),
+    { kind: "unknown", failureCode: "delivery_outcome_unknown" },
+  );
+  const quarantined = await store.getOutbox(created.outbox.id, "test");
+  assert.equal(quarantined?.status, "dead_letter");
+  assert.equal(quarantined?.failureCode, "delivery_outcome_unknown");
+  assert.equal(quarantined?.attemptCount, 1);
+  assert.equal(quarantined?.version, 3);
+  assert.equal(quarantined?.deadLetteredAt, NOW);
+  clock.advance(60_000);
+  assert.deepEqual(
+    await relayOutboxOnce({ environment: "test", outboxId: created.outbox.id, store, adapter, clock }),
+    { kind: "duplicate_terminal", status: "dead_letter" },
+  );
+  assert.equal(deliveries, 1, "no automatic second delivery after ambiguous result");
+  let authorizerCalled = false;
+  const redrive = await redriveDeadLetterOutbox({
+    environment: "test", outboxId: created.outbox.id, actorId: "admin-1",
+    reasonCode: "provider_fixed", store, clock,
+    authorize: () => { authorizerCalled = true; return true; },
+  });
+  assert.deepEqual(redrive, { kind: "denied" });
+  assert.equal(authorizerCalled, false, "an authorizer alone must not clear UNKNOWN");
+  assert.deepEqual(await store.getOutbox(created.outbox.id, "test"), quarantined);
+});
+
+test("explicit UNKNOWN adapter result never goes to retry_wait", async () => {
+  const { clock, store, service } = fixture();
+  const created = await service.enqueue(input);
+  const adapter: IntegrationDeliveryAdapter = {
+    async deliver() { return { kind: "unknown", failureCode: "raw-provider-message" }; },
+  };
+  const result = await relayOutboxOnce({
+    environment: "test", outboxId: created.outbox.id, store, adapter, clock,
+  });
+  assert.deepEqual(result, { kind: "unknown", failureCode: "delivery_outcome_unknown" });
+  const row = await store.getOutbox(created.outbox.id, "test");
+  assert.equal(row?.status, "dead_letter");
+  assert.equal(row?.failureCode, "delivery_outcome_unknown", "raw provider code is not stored");
+});
+
+test("#51 async relay classifies ambiguous provider result as nonretryable; no delivery repeats", async () => {
+  const { clock, store, service } = fixture();
+  const created = await service.enqueue(input);
+  const envelope = await createIntegrationOutboxRelayJobEnvelope({
+    environment: "test", outboxId: created.outbox.id, clock, idGenerator: sequenceIds("job"),
+  });
+  let attempts = 0;
+  const handler = createIntegrationOutboxRelayJobHandler({
+    store, clock, adapter: {
+      async deliver() { attempts += 1; throw new Error("simulated ambiguous timeout"); },
+    },
+  });
+  const jobStore = new InMemoryAsyncJobStateStore();
+  const retryPolicy = { maxAttempts: 4, baseDelayMs: 1_000, maxDelayMs: 10_000, multiplier: 2 } as const;
+  const ids = sequenceIds("lease");
+  const run = () => executeAsyncJob({
+    envelope, store: jobStore, retryPolicy, leaseMs: 30_000, clock,
+    idGenerator: ids, handler,
+  });
+  assert.deepEqual(await run(),
+    { kind: "failed", attempt: 1, failureCode: "delivery_outcome_unknown" });
+  clock.advance(60_000);
+  const again = await run();
+  assert.notEqual(again.kind, "retry");
+  assert.equal(attempts, 1);
+  assert.equal((await store.getOutbox(created.outbox.id, "test"))?.status, "dead_letter");
 });
 
 test("async job owns retry execution while outbox remains the delivery source of truth", async () => {
