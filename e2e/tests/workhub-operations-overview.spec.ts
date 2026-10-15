@@ -192,6 +192,44 @@ test("overview summarizes bounded authorized signals without claiming complete h
       }),
     });
   });
+  // Locally persisted verified-receipt failures, independent of outbound Outbox.
+  await page.route("**/api/admin/integrations/inbound/_failures?**", route => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        coverage: "environment", source: "local_inbound_receipt",
+        environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+        pageLimit: 20, replayAvailable: false,
+        items: cursor === null
+          ? [{ receiptId: "inbound-1", providerKey: "demo.webhook", status: "dead_letter",
+            attemptCount: 3, receivedAt: "2026-10-09T00:00:00.000Z",
+            updatedAt: "2026-10-10T00:00:00.000Z", version: 5,
+            failureCode: "business_processing_failed" }]
+          : [{ receiptId: "older-inbound", providerKey: "demo.webhook", status: "failed",
+            attemptCount: 1, receivedAt: "2026-10-08T00:00:00.000Z",
+            updatedAt: "2026-10-08T00:00:00.000Z", version: 2,
+            failureCode: "other" }],
+        nextCursor: cursor === null ? "opaque2" : null,
+        replayKey: "never-show-replay-key",
+        rawProviderSecret: "never-show-inbound-credential",
+      }),
+    });
+  });
+  await page.route("**/api/admin/integrations/inbound/inbound-1?**", route =>
+    route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        coverage: "environment", source: "local_inbound_receipt",
+        environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+        receipt: { receiptId: "inbound-1", providerKey: "demo.webhook",
+          status: "dead_letter", attemptCount: 3, version: 5,
+          receivedAt: "2026-10-09T00:00:00.000Z",
+          updatedAt: "2026-10-10T00:00:00.000Z",
+          failureCode: "business_processing_failed" },
+        decision: { nextAction: "inspect_processing_failure",
+          manualRetryAllowed: false, replayAvailable: false },
+        rawPayload: "never-show-inbound-payload",
+      }),
+    }));
   await page.goto("/admin");
   const summary = page.locator("#admin-operations-overview");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
@@ -249,6 +287,24 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(paged.getByTestId("outbox-detail")).toContainText("取得できません");
   await expect(paged).not.toContainText("DELIVERY_RETRYは実行できません");
   await expect(page.locator("#admin-integration-outbox")).not.toContainText("sensitive-provider-credential");
+  await page.locator("#admin-integration-inbound")
+    .getByRole("button", { name: "受信失敗記録を確認" }).click();
+  const inbound = page.getByTestId("inbound-webhook-failures");
+  await expect(inbound).toContainText("inbound-1");
+  await expect(inbound).toContainText("demo.webhook");
+  await expect(inbound).toContainText("business_processing_failed");
+  await expect(inbound).not.toContainText("never-show-replay-key");
+  await expect(inbound).not.toContainText("never-show-inbound-credential");
+  await inbound.getByRole("button", { name: "受信処理の詳細を確認" }).click();
+  const inboundDetail = inbound.getByTestId("inbound-webhook-detail");
+  await expect(inboundDetail).toContainText("Version: 5");
+  await expect(inboundDetail).toContainText("再実行不可");
+  await expect(inboundDetail).not.toContainText("never-show-inbound-payload");
+  await expect(inbound.getByRole("button", { name: /再送|再処理|再実行/u })).toHaveCount(0);
+  await inbound.getByRole("button", { name: "次の20件" }).click();
+  await expect(inbound).toContainText("older-inbound");
+  await inbound.getByRole("button", { name: "前の20件" }).click();
+  await expect(inbound).toContainText("inbound-1");
   await expect(card(page, "Metrics / Alert").locator("strong")).toHaveText("未接続");
   await expect(summary.getByTestId("operations-overview-environment")).toContainText("Server Environment: local");
   await expect(summary.getByText(/複数Scopeへ転用不可/u)).toBeVisible();
