@@ -156,7 +156,7 @@ test("#420 user/role check completes before any public GitHub CI job/step reques
   const sourceReader: SecurityCenterSourceReader = async (_env, now) => {
     sourcesRead++; return unconnectedSecuritySources(now);
   };
-  const stepReader: SecurityCenterStepReader = async (_source, now) => {
+  const stepReader: SecurityCenterStepReader = async () => {
     stepsRead++; return { schemaVersion: 1, sourceId: "secret_detection", stepCode: "secret_scan",
       runId: null, targetSha: null, state: "not-run", conclusion: null };
   };
