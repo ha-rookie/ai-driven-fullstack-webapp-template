@@ -1,5 +1,14 @@
 # Stage8 #420 — Security Center, read-only vertical slices
 
+## Slice D: actionable CI status triage (independent of verified Finding evidence)
+
+After Slice B connected real GitHub workflow execution metadata, the Security Center should let administrators tell which **CI source** needs their attention, rather than reading four raw run histories one by one. This slice adds a pure, fail-closed classification for the existing fixed four CI sources: unavailable/not-connected/not-run/running/failure-or-cancelled/skipped/last-run-success, plus a UI filter to show only sources with an incomplete or actionable CI state. **Successful CI execution is never a Security Finding assessment, current Evidence, current main or Production equivalence.** No Green security posture is derived; Finding/source coverage and lastSuccessfulCheckAt remain independent and unknown until verified Finding evidence is connected.
+
+A prior successful CI run is separately labelled **historical** when the latest execution is different. Its recorded SHA is compared explicitly with the latest execution's SHA; different SHA means the historical run cannot attest to the latest code. Success is scoped to the five fetched runs per workflow, never the full GitHub execution history. A latest-success assertion inconsistent with the last-success record fails closed instead of producing false reassuring text. Unknown/invalid CI DTOs are rejected at the existing UI boundary. The filter is client-side and affects only CI rows, not the global Security posture or SCS references.
+
+The exact change scope is five paths: this design, `src/shared/security/security-ci-triage.ts` and `tests/security-ci-triage.test.ts`, existing `src/reference/admin/SecurityCenter.tsx`, and `e2e/tests/workhub-security-center.spec.ts`. No additional GitHub API calls, scanner, worker endpoint, credential, workflow, database or resource. Browser tests use explicitly synthetic post-auth fixtures; no formal ST #694 or Preview/Production checks are inferred. Original Issue #420 acceptance remains Open 2/11 until evidence-by-condition validation; this is **CI source health**, not the verified Finding source's last successful check or #488 Evidence freshness.
+
+
 ## Slice C: requirement-to-test *reference* navigation, not verified evidence
 
 Issue #420's Requirement → Evidence trace acceptance is **not yet satisfied** by static mapping references. In this incremental slice, the existing authorized Security Center panel turns `testReference` paths from the Worker-supplied SCS control mapping into browseable GitHub source links, without changing the server-side authorization or finding-read endpoints. The current mapping registers test/source files for 14 of 43 requirements (16 distinct checked-in paths, individually verified to exist in main at implementation time). The rest remain explicitly `未登録` and Organization/Project controls are not misrepresented as template verification.
