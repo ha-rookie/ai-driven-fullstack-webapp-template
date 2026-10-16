@@ -4,9 +4,11 @@ import { apiErrorResponse } from "../http";
 import { decideOperationPolicy, OPERATIONS_POLICY_VERSION } from "../operations/policy";
 import type { OperationDefinition, OperationRequest } from "../operations/types";
 import { unmonitoredConnectionProjection } from "./integration-connection-projection";
+import { D1IntegrationEventStore, assessOutboxProviderReceipt, type ProviderReceiptLookup } from "../integration-event";
 
 const INTEGRATION_VIEW_ACTION = "integrations:view";
 const ROUTE = "/api/admin/integrations/outbox";
+const RECEIPT_SUFFIX = "/_receipt";
 const FAILURE_PAGE_ROUTE = ROUTE + "/_failures";
 const INBOUND_ROUTE = "/api/admin/integrations/inbound";
 const INBOUND_FAILURE_PAGE_ROUTE = INBOUND_ROUTE + "/_failures";
@@ -70,6 +72,8 @@ const blockedIntegrationOperationGate = (
 export interface IntegrationOperationsOptions {
   readonly singleScopeSummaryId?: string;
   readonly authorizationPolicy?: RolePolicy;
+  /** Explicitly registered by the application only when #335 provides trusted Provider evidence. */
+  readonly providerReceiptVerifier?: ProviderReceiptLookup;
 }
 
 export interface IntegrationOperationsEnvironment {
@@ -249,6 +253,8 @@ export const handleIntegrationOperationsApi = async (
   const url = new URL(request.url);
   const inboundRoute = url.pathname === INBOUND_ROUTE || url.pathname.startsWith(INBOUND_ROUTE + "/");
   const unifiedFailureRoute = url.pathname === UNIFIED_FAILURE_ROUTE;
+  const receiptRoute = url.pathname.startsWith(ROUTE + "/")
+    && url.pathname.endsWith(RECEIPT_SUFFIX);
   if (!unifiedFailureRoute && !inboundRoute
     && url.pathname !== ROUTE && !url.pathname.startsWith(ROUTE + "/")) return null;
   if (request.method !== "GET") return error(requestId, 405, "method_not_allowed", "Method not allowed");
@@ -269,7 +275,8 @@ export const handleIntegrationOperationsApi = async (
       return error(requestId, 400, "invalid_integration_query", "Integration query is invalid");
     }
   } else if (!inboundRoute && url.pathname !== ROUTE && !failurePage) {
-    const encodedId = url.pathname.slice(ROUTE.length + 1);
+    const encodedId = url.pathname.slice(ROUTE.length + 1,
+      receiptRoute ? -RECEIPT_SUFFIX.length : undefined);
     try { outboxId = decodeURIComponent(encodedId); }
     catch { return error(requestId, 400, "invalid_integration_query", "Integration query is invalid"); }
     if (!OUTBOX_ID_PATTERN.test(outboxId)) {
@@ -490,6 +497,23 @@ export const handleIntegrationOperationsApi = async (
         nextCursor: hasMore && last
           ? encodeFailureCursor({ updatedAt: last.updatedAt, id: last.outboxId }) : null,
         providerReceipt: "unverified",
+      });
+    }
+    if (receiptRoute && outboxId !== null) {
+      // #419: expose the existing #719 read-only evidence assessment only behind
+      // this same authenticated, single-scope, environment-bound GET route.
+      // No verifier is registered in the reference deployment: this returns
+      // unverified, never a fabricated Provider receipt or a retry permission.
+      const assessment = await assessOutboxProviderReceipt({
+        environment, outboxId, store: new D1IntegrationEventStore(env.DB),
+        verifier: options.providerReceiptVerifier,
+      });
+      if (assessment.kind === "missing") {
+        return error(requestId, 404, "integration_outbox_not_found", "Outbox record not found");
+      }
+      return response({
+        coverage: "environment", environment, outboxId,
+        observedAt: new Date().toISOString(), assessment,
       });
     }
     if (outboxId !== null) {
