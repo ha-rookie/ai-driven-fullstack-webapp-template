@@ -18,7 +18,8 @@
     "verbatimModuleSyntax": false,
     "noEmitOnError": true,
     "rootDir": ".",
-    "outDir": ".test-dist"
+    "outDir": ".test-dist",
+    "resolveJsonModule": true
   },
   "include": [
     "src/shared/**/*.ts",
