@@ -327,9 +327,12 @@ test("#420 injected stale or wrong-source CI step evidence fails closed", async 
 
 test("#420 source-verified Finding contracts show independent severity/category/status and safe evidence codes", async ({ page }) => {
   await login(page, "kai");
+  // Fetch once while authenticated; do not keep an upstream APIResponse alive
+  // inside the route callback where browser navigation can dispose it.
+  const baseline = await page.evaluate(async () =>
+    (await fetch("/api/admin/security/center?scopeId=workhub-company")).json());
   await page.route("**/api/admin/security/center?**", async route => {
-    const response = await route.fetch();
-    const body = await response.json();
+    const body = structuredClone(baseline);
     // Synthetic post-auth UI fixture only. Production endpoint remains NOT CONNECTED.
     const asOf: string = body.observedAt;
     const earlier = (minutes: number) => new Date(Date.parse(asOf) - minutes * 60_000).toISOString();
@@ -352,7 +355,7 @@ test("#420 source-verified Finding contracts show independent severity/category/
       exception: { reasonCode: "mitigation_documented", approvalRef: "approval_one", expiresAt: earlier(5) },
       riskDisposition: "accepted-expired" };
     body.findings = { state: "verified", items: [first, second], verifiedCount: 2 };
-    await route.fulfill({ response, json: body });
+    await route.fulfill({ json: body });
   });
   await page.goto("/admin");
   const panel = page.locator("#admin-security-center");
@@ -620,4 +623,114 @@ test("#420 no confirmed CI control failure is never displayed as Finding zero", 
   await panel.getByRole("button", { name: "実CI制御異常Findingを照合" }).click();
   await expect(panel.getByTestId("security-control-lookup")).toContainText("未検査・成功Runを脆弱性0件とは扱いません");
   await expect(panel.getByTestId("security-finding-unconnected")).toBeVisible();
+});
+
+test("#420 OSV source-verified npm advisory projects Finding, evidence and independent filters", async ({ page }) => {
+  await login(page, "kai");
+  const checkedAt = new Date(Date.now() - 3000).toISOString();
+  const advisory = { packageRef: "pkg_08", advisoryId: "GHSA-vqj2-4v8m-8vrq" };
+  let batchCalls = 0; let detailCalls = 0;
+  await page.route("**/api/admin/security/center?**", async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("dependencyAdvisories") === "runtime") {
+      batchCalls++;
+      await route.fulfill({ json: {
+        schemaVersion: 1, source: "OSV", scope: "runtime-lock-only",
+        state: "verified", checkedAt, checkedPackages: 12, advisoryCount: 1,
+        advisories: [advisory],
+      } }); return;
+    }
+    if (url.searchParams.get("osvFindings") === "runtime") {
+      detailCalls++;
+      const assessedAt = new Date().toISOString();
+      await route.fulfill({ json: {
+        schemaVersion: 1, source: "OSV", scope: "runtime-lock-only",
+        state: "verified", checkedAt, checkedPackages: 12,
+        coverage: {
+          sourceId: "dependency_audit", coverageState: "checked", sourceHealth: "ready",
+          checkedFindingCount: 1, lastSuccessfulCheckAt: checkedAt,
+          evidenceValidUntil: new Date(Date.parse(checkedAt) + 300_000).toISOString(),
+          freshness: "current",
+        },
+        findings: { state: "verified", verifiedCount: 1, items: [{
+          ruleId: "osv_ghsa_vqj2_4v8m_8vrq", sourceId: "dependency_audit",
+          category: "dependency", severity: "high", status: "open",
+          resourceRef: "pkg_08", detectedAt: checkedAt, lastObservedAt: checkedAt,
+          assessedAt, riskDisposition: "none",
+          evidence: [{ kind: "dependency", code: "dependency_alert",
+            referenceId: "pkg_08_ghsa_vqj2_4v8m_8vrq" }],
+          remediationCode: "update_dependency",
+        }] },
+      } }); return;
+    }
+    await route.continue();
+  });
+  await page.goto("/admin");
+  const panel = page.getByTestId("security-osv-runtime-panel");
+  await panel.getByRole("button", { name: "本番依存12件の脆弱性情報を照会" }).click();
+  await expect(panel.getByTestId("security-osv-verified")).toContainText("アドバイザリ 1 件");
+  await panel.getByRole("button", { name: "OSV原票の重大度とFindingを照合" }).click();
+  const verified = panel.getByTestId("security-osv-finding-verified");
+  await expect(verified).toContainText("検証済OSV Finding 1 件");
+  const table = panel.getByTestId("security-osv-finding-table");
+  await expect(table).toContainText("react / 19.3.0");
+  await expect(table).toContainText("osv_ghsa_vqj2_4v8m_8vrq");
+  await expect(table).toContainText("pkg_08_ghsa_vqj2_4v8m_8vrq");
+  await panel.getByLabel("OSV重大度").selectOption("low");
+  await expect(table.locator("tbody tr")).toHaveCount(0);
+  await panel.getByLabel("OSV重大度").selectOption("high");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await panel.getByLabel("OSV分類").selectOption("identity");
+  await expect(table.locator("tbody tr")).toHaveCount(0);
+  await panel.getByLabel("OSV分類").selectOption("dependency");
+  await panel.getByLabel("OSV状態").selectOption("resolved");
+  await expect(table.locator("tbody tr")).toHaveCount(0);
+  await panel.getByLabel("OSV状態").selectOption("open");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+  expect(batchCalls).toBe(1); expect(detailCalls).toBe(1);
+});
+
+test("#420 OSV malformed detailed Finding cannot masquerade as verified source evidence", async ({ page }) => {
+  await login(page, "kai");
+  const at = new Date(Date.now() - 2000).toISOString();
+  await page.route("**/api/admin/security/center?**", async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("dependencyAdvisories") === "runtime") {
+      await route.fulfill({ json: {
+        schemaVersion: 1, source: "OSV", scope: "runtime-lock-only",
+        state: "verified", checkedAt: at, checkedPackages: 12, advisoryCount: 1,
+        advisories: [{ packageRef: "pkg_08", advisoryId: "GHSA-vqj2-4v8m-8vrq" }],
+      } }); return;
+    }
+    if (url.searchParams.get("osvFindings") === "runtime") {
+      await route.fulfill({ json: {
+        schemaVersion: 1, source: "OSV", scope: "runtime-lock-only",
+        state: "verified", checkedAt: at, checkedPackages: 12,
+        coverage: {
+          sourceId: "dependency_audit", coverageState: "checked", sourceHealth: "ready",
+          checkedFindingCount: 1, lastSuccessfulCheckAt: at,
+          evidenceValidUntil: new Date(Date.parse(at) + 300_000).toISOString(),
+          freshness: "current",
+        }, findings: { state: "verified", verifiedCount: 1, items: [{
+          ruleId: "osv_ghsa_vqj2_4v8m_8vrq", sourceId: "dependency_audit",
+          category: "dependency", severity: "unknown", status: "open",
+          resourceRef: "pkg_08", detectedAt: at, lastObservedAt: at,
+          assessedAt: new Date().toISOString(), riskDisposition: "none",
+          evidence: [{ kind: "dependency", code: "dependency_alert",
+            referenceId: "raw_upstream_secret", url: "https://untrusted.test" }],
+          remediationCode: "update_dependency", rawDetails: "do not show untrusted data",
+        }] },
+      } }); return;
+    }
+    await route.continue();
+  });
+  await page.goto("/admin");
+  const panel = page.getByTestId("security-osv-runtime-panel");
+  await panel.getByRole("button", { name: "本番依存12件の脆弱性情報を照会" }).click();
+  await panel.getByRole("button", { name: "OSV原票の重大度とFindingを照合" }).click();
+  await expect(panel.getByTestId("security-osv-finding-unavailable")).toBeVisible();
+  await expect(panel.getByTestId("security-osv-finding-table")).toHaveCount(0);
+  await expect(panel).not.toContainText("do not show untrusted data");
+  await expect(page.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
 });

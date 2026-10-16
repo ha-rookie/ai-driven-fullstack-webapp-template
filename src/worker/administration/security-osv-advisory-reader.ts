@@ -5,6 +5,8 @@
  */
 import type { RuntimeEnvironment } from "../../shared/runtime";
 import inventory from "../../../config/security-runtime-dependency-inventory.json";
+import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, type SecurityFinding, type SecuritySourceCoverage } from "../../shared/security/security-finding";
+import type { SecurityFindingFeed } from "../../shared/security/security-finding-view";
 
 const OSV_URL = "https://api.osv.dev/v1/querybatch";
 const TTL_MS = 300_000;
@@ -172,3 +174,91 @@ export const createRuntimeOsvReader = (fetcher: typeof fetch = fetch): RuntimeOs
 };
 
 export const readRuntimeOsvAdvisories = createRuntimeOsvReader();
+
+/**
+ * A distinct *OSV source-scoped* Finding observation. Querybatch returns only
+ * advisory IDs; explicit full OSV records are needed to establish severity.
+ * No result ever certifies production deployment or whole-app security.
+ */
+export type RuntimeOsvFindingResult =
+  | { readonly schemaVersion: 1; readonly scope: "runtime-lock-only";
+      readonly source: "OSV"; readonly state: "unavailable";
+      readonly checkedAt: null; readonly checkedPackages: null;
+      readonly coverage: null; readonly findings: null }
+  | { readonly schemaVersion: 1; readonly scope: "runtime-lock-only";
+      readonly source: "OSV"; readonly state: "verified";
+      readonly checkedAt: string; readonly checkedPackages: number;
+      readonly coverage: SecuritySourceCoverage; readonly findings: SecurityFindingFeed };
+export type RuntimeOsvFindingReader = (
+  environment: RuntimeEnvironment, asOf: string,
+) => Promise<RuntimeOsvFindingResult>;
+
+const noOsvFindings = (): RuntimeOsvFindingResult => ({
+  schemaVersion: 1, source: "OSV", scope: "runtime-lock-only", state: "unavailable",
+  checkedAt: null, checkedPackages: null, coverage: null, findings: null,
+});
+const sourceSeverity = (value: unknown): SecurityFinding["severity"] => {
+  const map: Record<string, SecurityFinding["severity"]> = {
+    CRITICAL: "critical", HIGH: "high", MODERATE: "medium", MEDIUM: "medium", LOW: "low",
+  };
+  if (typeof value !== "string" || !Object.hasOwn(map, value.toUpperCase())) {
+    throw new TypeError("OSV record has no supported verified qualitative severity");
+  }
+  return map[value.toUpperCase()];
+};
+
+export const createRuntimeOsvFindingReader = (
+  advisoryReader: RuntimeOsvReader = readRuntimeOsvAdvisories,
+  fetcher: typeof fetch = fetch,
+): RuntimeOsvFindingReader => async (environment, asOf) => {
+  if (environment === "local" || environment === "test") return noOsvFindings();
+  if (environment !== "preview" && environment !== "production") return noOsvFindings();
+  try {
+    const result = await advisoryReader(environment, asOf);
+    if (result.state !== "verified" || result.checkedPackages !== inventory.packages.length
+      || result.advisoryCount !== result.advisories.length || result.advisories.length > 12
+      || Date.parse(asOf) - Date.parse(result.checkedAt) < 0
+      || Date.parse(asOf) - Date.parse(result.checkedAt) > TTL_MS) return noOsvFindings();
+    const findings: SecurityFinding[] = await Promise.all(result.advisories.map(async item => {
+      const pkg = inventory.packages.find(candidate => candidate.ref === item.packageRef);
+      if (!pkg || !ADVISORY_ID.test(item.advisoryId)) throw new TypeError("Untrusted advisory ref");
+      const response = await fetcher("https://api.osv.dev/v1/vulns/" + encodeURIComponent(item.advisoryId), {
+        method: "GET", redirect: "error", credentials: "omit", signal: AbortSignal.timeout(12_000),
+        headers: { accept: "application/json" },
+      });
+      const detail = plain(await controlledJson(response));
+      const db = plain(detail.database_specific);
+      if (detail.id !== item.advisoryId || detail.withdrawn !== undefined
+        || !Array.isArray(detail.affected) || !detail.affected.some(row => {
+          try { const pack = plain(plain(row).package);
+            return pack.ecosystem === "npm" && pack.name === pkg.name;
+          } catch { return false; }
+        })
+        || typeof detail.modified !== "string"
+        || !Number.isFinite(Date.parse(detail.modified))
+        || Date.parse(detail.modified) > Date.parse(asOf)) {
+        throw new TypeError("OSV detail mismatch or withdrawn");
+      }
+      const advisorySlug = item.advisoryId.toLowerCase().replace(/-/gu, "_");
+      return normalizeSecurityFinding({
+        ruleId: "osv_" + advisorySlug, category: "dependency",
+        severity: sourceSeverity(db.severity), status: "open",
+        resourceRef: pkg.ref,
+        detectedAt: result.checkedAt, lastObservedAt: result.checkedAt,
+        evidence: [{ kind: "dependency", code: "dependency_alert",
+          referenceId: pkg.ref + "_" + advisorySlug }],
+        remediationCode: "update_dependency",
+      }, "dependency_audit", asOf);
+    }));
+    const coverage = normalizeSecuritySourceCoverage({
+      sourceId: "dependency_audit", coverageState: "checked", sourceHealth: "ready",
+      lastSuccessfulCheckAt: result.checkedAt,
+      evidenceValidUntil: new Date(Date.parse(result.checkedAt) + TTL_MS).toISOString(),
+      checkedFindingCount: findings.length,
+    }, asOf);
+    return { schemaVersion: 1, source: "OSV", scope: "runtime-lock-only",
+      state: "verified", checkedAt: result.checkedAt, checkedPackages: result.checkedPackages,
+      coverage, findings: { state: "verified", items: findings, verifiedCount: findings.length } };
+  } catch { return noOsvFindings(); }
+};
+export const readRuntimeOsvFindings = createRuntimeOsvFindingReader();
