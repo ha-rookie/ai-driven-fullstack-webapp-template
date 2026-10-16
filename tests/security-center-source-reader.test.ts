@@ -226,3 +226,77 @@ test("#420 GitHub step errors, ambiguous pagination, wrong file and oversized re
     assert.equal((await reader(stepSource(), AS_OF)).state, "unavailable");
   }
 });
+
+test("#420 a real-shaped failed workflow AND failed exact check step produce one bounded CI control Finding", async () => {
+  const from = stepSource("secret_detection");
+  const latest = { ...from.ci.latest!, checkConclusion: "failure" as const };
+  const failingSource: SecurityCenterSource = { ...from,
+    ci: { ...from.ci, latest, latestSuccessfulRun: null } };
+  const reader = createSecurityCenterStepReader((async () => jobStepList("secret_detection", {
+    steps: [{ name: "Scan tracked files for secret candidates", status: "completed", conclusion: "failure",
+      log_url: "https://untrusted.test/private?token=secret" }],
+    actor: { email: "private-synthetic@example.test" },
+  })) as typeof fetch);
+  const result = await reader(failingSource, AS_OF);
+  assert.equal(result.state, "observed");
+  assert.equal(result.conclusion, "failure");
+  assert.deepEqual(result.controlFinding, {
+    ruleId: "ci_step_failure", sourceId: "secret_detection", category: "data",
+    severity: "high", status: "open", detectedAt: latest.updatedAt,
+    lastObservedAt: latest.updatedAt, assessedAt: AS_OF,
+    resourceRef: "commit_" + SHA.slice(0, 12),
+    evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_42" }],
+    remediationCode: "review_control", riskDisposition: "none",
+  });
+  assert.equal("verifiedFindings" in result, false);
+  assert.equal("verifiedCount" in result, false);
+  assert.doesNotMatch(JSON.stringify(result), /private-synthetic|untrusted.test|log_url|token=/u);
+});
+
+test("#420 successful/ambiguous provider check step NEVER creates a zero-Findings claim", async () => {
+  const failures = [
+    { source: stepSource(), step: "success" },
+    { source: stepSource(), step: "failure" },
+    { source: { ...stepSource(),
+        ci: { ...stepSource().ci,
+          latest: { ...stepSource().ci.latest!, checkConclusion: "failure" as const },
+          latestSuccessfulRun: null } }, step: "success" },
+  ];
+  for (const sample of failures) {
+    const reader = createSecurityCenterStepReader((async () => jobStepList("secret_detection", {
+      steps: [{ name: "Scan tracked files for secret candidates",
+        status: "completed", conclusion: sample.step }],
+    })) as typeof fetch);
+    const result = await reader(sample.source, AS_OF);
+    assert.equal(result.controlFinding, undefined);
+    assert.equal("verifiedCount" in result, false);
+    assert.equal("checkedFindingCount" in result, false);
+  }
+  const unavailable = createSecurityCenterStepReader((async () => new Response("denied", { status: 403 })) as typeof fetch);
+  const missing = await unavailable(failures[2].source, AS_OF);
+  assert.equal(missing.state, "unavailable");
+  assert.equal(missing.controlFinding, undefined);
+});
+
+test("#420 failure mapping preserves approved source-specific classification without inventing vulnerabilities", async () => {
+  for (const [sourceId, category, severity] of [
+    ["dependency_audit", "dependency", "high"],
+    ["configuration_check", "configuration", "medium"],
+    ["scs_control_mapping", "configuration", "medium"],
+  ] as const) {
+    const from = stepSource(sourceId);
+    const failing: SecurityCenterSource = { ...from,
+      ci: { ...from.ci,
+        latest: { ...from.ci.latest!, checkConclusion: "failure" },
+        latestSuccessfulRun: null } };
+    const policy = SECURITY_WORKFLOWS.find(p => p.sourceId === sourceId)!;
+    const reader = createSecurityCenterStepReader((async () => jobStepList(sourceId, {
+      steps: [{ name: policy.stepName, status: "completed", conclusion: "failure" }],
+    })) as typeof fetch);
+    const result = await reader(failing, AS_OF);
+    assert.equal(result.controlFinding?.category, category);
+    assert.equal(result.controlFinding?.severity, severity);
+    assert.equal(result.controlFinding?.sourceId, sourceId);
+    assert.equal(result.controlFinding?.ruleId, "ci_step_failure");
+  }
+});

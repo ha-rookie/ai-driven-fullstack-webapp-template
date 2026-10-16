@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
+import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
 import { isSecurityFindingFeed, selectSecurityFindings, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
 import { scsTestSourceLinks } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
@@ -149,6 +149,37 @@ type StepEvidence = {
   readonly runId: number | null; readonly targetSha: string | null;
   readonly state: "observed" | "unavailable" | "not-run";
   readonly conclusion: CiRun["checkConclusion"] | null;
+  readonly controlFinding?: SecurityFinding;
+};
+/**
+ * Reconstruct the *exact* permitted CI control failure, rather than trusting
+ * a free-form GitHub response or promoting it to a scanner vulnerability.
+ */
+const matchesControlFailure = (input: unknown, source: Coverage): input is SecurityFinding => {
+  const latest = source.ci.latest;
+  if (!input || typeof input !== "object" || Array.isArray(input)
+    || !latest || latest.checkConclusion !== "failure") return false;
+  const raw = input as Record<string, unknown>;
+  const allowed = ["ruleId", "sourceId", "category", "severity", "status",
+    "resourceRef", "detectedAt", "lastObservedAt", "assessedAt",
+    "evidence", "remediationCode", "riskDisposition"].sort();
+  if (JSON.stringify(Object.keys(raw).sort()) !== JSON.stringify(allowed)
+    || !isTime(raw.assessedAt) || raw.assessedAt > new Date().toISOString()) return false;
+  const category = source.sourceId === "dependency_audit" ? "dependency"
+    : source.sourceId === "secret_detection" ? "data" : "configuration";
+  const severity = source.sourceId === "dependency_audit" || source.sourceId === "secret_detection"
+    ? "high" : "medium";
+  try {
+    const expected = normalizeSecurityFinding({
+      ruleId: "ci_step_failure", category, severity, status: "open",
+      resourceRef: "commit_" + latest.targetSha.slice(0, 12),
+      detectedAt: latest.updatedAt, lastObservedAt: latest.updatedAt,
+      evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_" + latest.runId }],
+      remediationCode: "review_control",
+    }, source.sourceId, raw.assessedAt);
+    return Object.entries(expected).every(([key, value]) =>
+      JSON.stringify(raw[key]) === JSON.stringify(value));
+  } catch { return false; }
 };
 const matchesStep = (input: unknown, source: Coverage): input is StepEvidence => {
   if (!input || typeof input !== "object" || Array.isArray(input)) return false;
@@ -159,7 +190,9 @@ const matchesStep = (input: unknown, source: Coverage): input is StepEvidence =>
     && v.stepCode === STEP_CODES[source.sourceId]
     && (v.runId === latest?.runId) && (v.targetSha === latest?.targetSha)
     && (v.state === "observed" ? outcomes.includes(v.conclusion ?? "")
-      : (v.state === "unavailable" || v.state === "not-run") && v.conclusion === null);
+      : (v.state === "unavailable" || v.state === "not-run") && v.conclusion === null)
+    && (v.controlFinding === undefined || (v.state === "observed"
+      && v.conclusion === "failure" && matchesControlFailure(v.controlFinding, source)));
 };
 const CiStepEvidence = ({ source }: { readonly source: Coverage }) => {
   const [result, setResult] = useState<
@@ -191,6 +224,13 @@ const CiStepEvidence = ({ source }: { readonly source: Coverage }) => {
       {result.data.state === "observed"
         ? `GitHub CIステップ: ${result.data.conclusion}（Run #${result.data.runId}・SHA ${result.data.targetSha?.slice(0,12)}、Finding結果ではありません）`
         : "検査ステップを確認できません（未検証）"}
+      {result.data.controlFinding && <span data-testid={`security-control-finding-${source.sourceId}`}>
+        CI制御異常（実検査ステップの失敗、脆弱性診断結果ではありません）：
+        {result.data.controlFinding.ruleId} / {result.data.controlFinding.severity} /
+        {result.data.controlFinding.evidence[0]?.referenceId} /
+        SHA {result.data.controlFinding.resourceRef?.slice(7)}
+        （監査証跡リンク・原因特定・脆弱性件数は未検証）
+      </span>}
     </small>}
   </div>;
 };

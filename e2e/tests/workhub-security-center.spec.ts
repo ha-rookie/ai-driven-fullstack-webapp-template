@@ -424,3 +424,82 @@ test("#420 administrator can search real Audit viewer by exact request ID withou
   await expect(field).toHaveValue("request-1234_test.NRT");
   await expect(page.locator("#admin-security-center").getByTestId("security-finding-unconnected")).toBeVisible();
 });
+
+test("#420 admin sees an actual-shaped failed CI control, not a scanner vulnerability or global zero", async ({ page }) => {
+  await login(page, "kai");
+  const sha = "a".repeat(40);
+  const updatedAt = "2026-10-16T10:00:00.000Z";
+  const run = { runId: 73942, targetSha: sha, checkStatus: "completed",
+    checkConclusion: "failure", event: "pull_request", updatedAt };
+  await page.route("**/api/admin/security/center?**", async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.has("sourceId")) {
+      const assessedAt = new Date().toISOString();
+      await route.fulfill({ json: {
+        schemaVersion: 1, sourceId: "secret_detection", stepCode: "secret_scan",
+        runId: 73942, targetSha: sha, state: "observed", conclusion: "failure",
+        controlFinding: {
+          ruleId: "ci_step_failure", sourceId: "secret_detection",
+          category: "data", severity: "high", status: "open",
+          detectedAt: updatedAt, lastObservedAt: updatedAt, assessedAt,
+          resourceRef: "commit_" + sha.slice(0, 12),
+          evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_73942" }],
+          remediationCode: "review_control", riskDisposition: "none",
+        },
+      } });
+      return;
+    }
+    const res = await route.fetch();
+    const body = await res.json();
+    body.sources[0] = { ...body.sources[0],
+      coverageState: "unavailable", sourceHealth: "unavailable",
+      ci: { state: "available", fetchedAt: body.observedAt, latest: run, latestSuccessfulRun: null } };
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  const row = panel.getByTestId("security-source-secret_detection");
+  await row.getByRole("button", { name: "検査ステップを確認" }).click();
+  await expect(row.getByTestId("security-control-finding-secret_detection")).toContainText("CI制御異常");
+  await expect(row.getByTestId("security-control-finding-secret_detection")).toContainText("run_73942");
+  await expect(row.getByTestId("security-control-finding-secret_detection")).toContainText("脆弱性診断結果ではありません");
+  await expect(panel.getByTestId("security-finding-unconnected")).toBeVisible();
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
+
+test("#420 injected CI control failure with wrong source/Run evidence fails closed", async ({ page }) => {
+  await login(page, "kai");
+  const sha = "b".repeat(40);
+  const updatedAt = "2026-10-16T10:00:00.000Z";
+  const run = { runId: 73943, targetSha: sha, checkStatus: "completed",
+    checkConclusion: "failure", event: "pull_request", updatedAt };
+  await page.route("**/api/admin/security/center?**", async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.has("sourceId")) {
+      await route.fulfill({ json: {
+        schemaVersion: 1, sourceId: "secret_detection", stepCode: "secret_scan",
+        runId: 73943, targetSha: sha, state: "observed", conclusion: "failure",
+        controlFinding: {
+          ruleId: "ci_step_failure", sourceId: "secret_detection", category: "data",
+          severity: "high", status: "open", detectedAt: updatedAt,
+          lastObservedAt: updatedAt, assessedAt: new Date().toISOString(),
+          resourceRef: "commit_" + sha.slice(0, 12),
+          evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_73942" }],
+          remediationCode: "review_control", riskDisposition: "none",
+        },
+      } });
+      return;
+    }
+    const res = await route.fetch();
+    const body = await res.json();
+    body.sources[0] = { ...body.sources[0],
+      coverageState: "unavailable", sourceHealth: "unavailable",
+      ci: { state: "available", fetchedAt: body.observedAt, latest: run, latestSuccessfulRun: null } };
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.goto("/admin");
+  const row = page.getByTestId("security-source-secret_detection");
+  await row.getByRole("button", { name: "検査ステップを確認" }).click();
+  await expect(row.getByRole("alert")).toContainText("照合に失敗");
+  await expect(row.getByTestId("security-control-finding-secret_detection")).toHaveCount(0);
+});

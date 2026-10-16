@@ -1,5 +1,15 @@
 # Stage8 #420 — Security Center, read-only vertical slices
 
+## Slice H: real CI control failures into strict Finding metadata, never scanner vulnerability results
+
+The existing authenticated on-demand GitHub Actions job-step source (#737) can verify that the exact allowlisted security control **failed** on a specific PR/workflow SHA. This is a real failed CI control observation; it is NOT a raw scanner vulnerability alert. The current public GitHub Actions Jobs endpoint cannot provide a trusted complete parsed dependency/secret vulnerability list or prove zero Findings from successful steps. Reading archived artifacts would require a separately approved authentication and ingestion contract; no new Secrets or Cloudflare configuration is authorized here.
+
+When (and only when) a fully validated, unique fixed job and step return `completed/failure` **and** the matching run's conclusion is `failure`, the Worker may project one controlled `ci_step_failure` Finding with source-specific category/severity, fixed `control_check_failed` CI evidence code, opaque `run_<runId>` evidence reference, exact SHA-derived resource reference, actual run update time and server assessment time. This is *CI control health* evidence rather than a finding from scanned code or Production. A run success, skipped/cancelled/incomplete source, mismatch, GitHub rate-limit/failure, inconclusive step, invalid timestamp or ambiguous job must not produce a Finding or a `0` result; the global API `findings: {state:"not-connected", items:null, verifiedCount:null}` and posture Gray remain unchanged. This result is returned only on the administrator's explicit source-step inspection, not as a default global count.
+
+The React client verifies source ID, run ID, exact SHA, known rule/category/severity, event-derived time and controlled evidence against the current displayed run before showing a distinct `CI制御異常` panel. It never describes a CI failure as a confirmed vulnerability, never links arbitrary provider URLs and never grants remediation approval. A malformed/mismatched Finding makes the *whole step detail unavailable* instead of showing an unsafe record. No audit correlation is fabricated.
+
+**Five scoped paths:** this document; `src/worker/administration/security-center-source-reader.ts`; `src/reference/admin/SecurityCenter.tsx`; `tests/security-center-source-reader.test.ts`; `e2e/tests/workhub-security-center.spec.ts`. No workflow, Worker route, D1, Secret, deploy, resource, new issue, WBS or focus change. Formal ST #694/real-device tests stay separate. #420 stays Open 2/11 until real scanner/provider-ingested Findings and end-to-end SCS evidence are demonstrated.
+
 ## Slice G: source Finding → exact audit request correlation lookup
 
 There is an existing authorized, D1-backed Audit viewer that returns authenticated, scoped, bounded audit records, but before this slice it could not search by the existing stored `request_id` field. Findings did not carry an explicit request correlation field, so rendering a generic audit anchor was **not** proof that a Finding could be connected to any actual event.
