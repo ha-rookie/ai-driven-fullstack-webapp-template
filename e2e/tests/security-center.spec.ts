@@ -27,12 +27,17 @@ test("#420 actual local administrator sees honest unknown coverage and SCS respo
   await expect(panel.getByRole("link", { name: /既存の監査ログを確認/u }))
     .toHaveAttribute("href", "#admin-audit-and-security");
 
-  const response = await page.request.get(endpoint);
-  expect(response.status()).toBe(200);
-  expect(response.headers()["cache-control"]).toBe("no-store");
-  const snapshot = await response.json() as { findings: { verifiedCount: unknown }; sources: unknown[] };
-  expect(snapshot.findings.verifiedCount).toBeNull();
-  expect(snapshot.sources).toHaveLength(4);
+  // The in-page fetch uses the same authenticated browser session as the UI.
+  // Playwright's standalone APIRequestContext does not reproduce this app's login context.
+  const result = await page.evaluate(async (url) => {
+    const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+    return { status: response.status, cacheControl: response.headers.get("cache-control"),
+      body: await response.json() as { findings: { verifiedCount: unknown }; sources: unknown[] } };
+  }, endpoint);
+  expect(result.status).toBe(200);
+  expect(result.cacheControl).toBe("no-store");
+  expect(result.body.findings.verifiedCount).toBeNull();
+  expect(result.body.sources).toHaveLength(4);
 });
 
 test("#420 real route denies anonymous, wrong-scope and unsupported method", async ({ request }) => {
@@ -48,9 +53,11 @@ test("#420 real route denies anonymous, wrong-scope and unsupported method", asy
 
 test("#420 logged-in non-admin cannot see privileged Security Center API data", async ({ page }) => {
   await login(page, "aoi");
-  const response = await page.request.get(endpoint);
-  expect(response.status()).toBe(403);
-  const body = await response.text();
-  expect(body).not.toContain("sourceKind");
-  expect(body).not.toContain("checkedFindingCount");
+  const result = await page.evaluate(async (url) => {
+    const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+    return { status: response.status, body: await response.text() };
+  }, endpoint);
+  expect(result.status).toBe(403);
+  expect(result.body).not.toContain("sourceKind");
+  expect(result.body).not.toContain("checkedFindingCount");
 });
