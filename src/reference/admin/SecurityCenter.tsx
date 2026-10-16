@@ -137,7 +137,9 @@ const isOsvFindingSnapshot = (value: Snapshot): value is OsvSnapshot => {
   const scope = (value as Snapshot & {dependencyScope?: OsvSnapshot["dependencyScope"]}).dependencyScope;
   if (!scope) return false;
   if (scope.state === "unavailable") return value.findings.state === "not-connected";
-  if (scope.state !== "verified" || scope.checkedPackages !== 12 || scope.checkedAt !== value.observedAt
+  if (scope.state !== "verified" || scope.checkedPackages !== 12
+    || !isTime(scope.checkedAt) || scope.checkedAt > value.observedAt
+    || Date.parse(value.observedAt) - Date.parse(scope.checkedAt) >= 300_000
     || !Array.isArray(scope.advisories) || scope.advisories.length !== scope.advisoryCount
     || value.findings.state !== "verified") return false;
   const items = value.findings.items;
@@ -149,7 +151,8 @@ const isOsvFindingSnapshot = (value: Snapshot): value is OsvSnapshot => {
       && finding.ruleId === "osv_advisory_" + i && finding.sourceId === "dependency_audit"
       && finding.resourceRef === a.packageRef && finding.category === "dependency"
       && finding.severity === "info" && finding.status === "open"
-      && finding.detectedAt === value.observedAt && finding.lastObservedAt === value.observedAt
+      && finding.detectedAt === scope.checkedAt && finding.lastObservedAt === scope.checkedAt
+      && finding.assessedAt === value.observedAt
       && finding.evidence.length === 1 && finding.evidence[0].kind === "dependency"
       && finding.evidence[0].code === "dependency_alert"
       && finding.remediationCode === "update_dependency";
