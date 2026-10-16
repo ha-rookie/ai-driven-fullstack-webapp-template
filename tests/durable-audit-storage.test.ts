@@ -238,3 +238,22 @@ test("best-effort and required durable write modes are explicit", async () => {
     DurableAuditWriteError,
   );
 });
+
+
+test("#420 exact Audit request correlation is parameter-bound and remains environment/scope restricted", async () => {
+  const fake = new FakeD1();
+  const store = createStore(fake, "preview");
+  await store.search({ scopeId: "workhub-company", requestId: "CF-123.NRT:one", limit: 20 });
+  assert.equal(fake.calls.length, 1);
+  const call = fake.calls[0];
+  assert.match(call.sql, /environment = \?/u);
+  assert.match(call.sql, /scope_id = \?/u);
+  assert.match(call.sql, /request_id = \?/u);
+  assert.doesNotMatch(call.sql, /CF-123.NRT/u);
+  assert.deepEqual(call.values, ["preview", "workhub-company", "CF-123.NRT:one", 20]);
+  const before = fake.calls.length;
+  for (const unsafe of ["x".repeat(129), "spaces not allowed", "https://example.test", "x\nsecret"]) {
+    await assert.rejects(() => store.search({ scopeId: "workhub-company", requestId: unsafe }), TypeError);
+  }
+  assert.equal(fake.calls.length, before);
+});
