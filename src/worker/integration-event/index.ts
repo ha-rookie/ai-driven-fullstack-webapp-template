@@ -5,3 +5,4 @@ export * from "./service";
 export * from "./async-job";
 export * from "./webhook-security";
 export * from "./redrive";
+export * from "./provider-receipt";
