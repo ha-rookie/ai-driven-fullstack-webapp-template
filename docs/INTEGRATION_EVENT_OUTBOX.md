@@ -94,6 +94,10 @@ The Admin Operations Overview combines **local** Outbox (`retry_wait` / `dead_le
 
 The UI displays the server's `observedAt` time (not a guaranteed snapshot or SLA time) and has an explicit **refresh this queue** control. Refresh and moving between pages clear the previously selected detail before the next read, so an older row is not mistaken for the current list entry. A denied, malformed or unavailable read must remain unavailable, never be represented as a healthy zero. Refresh performs only the existing GET and must not trigger delivery, replay, reconciliation or any other remote side effect.
 
+### Exact local failure ID investigation
+
+When an operator already has a **local** Outbox or verified inbound receipt ID from an incident record, the console may open the existing separately authorized detail by selecting the source and entering the exact record ID. This is not a free-text Provider search or a way to enumerate records. The ID must conform to the existing local identifier format; the server's current Session/Role/Scope/Environment and exact-ID checks remain authoritative. The client only dispatches the existing read-only GET, and a missing/denied detail remains missing/denied. This lookup can be used when the current paginated local failure queue is empty, but not when the queue cannot be retrieved or its permission is denied; an empty result never proves Provider health. It does not initiate reconciliation or retry, and it does not validate external Provider receipt or storage status.
+
 ## Local unified failure queue acceptance evidence (#419)
 
 The read-only unified queue is also checked through an **actual authenticated local Worker HTTP request**, not solely through the existing intercepted Browser UI fixtures. The targeted Browser acceptance covers server-bound scope/role authorization, fixed 20-item page shape, both local Outbox and inbound receipt source identifiers, no-store, `providerReceipt: unverified`, no manual retry capability, invalid/duplicate cursor rejection, and denial of a POST mutation. It may inspect independently protected existing detail routes when the local database actually contains a returned item.
