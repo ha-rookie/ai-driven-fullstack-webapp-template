@@ -195,3 +195,82 @@ test("#420 CI job-read failure cannot leak upstream response, actor, logs or ser
   assert.doesNotMatch(body, /fixture-private-provider-error|Run ID|logs_url|checkedFindingCount/u);
   assert.match(body, /security_center_unavailable/u);
 });
+
+
+test("#420 OSV runtime lookup enforces fixed query and rejects every injection before source access", async () => {
+  const base = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  const env = { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" };
+  let sources = 0; let scans = 0;
+  const sourceReader: SecurityCenterSourceReader = async (_, time) => {
+    sources++; return unconnectedSecuritySources(time);
+  };
+  const osvReader = async () => {
+    scans++;
+    return { schemaVersion: 1 as const, source: "OSV" as const,
+      scope: "runtime-lock-only" as const, state: "unavailable" as const,
+      checkedAt: null, checkedPackages: null, advisoryCount: null, advisories: null };
+  };
+  for (const suffix of [
+    "&dependencyAdvisories=", "&dependencyAdvisories=all",
+    "&dependencyAdvisories=runtime&sourceId=dependency_audit",
+    "&dependencyAdvisories=runtime&dependencyAdvisories=runtime",
+    "&dependencyAdvisories=runtime&url=https://evil.test",
+    "&dependencyAdvisories=runtime&scopeId=workhub-company",
+  ]) {
+    const response = await handleSecurityCenterApi(
+      new Request(base + suffix, { headers: {cookie:"app_session=synthetic-session-only"} }),
+      env, "osv-query", sourceReader, undefined, osvReader);
+    assert.equal(response?.status, 400, suffix);
+  }
+  assert.equal(sources, 0);
+  assert.equal(scans, 0);
+});
+
+test("#420 authenticated scoped administrator is the only actor permitted to query real OSV mode", async () => {
+  const url = "https://example.test/api/admin/security/center?scopeId=workhub-company&dependencyAdvisories=runtime";
+  let reads = 0; let sourceReads = 0;
+  const sourceReader: SecurityCenterSourceReader = async (_env, time) => {
+    sourceReads++; return unconnectedSecuritySources(time);
+  };
+  const osvReader = async () => {
+    reads++;
+    return { schemaVersion: 1 as const, source: "OSV" as const,
+      scope: "runtime-lock-only" as const, state: "verified" as const,
+      checkedAt: new Date().toISOString(), checkedPackages: 12,
+      advisoryCount: 0, advisories: [] };
+  };
+  const anonymous = await handleSecurityCenterApi(new Request(url),
+    {DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT:"preview"}, "anonymous",
+    sourceReader, undefined, osvReader);
+  assert.equal(anonymous?.status, 401);
+  for (const role of ["employee", null]) {
+    const response = await handleSecurityCenterApi(new Request(url, {
+      headers: { cookie: "app_session=synthetic-session-only" },
+    }), { DB: sessionDb(role), RUNTIME_ENVIRONMENT:"preview" }, "denied",
+    sourceReader, undefined, osvReader);
+    assert.equal(response?.status, 403);
+  }
+  assert.equal(reads, 0); assert.equal(sourceReads, 0);
+  const response = await handleSecurityCenterApi(new Request(url, {
+    headers: { cookie: "app_session=synthetic-session-only" },
+  }), { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT:"preview" },
+  "allowed", sourceReader, undefined, osvReader);
+  assert.equal(response?.status, 200);
+  assert.equal(response?.headers.get("cache-control"), "no-store");
+  const data = await response?.json() as {state:string;advisoryCount:number};
+  assert.equal(data.state, "verified");
+  assert.equal(data.advisoryCount, 0);
+  assert.equal(reads, 1); assert.equal(sourceReads, 0);
+});
+
+test("#420 OSV upstream errors do not return advisory payload or treat failure as zero", async () => {
+  const url = "https://example.test/api/admin/security/center?scopeId=workhub-company&dependencyAdvisories=runtime";
+  const result = await handleSecurityCenterApi(new Request(url, {
+    headers: { cookie: "app_session=synthetic-session-only" },
+  }), { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT:"preview" }, "provider-error",
+  undefined, undefined, async () => { throw Error("sensitive private data from upstream"); });
+  assert.equal(result?.status, 503);
+  const body = await result!.text();
+  assert.match(body, /security_center_unavailable/u);
+  assert.doesNotMatch(body, /sensitive private data|advisoryCount.*0/u);
+});

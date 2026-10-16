@@ -4,6 +4,7 @@ import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import type { RuntimeEnvironment } from "../../shared/runtime";
 import { readSecurityCenterSources, unconnectedSecuritySources, readSecurityCenterStep, SECURITY_WORKFLOWS, type SecurityCenterSource, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "./security-center-source-reader";
 import scsMapping from "../../../config/scs-control-mapping.json";
+import { readRuntimeOsvAdvisories, type RuntimeOsvReader } from "./security-osv-advisory-reader";
 
 /** #420: bounded read-only, authenticated, scoped evidence-status projection.
  * This is NOT a scanner, Finding feed, SCS certification or audit verdict.
@@ -41,16 +42,21 @@ export const handleSecurityCenterApi = async (
   request: Request, env: Env, requestId: string,
   sourceReader: SecurityCenterSourceReader = readSecurityCenterSources,
   stepReader: SecurityCenterStepReader = readSecurityCenterStep,
+  osvReader: RuntimeOsvReader = readRuntimeOsvAdvisories,
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (url.pathname !== ROUTE) return null;
   if (request.method !== "GET") return reject(requestId, 405, "method_not_allowed");
   // Two strictly bounded read modes on one existing route. No arbitrary Run/URL input.
   const details = url.searchParams.has("sourceId");
+  const osvDetails = url.searchParams.has("dependencyAdvisories");
   const selectedSourceId = url.searchParams.get("sourceId");
   if (url.searchParams.getAll("scopeId").length !== 1
     || url.searchParams.get("scopeId") !== SCOPE
-    || url.searchParams.size !== (details ? 2 : 1)
+    || (details && osvDetails)
+    || url.searchParams.size !== (details || osvDetails ? 2 : 1)
+    || (osvDetails && (url.searchParams.getAll("dependencyAdvisories").length !== 1
+      || url.searchParams.get("dependencyAdvisories") !== "runtime"))
     || (details && (url.searchParams.getAll("sourceId").length !== 1
       || !SECURITY_WORKFLOWS.some(p => p.sourceId === selectedSourceId)))) {
     return reject(requestId, 400, "invalid_security_center_query");
@@ -81,6 +87,13 @@ export const handleSecurityCenterApi = async (
   }
   try {
     const asOf = new Date().toISOString();
+    // Security advisory network traffic occurs only after authn+scoped authz.
+    // It is a separate, reviewed lockfile scope; never global Finding evidence.
+    if (osvDetails) {
+      return Response.json(await osvReader(environment, asOf), {
+        headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
+      });
+    }
     const sources = await sourceReader(environment, asOf);
     if (details) {
       const source = sources.find(item => item.sourceId === selectedSourceId);

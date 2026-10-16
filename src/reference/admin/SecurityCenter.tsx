@@ -3,6 +3,7 @@ import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEV
 import { isSecurityFindingFeed, selectSecurityFindings, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
 import { scsTestSourceLinks } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
+import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
 
 const SCOPE = "workhub-company";
 const SOURCES = ["secret_detection", "dependency_audit", "configuration_check", "scs_control_mapping"];
@@ -241,6 +242,88 @@ const RunReference = ({ run }: { readonly run: CiRun }) => <>
   <small><time dateTime={run.updatedAt}>{run.updatedAt}</time>（更新日時）</small>
 </>;
 
+
+const ADVISORY_ID = /^(?:GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}|CVE-[0-9]{4}-[0-9]{4,}|OSV-[0-9]{4}-[0-9]+)$/u;
+type OsvAdvisory = { readonly packageRef: string; readonly advisoryId: string };
+type OsvReport = { readonly schemaVersion: 1; readonly source: "OSV";
+  readonly scope: "runtime-lock-only"; readonly state: "verified" | "unavailable";
+  readonly checkedAt: string | null; readonly checkedPackages: number | null;
+  readonly advisoryCount: number | null; readonly advisories: readonly OsvAdvisory[] | null };
+const isOsvReport = (input: unknown): input is OsvReport => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const value = input as Record<string, unknown>;
+  if (Object.keys(value).sort().join(",") !==
+    ["schemaVersion", "source", "scope", "state", "checkedAt", "checkedPackages", "advisoryCount", "advisories"].sort().join(",")) return false;
+  if (value.schemaVersion !== 1 || value.source !== "OSV" || value.scope !== "runtime-lock-only") return false;
+  if (value.state === "unavailable") return value.checkedAt === null && value.checkedPackages === null
+    && value.advisoryCount === null && value.advisories === null;
+  if (value.state !== "verified" || !isTime(value.checkedAt)
+    || value.checkedAt > new Date().toISOString()
+    || value.checkedPackages !== runtimeInventory.packages.length
+    || !Array.isArray(value.advisories) || value.advisories.length > 64
+    || value.advisoryCount !== value.advisories.length) return false;
+  const allowed = new Set(runtimeInventory.packages.map(p => p.ref));
+  const seen = new Set<string>();
+  for (const row of value.advisories) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+    const a = row as Record<string, unknown>;
+    if (Object.keys(a).sort().join(",") !== "advisoryId,packageRef"
+      || typeof a.packageRef !== "string" || !allowed.has(a.packageRef)
+      || typeof a.advisoryId !== "string" || !ADVISORY_ID.test(a.advisoryId)) return false;
+    const key = a.packageRef + ":" + a.advisoryId;
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
+};
+const OsvRuntimeAdvisories = () => {
+  const [result, setResult] = useState<
+    { readonly state: "idle" | "loading" | "unavailable" }
+    | { readonly state: "verified"; readonly report: OsvReport }>({ state: "idle" });
+  const load = async () => {
+    setResult({ state: "loading" });
+    try {
+      const response = await fetch(
+        "/api/admin/security/center?scopeId=workhub-company&dependencyAdvisories=runtime",
+        { headers: { accept: "application/json" }, cache: "no-store" });
+      if (!response.ok) { setResult({ state: "unavailable" }); return; }
+      const data: unknown = await response.json();
+      setResult(isOsvReport(data) && data.state === "verified"
+        ? { state: "verified", report: data } : { state: "unavailable" });
+    } catch { setResult({ state: "unavailable" }); }
+  };
+  return <div data-testid="security-osv-runtime-panel">
+    <h3>本番依存ライブラリの脆弱性アドバイザリ（OSV）</h3>
+    <p>現在のpackage-lockに記録された本番用12エントリを個別に照会します。
+      重大度・修復状態・本番稼働環境との一致・アプリ全体の安全性・SCS適合は判定しません。</p>
+    <button type="button" disabled={result.state === "loading"}
+      onClick={() => { void load(); }}>本番依存12件の脆弱性情報を照会</button>
+    {result.state === "idle" && <p>未照会。アドバイザリの有無は不明です。</p>}
+    {result.state === "loading" && <p role="status">OSVへ照会中…</p>}
+    {result.state === "unavailable" && <p role="alert">OSV照会不可（Gray）。0件や安全とは判定しません。</p>}
+    {result.state === "verified" && <div data-testid="security-osv-verified">
+      <p role="status">OSV照会時刻 {result.report.checkedAt}・対象 {result.report.checkedPackages} エントリ・
+        アドバイザリ {result.report.advisoryCount} 件（照会範囲のみ）</p>
+      {result.report.advisories?.length === 0
+        ? <p>対象のロック済み12エントリについてアドバイザリIDの返却はありませんでした。
+          他の脆弱性・未監視領域まで0件とは判定しません。</p>
+        : <div className="admin-audit-table-wrap"><table className="admin-audit-table">
+          <thead><tr><th>ロック済みパッケージ</th><th>OSVアドバイザリID</th><th>重大度／対応状況</th></tr></thead>
+          <tbody>{result.report.advisories?.map(item => {
+            const pkg = runtimeInventory.packages.find(row => row.ref === item.packageRef)!;
+            return <tr key={item.packageRef + ":" + item.advisoryId}>
+              <td>{pkg.name} / {pkg.version}</td>
+              <td><a target="_blank" rel="noopener noreferrer"
+                href={"https://osv.dev/vulnerability/" + encodeURIComponent(item.advisoryId)}>
+                {item.advisoryId}</a></td>
+              <td>未評価（原票参照）</td>
+            </tr>;
+          })}</tbody>
+        </table></div>}
+    </div>}
+  </div>;
+};
+
 export default function SecurityCenter() {
   const [state, setState] = useState<
     { readonly kind: "loading" | "denied" | "unavailable" }
@@ -314,6 +397,7 @@ export default function SecurityCenter() {
           <td>{source.freshness}</td><td>{coverageDisplay(source).count}</td>
         </tr>)}</tbody>
       </table></div>
+      <OsvRuntimeAdvisories />
       <h3>Security Finding（検査済みソース限定）</h3>
       {ready.findings.state === "not-connected" ? <p data-testid="security-finding-unconnected">
         Findingデータ提供元は未接続。件数は不明、重大度・対応状態は評価していません。
