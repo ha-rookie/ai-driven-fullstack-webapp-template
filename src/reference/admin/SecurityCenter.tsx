@@ -27,7 +27,7 @@ interface Snapshot {
     readonly requirements: readonly Requirement[];
   };
 }
-const ISO_TIME = /^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z$/u;
+const ISO_TIME = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u;
 const validTime = (v: unknown): v is string =>
   typeof v === "string" && ISO_TIME.test(v) && Number.isFinite(Date.parse(v))
     && new Date(v).toISOString() === v;
