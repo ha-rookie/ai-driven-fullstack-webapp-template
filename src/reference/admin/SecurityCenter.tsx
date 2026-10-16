@@ -318,6 +318,8 @@ const isOsvFindingReport = (value: unknown, batch: OsvReport): value is OsvFindi
     || v.schemaVersion !== 1 || v.scope !== "runtime-lock-only" || v.source !== "OSV"
     || v.state !== "verified" || v.checkedAt !== batch.checkedAt
     || v.checkedPackages !== runtimeInventory.packages.length || !v.coverage) return false;
+  const checkedAt = v.checkedAt;
+  if (typeof checkedAt !== "string") return false;
   const coverage = v.coverage;
   const raw = { ...coverage } as Record<string, unknown>;
   delete raw.freshness;
@@ -337,8 +339,8 @@ const isOsvFindingReport = (value: unknown, batch: OsvReport): value is OsvFindi
       return expected.has(item.resourceRef + ":" + id)
         && item.sourceId === "dependency_audit" && item.category === "dependency"
         && item.status === "open" && item.riskDisposition === "none"
-        && item.assessedAt >= v.checkedAt && item.detectedAt === v.checkedAt
-        && item.lastObservedAt === v.checkedAt && item.remediationCode === "update_dependency"
+        && item.assessedAt >= checkedAt && item.detectedAt === checkedAt
+        && item.lastObservedAt === checkedAt && item.remediationCode === "update_dependency"
         && item.evidence.length === 1 && item.evidence[0].kind === "dependency"
         && item.evidence[0].code === "dependency_alert"
         && item.evidence[0].referenceId === item.resourceRef + "_" + slug;
