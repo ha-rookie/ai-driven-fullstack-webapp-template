@@ -88,6 +88,23 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
       const detailBase = "/api/admin/integrations/";
       const outgoing = await fetch(detailBase + "outbox/e2e419-out-00?scopeId=workhub-company");
       const incoming = await fetch(detailBase + "inbound/e2e419-in-00?scopeId=workhub-company");
+      // The new receipt route is a guarded, read-only projection of #719.
+      // Reference WORKHUB intentionally registers no actual Provider verifier.
+      const receiptUrl = "/api/admin/integrations/outbox/e2e419-out-02/_receipt?scopeId=workhub-company";
+      const receiptResponse = await fetch(receiptUrl);
+      const receipt = await receiptResponse.json() as {
+        assessment: { kind: string; reason?: string; manualRetryAllowed: boolean };
+      };
+      const nonUnknownReceipt = await fetch(
+        "/api/admin/integrations/outbox/e2e419-out-00/_receipt?scopeId=workhub-company");
+      const nonUnknownBody = await nonUnknownReceipt.json() as {
+        assessment: { kind: string; manualRetryAllowed: boolean };
+      };
+      const missingReceipt = await fetch(
+        "/api/admin/integrations/outbox/e2e419-absent/_receipt?scopeId=workhub-company");
+      const deniedReceipt = await fetch(
+        "/api/admin/integrations/outbox/e2e419-out-02/_receipt?scopeId=other-company");
+      const postReceipt = await fetch(receiptUrl, { method: "POST" });
       const post = await fetch(base, { method: "POST" });
       const otherScope = await fetch("/api/admin/integrations/failures?scopeId=other-company");
       return {
@@ -96,6 +113,10 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
         outgoingStatus: outgoing.status, incomingStatus: incoming.status,
         outgoing: await outgoing.json() as unknown, incoming: await incoming.json() as unknown,
         postStatus: post.status, otherScopeStatus: otherScope.status,
+        receiptStatus: receiptResponse.status, receipt,
+        nonUnknownStatus: nonUnknownReceipt.status, nonUnknownBody,
+        missingReceiptStatus: missingReceipt.status, deniedReceiptStatus: deniedReceipt.status,
+        postReceiptStatus: postReceipt.status,
       };
     });
 
@@ -118,6 +139,17 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
     expect(JSON.stringify(observed)).not.toMatch(/destinationKey|providerSecret|rawProviderResponse/iu);
     expect(observed.outgoingStatus).toBe(200);
     expect(observed.incomingStatus).toBe(200);
+    expect(observed.receiptStatus).toBe(200);
+    expect(observed.receipt.assessment).toEqual({
+      kind: "unverified", reason: "provider_not_registered", manualRetryAllowed: false,
+    });
+    expect(observed.nonUnknownStatus).toBe(200);
+    expect(observed.nonUnknownBody.assessment).toEqual({
+      kind: "not_applicable", manualRetryAllowed: false,
+    });
+    expect(observed.missingReceiptStatus).toBe(404);
+    expect(observed.deniedReceiptStatus).toBe(403);
+    expect(observed.postReceiptStatus).toBe(405);
     expect(observed.postStatus).toBe(405);
     expect(observed.otherScopeStatus).toBe(403);
 
@@ -133,6 +165,19 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
     await expect(page.getByTestId("unified-failure-detail")).not.toContainText("raw-provider-private-message");
     await expect(queue.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
     await expect(page.getByTestId("unified-failure-detail").getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+
+    // Known exact ID from page one remains inspectable from the UI after paging.
+    const lookup = queue.getByRole("form", { name: "記録IDから詳細確認" });
+    await lookup.getByRole("textbox", { name: "記録ID" }).fill("e2e419-out-02");
+    await lookup.getByRole("button", { name: "指定IDの詳細を確認" }).click();
+    const detail = page.getByTestId("unified-failure-detail");
+    await expect(detail.getByTestId("delivery-outcome-unknown")).toBeVisible();
+    await detail.getByRole("button", { name: "受領証跡の状態を確認（参照のみ）" }).click();
+    await expect(detail.getByTestId("outbox-receipt-assessment")).toContainText(
+      "Provider照合Adapter未登録。外部受領は未確認、再送不可");
+    await expect(detail.getByTestId("outbox-operation-gate")).toContainText("再送禁止");
+    await expect(detail.getByTestId("outbox-reconcile-gate")).toContainText("DENY");
+    await expect(detail.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
   } finally {
     executeLocalSql(cleanupSql);
   }
