@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { getPlatformProxy } from "wrangler";
@@ -24,10 +24,16 @@ try {
     "src/worker/auth/application-session.ts",
     "src/worker.ts",
     "--outDir", compiled, "--rootDir", "src", "--target", "ES2023",
-    "--module", "CommonJS", "--moduleResolution", "Node", "--esModuleInterop",
+    "--module", "CommonJS", "--moduleResolution", "Node", "--resolveJsonModule", "--esModuleInterop",
     "--types", "node,@cloudflare/workers-types", "--strict", "--skipLibCheck",
   ], { stdio: "inherit" });
   writeFileSync(join(compiled, "package.json"), '{"type":"commonjs"}');
+  // A transitively imported Security Center API references this reviewed static
+  // control mapping. The isolated CommonJS harness resolves it from scratch/config.
+  // Stage a read-only copy; do not change Worker bindings or touch remote resources.
+  mkdirSync(join(scratch, "config"), { recursive: true });
+  copyFileSync(resolve("config/scs-control-mapping.json"),
+    join(scratch, "config/scs-control-mapping.json"));
   // Compiled Worker imports shared reporting dependencies. Node resolves them
   // relative to /tmp/.../compiled, not from this harness in the repo root.
   // Reuse npm ci dependencies; keep the local D1 test isolated and offline.
