@@ -331,12 +331,12 @@ const isOsvFindingReport = (value: unknown, batch: OsvReport): value is OsvFindi
       || !isSecurityFindingFeed(v.findings, [normalized], new Date().toISOString())
       || v.findings?.state !== "verified"
       || v.findings.items.length !== batch.advisoryCount) return false;
-    const expected = new Set((batch.advisories ?? []).map(a => a.packageRef + ":" + a.advisoryId));
     return v.findings.items.every(item => {
-      const id = item.ruleId.startsWith("osv_")
-        ? item.ruleId.slice(4).toUpperCase().replace(/_/gu, "-") : "";
-      const slug = id.toLowerCase().replace(/-/gu, "_");
-      return expected.has(item.resourceRef + ":" + id)
+      const match = (batch.advisories ?? []).find(advisory =>
+        advisory.packageRef === item.resourceRef
+        && item.ruleId === "osv_" + advisory.advisoryId.toLowerCase().replace(/-/gu, "_"));
+      const slug = match?.advisoryId.toLowerCase().replace(/-/gu, "_");
+      return !!match
         && item.sourceId === "dependency_audit" && item.category === "dependency"
         && item.status === "open" && item.riskDisposition === "none"
         && item.assessedAt >= checkedAt && item.detectedAt === checkedAt
