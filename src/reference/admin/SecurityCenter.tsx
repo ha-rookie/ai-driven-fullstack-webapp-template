@@ -387,15 +387,18 @@ export default function SecurityCenter() {
       if (response.status === 401 || response.status === 403) {
         setState({ kind: "denied" }); setControlLookup("unavailable"); return;
       }
-      if (!response.ok) { setControlLookup("unavailable"); return; }
-      const payload: unknown = await response.json();
-      if (!isObservedControlSnapshot(payload)) { setControlLookup("unavailable"); return; }
-      if (payload.findings.state === "not-connected") {
-        setControlLookup("unknown"); return;
+      if (!response.ok) {
+        setState({ kind: "unavailable" }); setControlLookup("unavailable"); return;
       }
+      const payload: unknown = await response.json();
+      if (!isObservedControlSnapshot(payload)) {
+        setState({ kind: "unavailable" }); setControlLookup("unavailable"); return;
+      }
+      // Replace the previous observation even when the new result has no verified Finding.
+      // Otherwise an old, once-verified CI failure could be mistaken for the latest result.
       setState({ kind: "ready", data: payload });
-      setControlLookup("verified");
-    } catch { setControlLookup("unavailable"); }
+      setControlLookup(payload.findings.state === "verified" ? "verified" : "unknown");
+    } catch { setState({ kind: "unavailable" }); setControlLookup("unavailable"); }
   };
   useEffect(() => { void load(); }, []);
   const ready = state.kind === "ready" ? state.data : null;
