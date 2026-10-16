@@ -16,7 +16,7 @@ test("#420 admin sees read-only Security Center without fabricated green or zero
   const panel = page.locator("#admin-security-center");
   await expect(panel.getByRole("heading", { name: "セキュリティ確認センター" })).toBeVisible();
   await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
-  await expect(panel.getByText("検査ソース未接続／Finding件数は不明", { exact: false })).toBeVisible();
+  await expect(panel.getByText("Finding検証結果未接続／件数は不明", { exact: false })).toBeVisible();
   await expect(panel.getByText("43 要件", { exact: false })).toBeVisible();
   await panel.getByLabel("要件・責任を検索").fill("3-1-1");
   await expect(panel.getByText("3-1-1", { exact: true })).toBeVisible();
@@ -36,6 +36,59 @@ test("#420 admin sees read-only Security Center without fabricated green or zero
   expect(check.certification).toBe("not-assessed");
   expect(check.post).toBe(405);
   expect(check.wrongScope).toBe(400);
+});
+
+test("#420 synthetic CI observations show failure/history independently without claiming zero or safety", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    // Synthetic browser fixture only, never a live scanner or Production result.
+    const fetchedAt = "2026-10-16T12:00:00.000Z";
+    const success = { runId: 9100, targetSha: "a".repeat(40), checkStatus: "completed",
+      checkConclusion: "success", event: "pull_request", updatedAt: "2026-10-16T10:00:00.000Z" };
+    const failure = { ...success, runId: 9101, targetSha: "b".repeat(40),
+      checkConclusion: "failure", updatedAt: "2026-10-16T11:00:00.000Z" };
+    body.sources[0] = { ...body.sources[0], coverageState: "unavailable", sourceHealth: "unavailable",
+      ci: { state: "available", fetchedAt, latest: failure, latestSuccessfulRun: success } };
+    body.sources[1] = { ...body.sources[1], coverageState: "unavailable", sourceHealth: "unavailable",
+      ci: { state: "unavailable", fetchedAt, latest: null, latestSuccessfulRun: null } };
+    body.sources[2].ci = { state: "available", fetchedAt, latest: null, latestSuccessfulRun: null };
+    body.sources[3].ci = { state: "available", fetchedAt, latest: success, latestSuccessfulRun: success };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+  const failed = panel.getByTestId("security-source-secret_detection");
+  await expect(failed).toContainText("completed / failure");
+  await expect(failed).toContainText("SHA bbbbbbbbbbbb / pull_request");
+  await expect(failed).toContainText("SHA aaaaaaaaaaaa / pull_request");
+  await expect(failed.getByRole("link", { name: "Run #9101", exact: true }))
+    .toHaveAttribute("href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/actions/runs/9101");
+  await expect(failed.getByRole("link", { name: "Run #9100", exact: true })).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(panel.getByTestId("security-source-dependency_audit")).toContainText("取得不能（unavailable）");
+  await expect(panel.getByTestId("security-source-configuration_check")).toContainText("実行記録なし（not-run）");
+  await expect(panel.getByTestId("security-source-scs_control_mapping")).toContainText("completed / success");
+  await expect(panel.getByTestId("security-source-scs_control_mapping")).toContainText("unknown");
+  await expect(panel.getByText("Finding検証結果未接続／件数は不明", { exact: false })).toBeVisible();
+});
+
+test("#420 unsafe run identity in API metadata fails closed before creating evidence links", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.sources[0].ci = { state: "available", fetchedAt: "2026-10-16T12:00:00.000Z", latestSuccessfulRun: null,
+      latest: { runId: "unsafe-url", targetSha: "a".repeat(40), checkStatus: "completed", checkConclusion: "success",
+        event: "pull_request", updatedAt: "2026-10-16T10:00:00.000Z" } };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await expect(panel.getByRole("alert")).toContainText("状態を取得できませんでした");
+  await expect(panel.getByTestId("security-center-posture")).toHaveCount(0);
+  await expect(panel.getByRole("link")).toHaveCount(0);
 });
 
 test("#420 ordinary employee cannot view Security Center or read its API", async ({ page }) => {
