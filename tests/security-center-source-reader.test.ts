@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSecurityCenterSourceReader, SECURITY_REPOSITORY, SECURITY_WORKFLOWS } from "../src/worker/administration/security-center-source-reader";
+import { createSecurityCenterSourceReader, createSecurityCenterStepReader, unconnectedSecuritySources, SECURITY_REPOSITORY, SECURITY_WORKFLOWS, type SecurityCenterSource } from "../src/worker/administration/security-center-source-reader";
 
 // Synthetic provider metadata only; no live CI or Production evidence is claimed.
 const AS_OF = "2026-10-16T12:00:00.000Z";
@@ -124,4 +124,105 @@ test("#420 source cache coalesces requests, retains fetch time, expires and disc
   fail = false;
   const recovered = await reader("preview", "2026-10-16T12:10:00.000Z");
   assert.equal(requests, 12); assert.ok(recovered.every(s => s.ci.state === "available"));
+});
+
+const stepSource = (sourceId = "secret_detection"): SecurityCenterSource => {
+  const original = unconnectedSecuritySources(AS_OF).find(s => s.sourceId === sourceId)!;
+  const latest = {
+    runId: 42, targetSha: SHA, checkStatus: "completed" as const,
+    checkConclusion: "success" as const, event: "pull_request" as const,
+    updatedAt: "2026-10-16T10:00:00.000Z",
+  };
+  return { ...original, ci: {
+    state: "available", fetchedAt: AS_OF, latest, latestSuccessfulRun: latest,
+  } };
+};
+const jobStepList = (sourceId = "secret_detection", overrides: Record<string, unknown> = {}) => {
+  const policy = SECURITY_WORKFLOWS.find(p => p.sourceId === sourceId)!;
+  return Response.json({ total_count: 1, jobs: [{
+    run_id: 42, name: policy.jobName, head_sha: SHA, status: "completed",
+    steps: [{ name: policy.stepName, status: "completed", conclusion: "success" }],
+    ...overrides,
+  }] });
+};
+
+test("#420 on-demand CI step reads only the server-owned latest run; returns source-bound outcome, not Finding", async () => {
+  let requests = 0;
+  const reader = createSecurityCenterStepReader((async (url, init) => {
+    requests++;
+    assert.equal(String(url), `https://api.github.com/repos/${SECURITY_REPOSITORY}/actions/runs/42/jobs?per_page=20`);
+    assert.equal(init?.method, "GET"); assert.equal(init?.credentials, "omit");
+    assert.equal(init?.redirect, "error"); assert.ok(init?.signal);
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.has("authorization"), false);
+    assert.equal(headers.has("cookie"), false);
+    return jobStepList();
+  }) as typeof fetch);
+  const source = stepSource();
+  const evidence = await reader(source, AS_OF);
+  assert.deepEqual(evidence, {
+    schemaVersion: 1, sourceId: "secret_detection", stepCode: "secret_scan",
+    runId: 42, targetSha: SHA, state: "observed", conclusion: "success",
+  });
+  assert.equal("findings" in evidence, false);
+  assert.equal("checkedFindingCount" in evidence, false);
+  assert.equal(requests, 1);
+  assert.deepEqual(await reader(source, "2026-10-16T12:04:59.000Z"), evidence);
+  assert.equal(requests, 1);
+  await reader(source, "2026-10-16T12:05:00.000Z"); assert.equal(requests, 2);
+});
+
+test("#420 no run/pending run does not trigger a provider request or imply a completed check", async () => {
+  let requests = 0;
+  const reader = createSecurityCenterStepReader((async () => {
+    requests++; throw new Error("Must not fetch absent or unfinished check");
+  }) as typeof fetch);
+  const notConnected = unconnectedSecuritySources(AS_OF)[0];
+  const absent = await reader(notConnected, AS_OF);
+  assert.equal(absent.state, "not-run"); assert.equal(absent.runId, null);
+  const pending = { ...stepSource(), ci: { ...stepSource().ci,
+    latest: { ...stepSource().ci.latest!, checkStatus: "queued" as const,
+      checkConclusion: undefined } } } as SecurityCenterSource;
+  assert.equal((await reader(pending, AS_OF)).state, "not-run");
+  assert.equal(requests, 0);
+});
+
+test("#420 source-bound step rejects untrusted jobs/step identity/status and sensitive payloads", async () => {
+  const invalid = [
+    { run_id: 41 }, { head_sha: "b".repeat(40) }, { name: "unreviewed-job" },
+    { status: "in_progress" }, { steps: [] }, { steps: [{ name: "untrusted", status: "completed", conclusion: "success" }] },
+    { steps: [{ name: "Scan tracked files for secret candidates", status: "completed", conclusion: "success" },
+      { name: "Scan tracked files for secret candidates", status: "completed", conclusion: "success" }] },
+    { steps: [{ name: "Scan tracked files for secret candidates", status: "queued", conclusion: null }] },
+    { steps: [{ name: "Scan tracked files for secret candidates", status: "completed", conclusion: "weird" }] },
+  ];
+  for (const overrides of invalid) {
+    const reader = createSecurityCenterStepReader((async () => jobStepList("secret_detection", overrides)) as typeof fetch);
+    const evidence = await reader(stepSource(), AS_OF);
+    assert.equal(evidence.state, "unavailable", JSON.stringify(overrides));
+    assert.equal(evidence.conclusion, null);
+  }
+  const reader = createSecurityCenterStepReader((async () => Response.json({ total_count: 1, jobs: [{
+    run_id: 42, name: "scan-secrets", head_sha: SHA, status: "completed",
+    actor: { email: "private-test@example.test" },
+    steps: [{ name: "Scan tracked files for secret candidates", status: "completed", conclusion: "failure",
+      logs_url: "https://secret.test/" }],
+  }] })) as typeof fetch);
+  const failing = await reader(stepSource(), AS_OF);
+  assert.equal(failing.state, "observed"); assert.equal(failing.conclusion, "failure");
+  assert.doesNotMatch(JSON.stringify(failing), /private-test|logs_url|secret.test/u);
+});
+
+test("#420 GitHub step errors, ambiguous pagination, wrong file and oversized response remain unavailable", async () => {
+  const cases = [
+    () => new Response("forbidden", { status: 403 }),
+    () => Response.json({ total_count: 2, jobs: [] }),
+    () => Response.json({ total_count: 0, jobs: [] }),
+    () => new Response("x".repeat(256 * 1024 + 1), { headers: { "content-type": "application/json" } }),
+    () => new Response("{}", { status: 302, headers: { location: "https://evil.test" } }),
+  ];
+  for (const c of cases) {
+    const reader = createSecurityCenterStepReader((async () => c()) as typeof fetch);
+    assert.equal((await reader(stepSource(), AS_OF)).state, "unavailable");
+  }
 });
