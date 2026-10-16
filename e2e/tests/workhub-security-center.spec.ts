@@ -324,3 +324,79 @@ test("#420 injected stale or wrong-source CI step evidence fails closed", async 
   await expect(row.getByTestId("security-step-secret_detection")).toHaveCount(0);
   await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
 });
+
+test("#420 source-verified Finding contracts show independent severity/category/status and safe evidence codes", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    // Synthetic post-auth UI fixture only. Production endpoint remains NOT CONNECTED.
+    const asOf: string = body.observedAt;
+    const earlier = (minutes: number) => new Date(Date.parse(asOf) - minutes * 60_000).toISOString();
+    const later = (minutes: number) => new Date(Date.parse(asOf) + minutes * 60_000).toISOString();
+    for (const index of [0, 1]) {
+      body.sources[index] = { ...body.sources[index],
+        coverageState: "checked", sourceHealth: "ready",
+        lastSuccessfulCheckAt: asOf, evidenceValidUntil: later(60),
+        checkedFindingCount: 1, freshness: "current" };
+    }
+    const evidence = [{ kind: "ci", code: "dependency_alert", referenceId: "evidence_one" }];
+    const first = { sourceId: "secret_detection", ruleId: "rule_alpha",
+      category: "identity", severity: "high", status: "open",
+      detectedAt: earlier(120), lastObservedAt: earlier(60), assessedAt: asOf,
+      evidence, remediationCode: "review_access", riskDisposition: "none" };
+    const second = { sourceId: "dependency_audit", ruleId: "rule_beta",
+      category: "dependency", severity: "low", status: "accepted-risk",
+      detectedAt: earlier(120), lastObservedAt: earlier(60), assessedAt: asOf,
+      evidence, remediationCode: "update_dependency",
+      exception: { reasonCode: "mitigation_documented", approvalRef: "approval_one", expiresAt: earlier(5) },
+      riskDisposition: "accepted-expired" };
+    body.findings = { state: "verified", items: [first, second], verifiedCount: 2 };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  const table = panel.getByTestId("security-findings-table");
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  await expect(table).toContainText("evidence_one");
+  await expect(table).toContainText("例外期限切れ（承認無効）");
+  await expect(table.getByRole("link")).toHaveCount(0);
+  await panel.getByLabel("Finding重大度").selectOption("high");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(table).toContainText("rule_alpha");
+  await panel.getByLabel("Finding重大度").selectOption("all");
+  await panel.getByLabel("Finding分類").selectOption("dependency");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(table).toContainText("rule_beta");
+  await panel.getByLabel("Finding分類").selectOption("all");
+  await panel.getByLabel("Finding状態").selectOption("open");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(table).toContainText("rule_alpha");
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
+
+test("#420 untrusted synthetic Finding payload is rejected instead of rendered", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const at: string = body.observedAt;
+    body.sources[0] = { ...body.sources[0], coverageState: "checked", sourceHealth: "ready",
+      lastSuccessfulCheckAt: at, evidenceValidUntil: new Date(Date.parse(at) + 3600000).toISOString(),
+      checkedFindingCount: 1, freshness: "current" };
+    body.findings = { state: "verified", verifiedCount: 1, items: [{
+      sourceId: "secret_detection", ruleId: "rule_alpha",
+      category: "identity", severity: "critical", status: "open",
+      detectedAt: at, lastObservedAt: at, assessedAt: at,
+      evidence: [{ kind: "ci", code: "dependency_alert", referenceId: "evidence_one",
+        url: "https://untrusted.test" }], riskDisposition: "none",
+      message: "secret provider raw log",
+    }] };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await expect(panel.getByRole("alert")).toContainText("状態を取得できませんでした");
+  await expect(panel.getByTestId("security-findings-table")).toHaveCount(0);
+  await expect(panel).not.toContainText("secret provider raw log");
+});
