@@ -37,6 +37,7 @@ export interface AuditSearchQuery {
   readonly category?: AuditCategory;
   readonly outcome?: AuditOutcome;
   readonly action?: string;
+  readonly requestId?: string;
   readonly actorId?: string;
   readonly scopeId?: string;
   readonly resourceType?: string;
@@ -150,6 +151,9 @@ const validateSearchQuery = (query: AuditSearchQuery): number => {
   }
 
   assertBoundedFilter(query.action, "action");
+  if (query.requestId !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/u.test(query.requestId)) {
+    throw new TypeError("Invalid exact Audit requestId");
+  }
   assertBoundedFilter(query.actorId, "actorId");
   assertBoundedFilter(query.scopeId, "scopeId");
   assertBoundedFilter(query.resourceType, "resourceType");
@@ -299,6 +303,10 @@ export class D1DurableAuditStore implements DurableAuditSink {
     if (query.action !== undefined) {
       where.push("action = ?");
       values.push(query.action);
+    }
+    if (query.requestId !== undefined) {
+      where.push("request_id = ?");
+      values.push(query.requestId);
     }
     if (query.actorId !== undefined) {
       where.push("actor_id = ?");
