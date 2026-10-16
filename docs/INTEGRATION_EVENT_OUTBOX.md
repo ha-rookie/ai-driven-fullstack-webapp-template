@@ -100,6 +100,12 @@ The read-only unified queue is also checked through an **actual authenticated lo
 
 The local seed may contain **zero failed records**. A green test with no rows proves only the local endpoint's safe empty/read-only behavior; it does not prove populated cross-source ordering, Provider receipt reconciliation, external document storage connection health, or a Production System Test. The broader #419 list/detail and end-to-end integration acceptance remain open until suitable evidence exists.
 
+## Populated unified failure queue regression (#419)
+
+A deterministic service-level test exercises the **real** authorized `handleIntegrationOperationsApi` handler with an in-memory D1 **test double**, populated with local outbound delivery and inbound verified receipt failures. The two sources share timestamps, so the test verifies source-aware keyset pagination across the 20-row boundary, safe failure-code normalization, exact separately authorized detail access, environment isolation, and the rule that **either source's read error invalidates the entire page** rather than producing a misleading empty or incomplete success. The handler remains GET-only with `providerReceipt: unverified`, and this test performs no Provider call or persistent write.
+
+This is distinct from PR #716's browser test over a real local Worker and potentially empty local D1, and from mocked browser UI presentation scenarios. Because the in-memory test double is not SQLite, SQL query-plan/index performance and full seeded D1 cross-source behavior are **not** proven by this new test. Neither test provides actual external Provider receipt verification, document-storage connection monitoring, evidence-based external retry, or formal System Test #694. The full #419 list/detail and recovery acceptance remains open.
+
 ## Environment isolation
 
 Integration Event and Outbox primary/unique keys include `environment`. Preview and Production must not share destinations, secrets, or endpoints by implicit fallback.
