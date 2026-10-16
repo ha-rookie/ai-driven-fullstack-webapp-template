@@ -93,6 +93,20 @@ interface OutboxDetail {
     };
   };
 }
+interface ProviderReceiptResult {
+  readonly coverage: "environment";
+  readonly environment: string;
+  readonly observedAt: string;
+  readonly outboxId: string;
+  readonly assessment: {
+    readonly kind: "not_applicable" | "stale_outbox" | "unverified"
+      | "verified_delivery" | "verified_non_delivery";
+    readonly reason?: "provider_not_registered" | "provider_evidence_unavailable";
+    readonly checkedAt?: string;
+    readonly manualRetryAllowed: false;
+  };
+}
+
 interface AuditSnapshot {
   readonly items: readonly { readonly category: string; readonly action: string }[];
   readonly nextCursor: string | null;
@@ -236,6 +250,21 @@ const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
       && value.decision.reconcileGate.policyVersion === "operations-policy-v1"
       && value.decision.reconcileGate.blocker === "provider_reconcile_adapter_not_registered"
       && value.decision.reconcileGate.executionAllowed === false));
+
+const hasProviderReceiptResult = (value: unknown): value is ProviderReceiptResult =>
+  isRecord(value) && value.coverage === "environment"
+  && typeof value.environment === "string" && value.environment.length > 0
+  && typeof value.observedAt === "string" && Number.isFinite(Date.parse(value.observedAt))
+  && typeof value.outboxId === "string"
+  && isRecord(value.assessment) && value.assessment.manualRetryAllowed === false
+  && (value.assessment.kind === "not_applicable" || value.assessment.kind === "stale_outbox"
+    || (value.assessment.kind === "unverified"
+      && ["provider_not_registered", "provider_evidence_unavailable"].includes(
+        String(value.assessment.reason)))
+    || ((value.assessment.kind === "verified_delivery"
+      || value.assessment.kind === "verified_non_delivery")
+      && typeof value.assessment.checkedAt === "string"
+      && Number.isFinite(Date.parse(value.assessment.checkedAt))));
 
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
@@ -401,9 +430,14 @@ const actionLabel: Record<OutboxDetail["decision"]["nextAction"], string> = {
 
 const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: string; readonly environment: string }) => {
   const [detail, setDetail] = useState<Probe<OutboxDetail> | null>(null);
+  const [receipt, setReceipt] = useState<Probe<ProviderReceiptResult> | null>(null);
+  const [receiptChecking, setReceiptChecking] = useState(false);
+  const [receiptChecked, setReceiptChecked] = useState(false);
   useEffect(() => {
     let active = true;
     setDetail(null);
+    setReceipt(null);
+    setReceiptChecked(false);
     void read("/api/admin/integrations/outbox/" + encodeURIComponent(outboxId) + "?"
       + params({ scopeId: SCOPE_ID }), hasOutboxDetail).then((result) => {
       if (active) setDetail(result.kind === "ready" && result.data.environment !== environment
@@ -428,6 +462,42 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
           )}
           <p><strong>次の確認：</strong>{actionLabel[detail.data.decision.nextAction]}</p>
           <p>外部配送結果：未照合。再送可否は判断できません（この画面では再送しません）。</p>
+          {detail.data.outbox.status === "dead_letter"
+            && detail.data.outbox.failureCode === "delivery_outcome_unknown" && (
+            <section data-testid="outbox-receipt-assessment" aria-label="受領証跡の確認">
+              <button type="button" disabled={receiptChecking} onClick={() => {
+                setReceiptChecking(true);
+                setReceiptChecked(false);
+                setReceipt(null);
+                void read("/api/admin/integrations/outbox/" + encodeURIComponent(outboxId)
+                  + "/_receipt?" + params({ scopeId: SCOPE_ID }), hasProviderReceiptResult)
+                  .then(result => {
+                    setReceipt(result.kind === "ready"
+                      && (result.data.environment !== environment || result.data.outboxId !== outboxId)
+                      ? { kind: "unknown" } : result);
+                  })
+                  .catch(() => setReceipt({ kind: "unknown" }))
+                  .finally(() => { setReceiptChecking(false); setReceiptChecked(true); });
+              }}>受領証跡の状態を確認（参照のみ）</button>
+              {receiptChecking && <p role="status">安全な証跡判定を取得中…</p>}
+              {receiptChecked && receipt && <p role="status">照合の状態：{
+                receipt.kind !== "ready" ? "取得できません。再送不可"
+                  : receipt.data.assessment.kind === "unverified"
+                    ? receipt.data.assessment.reason === "provider_not_registered"
+                      ? "Provider照合Adapter未登録。外部受領は未確認、再送不可"
+                      : "Provider証跡が確認できません。再送不可"
+                  : receipt.data.assessment.kind === "not_applicable"
+                    ? "このOutboxは証跡判定の対象外。再送不可"
+                  : receipt.data.assessment.kind === "stale_outbox"
+                    ? "Outbox状態が変化したため無効。再確認が必要"
+                  : receipt.data.assessment.kind === "verified_delivery"
+                    ? "Provider受領証跡は検証済み。再送不可・監査/永続化は別工程"
+                    : "Provider未配送証跡は検証済み。ただし承認/監査がないため再送不可"
+              }</p>}
+              <p>Providerの実接続・照合証跡の永続化・再送の承認/実行は未提供です。
+                この確認操作はOutboxを変更せず、共通Operations CoreのDENYを解除しません。</p>
+            </section>
+          )}
           <p data-testid="outbox-operation-gate">
             共通Operations Core判定：<strong>再送禁止</strong>
             {"（リスク: " + detail.data.decision.operationGate.risk
