@@ -71,3 +71,23 @@ test("#420 never promotes unknown/stale/not-checked evidence into a trusted sour
   assert.equal(isSecurityFindingFeed({ state: "verified", items: [first],
     verifiedCount: 1 }, [source("secret_detection", 1)], AS_OF), true);
 });
+
+
+test("#420 only valid source-reviewed Finding Audit correlation survives UI boundary", () => {
+  const valid = normalizeSecurityFinding({
+    ruleId: "rule_a", category: "identity", severity: "high", status: "open",
+    detectedAt: "2026-10-16T09:00:00.000Z", lastObservedAt: "2026-10-16T10:00:00.000Z",
+    evidence: [{ kind: "ci", code: "dependency_alert", referenceId: "evidence_one" }],
+    auditRequestId: "trace-xyz.NRT",
+  }, "secret_detection", "2026-10-16T11:30:00.000Z");
+  const coverage = [source("secret_detection", 1)];
+  assert.equal(isSecurityFindingFeed({ state: "verified", items: [valid], verifiedCount: 1 },
+    coverage, AS_OF), true);
+  for (const wrong of ["ghp_bad_token", "https://evil.test", "trace xyz", "x".repeat(129)]) {
+    const tampered = { state: "verified", items: [{ ...valid, auditRequestId: wrong }],
+      verifiedCount: 1 };
+    assert.equal(isSecurityFindingFeed(tampered, coverage, AS_OF), false);
+  }
+  assert.equal(isSecurityFindingFeed({ state: "verified", items: [{ ...valid, extraAudit: "evil" }],
+    verifiedCount: 1 }, coverage, AS_OF), false);
+});

@@ -192,3 +192,19 @@ test("not-applicable must declare a reason and cannot be counted as zero finding
     sourceHealth: "unmonitored",
   }, assessed), /invalid enum code/u);
 });
+
+
+test("#420 audited request correlation is optional, bounded, and never a raw provider URL", () => {
+  assert.equal(normalizeSecurityFinding({ ...finding(), auditRequestId: "abc123-NRT" },
+    "ci_pipeline", assessed).auditRequestId, "abc123-NRT");
+  assert.equal(normalizeSecurityFinding(finding(), "ci_pipeline", assessed).auditRequestId, undefined);
+  for (const unsafe of [
+    "", "request id with spaces", "request\nunsafe", "https://outside.example/test",
+    "a".repeat(129), "ghp_secret_value", "github_pat_leak", "abc?query",
+  ]) {
+    assert.throws(() => normalizeSecurityFinding({ ...finding(), auditRequestId: unsafe },
+      "ci_pipeline", assessed), /auditRequestId/u);
+  }
+  assert.throws(() => normalizeSecurityFinding({ ...finding(), auditRequestId: null },
+    "ci_pipeline", assessed), /auditRequestId/u);
+});

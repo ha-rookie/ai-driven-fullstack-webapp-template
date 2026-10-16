@@ -60,6 +60,8 @@ export interface SecurityFinding {
   readonly assessedAt: string;
   readonly evidence: readonly SecurityEvidence[];
   readonly remediationCode?: SecurityRemediationCode;
+  /** Validated Audit request ID correlation hint. NOT proof of an existing Audit event. */
+  readonly auditRequestId?: string;
   readonly exception?: SecurityRiskException;
   /** Expired accepted risk is NOT an active approval, even if stored status has not changed. */
   readonly riskDisposition: "none" | "accepted-current" | "accepted-expired";
@@ -85,6 +87,14 @@ export interface SecurityFindingAdapter<T> {
 
 const ID = /^[a-z][a-z0-9_-]{0,47}$/u;
 const CREDENTIAL_PREFIX = /^(?:sk_live|sk_test|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|bearer_)/iu;
+const AUDIT_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/u;
+const optionalAuditRequestId = (value: unknown): string | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !AUDIT_REQUEST_ID.test(value) || CREDENTIAL_PREFIX.test(value)) {
+    throw new TypeError("auditRequestId: invalid correlation ID");
+  }
+  return value;
+};
 const record = (value: unknown, label: string): Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value)
     || Object.getPrototypeOf(value) !== Object.prototype) {
@@ -132,7 +142,7 @@ export const normalizeSecurityFinding = (
   const raw = record(input, "finding");
   keys(raw, [
     "ruleId", "category", "severity", "status", "resourceRef", "detectedAt",
-    "lastObservedAt", "evidence", "remediationCode", "exception",
+    "lastObservedAt", "evidence", "remediationCode", "auditRequestId", "exception",
   ], "finding");
   const ruleId = id(raw.ruleId, "ruleId");
   const category = enumValue(raw.category, SECURITY_CATEGORIES, "category");
@@ -155,6 +165,7 @@ export const normalizeSecurityFinding = (
     const referenceId = optionalId(entry.referenceId, "evidence.referenceId");
     return Object.freeze({ kind, code, ...(referenceId ? { referenceId } : {}) });
   }));
+  const auditRequestId = optionalAuditRequestId(raw.auditRequestId);
   const remediationCode = raw.remediationCode === undefined ? undefined
     : enumValue(raw.remediationCode, SECURITY_REMEDIATION_CODES, "remediationCode");
   if ((status === "accepted-risk") !== (raw.exception !== undefined)) {
@@ -177,6 +188,7 @@ export const normalizeSecurityFinding = (
     ruleId, sourceId, category, severity, status, detectedAt, lastObservedAt, assessedAt,
     ...(resourceRef ? { resourceRef } : {}),
     evidence, ...(remediationCode ? { remediationCode } : {}),
+    ...(auditRequestId ? { auditRequestId } : {}),
     ...(exception ? { exception } : {}), riskDisposition,
   });
 };

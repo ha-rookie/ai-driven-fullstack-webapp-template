@@ -37,6 +37,7 @@ export interface AuditSearchQuery {
   readonly category?: AuditCategory;
   readonly outcome?: AuditOutcome;
   readonly action?: string;
+  readonly requestId?: string;
   readonly actorId?: string;
   readonly scopeId?: string;
   readonly resourceType?: string;
@@ -150,6 +151,9 @@ const validateSearchQuery = (query: AuditSearchQuery): number => {
   }
 
   assertBoundedFilter(query.action, "action");
+  if (query.requestId !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/u.test(query.requestId)) {
+    throw new TypeError("Invalid exact Audit requestId");
+  }
   assertBoundedFilter(query.actorId, "actorId");
   assertBoundedFilter(query.scopeId, "scopeId");
   assertBoundedFilter(query.resourceType, "resourceType");
@@ -300,6 +304,10 @@ export class D1DurableAuditStore implements DurableAuditSink {
       where.push("action = ?");
       values.push(query.action);
     }
+    if (query.requestId !== undefined) {
+      where.push("request_id = ?");
+      values.push(query.requestId);
+    }
     if (query.actorId !== undefined) {
       where.push("actor_id = ?");
       values.push(query.actorId);
@@ -339,11 +347,13 @@ export class D1DurableAuditStore implements DurableAuditSink {
       if (row.environment !== this.options.environment) {
         throw new DurableAuditIntegrityError("Durable audit environment mismatch");
       }
-      items.push({
-        id: row.id,
-        environment: row.environment,
-        record: await verifyDurableAuditRecord(row.record_json, row.record_sha256),
-      });
+      const record = await verifyDurableAuditRecord(row.record_json, row.record_sha256);
+      // The separately indexed columns must agree with the integrity-checked record.
+      if ((query.requestId !== undefined && record.requestId !== query.requestId)
+        || (query.scopeId !== undefined && record.scopeId !== query.scopeId)) {
+        throw new DurableAuditIntegrityError("Audit correlation/scope index mismatch");
+      }
+      items.push({ id: row.id, environment: row.environment, record });
     }
 
     const last = rows.at(-1);

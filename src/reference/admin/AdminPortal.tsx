@@ -409,6 +409,11 @@ const JobOperationsViewer = () => {
 };
 
 const AuditViewer = () => {
+  // Internal Security Finding deep-link: correlation hint only, never a pre-confirmed Audit match.
+  const [requestIdFilter, setRequestIdFilter] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("auditRequestId") ?? "";
+  });
   const [category, setCategory] = useState("");
   const [outcome, setOutcome] = useState("");
   const [state, setState] = useState<
@@ -419,10 +424,16 @@ const AuditViewer = () => {
 
   const load = async () => {
     setState({ kind: "loading" });
+    if (requestIdFilter !== "" && (!/^[A-Za-z0-9._:-]{1,128}$/u.test(requestIdFilter)
+      || /^(?:sk_live|sk_test|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|bearer_)/iu.test(requestIdFilter))) {
+      setState({ kind: "error", requestId: null });
+      return;
+    }
     const params = new URLSearchParams({
       scopeId: WORKHUB_SCOPE_ID,
       limit: "20",
     });
+    if (requestIdFilter) params.set("requestId", requestIdFilter);
     if (category) params.set("category", category);
     if (outcome) params.set("outcome", outcome);
 
@@ -457,6 +468,11 @@ const AuditViewer = () => {
     </div>
 
     <form className="admin-audit-filters" onSubmit={(event) => { event.preventDefault(); void load(); }}>
+      <label>監査リクエストID（完全一致）
+        <input aria-label="監査リクエストID（完全一致）" value={requestIdFilter}
+          maxLength={128} onChange={(event) => setRequestIdFilter(event.target.value)}
+          placeholder="例：request-1234" />
+      </label>
       <label>Category
         <select value={category} onChange={(event) => setCategory(event.target.value)}>
           <option value="">すべて</option>
@@ -475,6 +491,7 @@ const AuditViewer = () => {
       </label>
       <button type="submit" disabled={state.kind === "loading"}>絞り込む</button>
     </form>
+    <p>Request IDは実際の監査記録との照合キーです。入力しただけで監査証跡の存在や問題解決を証明しません。</p>
 
     {state.kind === "loading" && <div className="admin-audit-state" role="status">監査ログを取得しています…</div>}
     {state.kind === "error" && <div className="admin-audit-state is-error" role="alert">

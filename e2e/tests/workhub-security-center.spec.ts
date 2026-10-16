@@ -344,7 +344,7 @@ test("#420 source-verified Finding contracts show independent severity/category/
     const first = { sourceId: "secret_detection", ruleId: "rule_alpha",
       category: "identity", severity: "high", status: "open",
       detectedAt: earlier(120), lastObservedAt: earlier(60), assessedAt: asOf,
-      evidence, remediationCode: "review_access", riskDisposition: "none" };
+      evidence, remediationCode: "review_access", auditRequestId: "CF-123.NRT", riskDisposition: "none" };
     const second = { sourceId: "dependency_audit", ruleId: "rule_beta",
       category: "dependency", severity: "low", status: "accepted-risk",
       detectedAt: earlier(120), lastObservedAt: earlier(60), assessedAt: asOf,
@@ -360,7 +360,10 @@ test("#420 source-verified Finding contracts show independent severity/category/
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await expect(table).toContainText("evidence_one");
   await expect(table).toContainText("例外期限切れ（承認無効）");
-  await expect(table.getByRole("link")).toHaveCount(0);
+  const correlationLink = table.getByRole("link", { name: /監査ログをリクエストIDで照合/u });
+  await expect(correlationLink).toHaveCount(1);
+  await expect(correlationLink).toHaveAttribute("href",
+    "/admin?auditRequestId=CF-123.NRT#admin-audit-and-security");
   await panel.getByLabel("Finding重大度").selectOption("high");
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await expect(table).toContainText("rule_alpha");
@@ -373,6 +376,12 @@ test("#420 source-verified Finding contracts show independent severity/category/
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await expect(table).toContainText("rule_alpha");
   await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+  const expectedRequest = page.waitForRequest(req =>
+    req.url().includes("/api/admin/audit?") && new URL(req.url()).searchParams.get("requestId") === "CF-123.NRT");
+  await correlationLink.click();
+  await expectedRequest;
+  await expect(page.locator("#admin-audit-and-security")
+    .getByLabel("監査リクエストID（完全一致）")).toHaveValue("CF-123.NRT");
 });
 
 test("#420 untrusted synthetic Finding payload is rejected instead of rendered", async ({ page }) => {
@@ -399,4 +408,19 @@ test("#420 untrusted synthetic Finding payload is rejected instead of rendered",
   await expect(panel.getByRole("alert")).toContainText("状態を取得できませんでした");
   await expect(panel.getByTestId("security-findings-table")).toHaveCount(0);
   await expect(panel).not.toContainText("secret provider raw log");
+});
+
+test("#420 administrator can search real Audit viewer by exact request ID without a Finding feed", async ({ page }) => {
+  await login(page, "kai");
+  await page.goto("/admin");
+  const audit = page.locator("#admin-audit-and-security");
+  await expect(audit.getByRole("heading", { name: "監査ログ" })).toBeVisible();
+  const field = audit.getByLabel("監査リクエストID（完全一致）");
+  await field.fill("request-1234_test.NRT");
+  const request = page.waitForRequest(req => req.url().includes("/api/admin/audit?")
+    && new URL(req.url()).searchParams.get("requestId") === "request-1234_test.NRT");
+  await audit.getByRole("button", { name: "絞り込む" }).click();
+  await request;
+  await expect(field).toHaveValue("request-1234_test.NRT");
+  await expect(page.locator("#admin-security-center").getByTestId("security-finding-unconnected")).toBeVisible();
 });
