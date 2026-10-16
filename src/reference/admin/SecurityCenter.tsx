@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { normalizeSecuritySourceCoverage, type SecuritySourceCoverage } from "../../shared/security/security-finding";
+import { normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
+import { isSecurityFindingFeed, selectSecurityFindings, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
 import { scsTestSourceLinks } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 
@@ -29,7 +30,7 @@ type Requirement = {
 interface Snapshot {
   readonly schemaVersion: 1; readonly scopeId: string; readonly observedAt: string;
   readonly posture: "not-assessed";
-  readonly findings: { readonly state: "not-connected"; readonly items: null; readonly verifiedCount: null };
+  readonly findings: SecurityFindingFeed;
   readonly sources: readonly Coverage[];
   readonly scs: {
     readonly sourceVerifiedAt: string; readonly certification: "not-assessed";
@@ -85,11 +86,11 @@ const isSnapshot = (value: unknown): value is Snapshot => {
   if (!value || typeof value !== "object") return false;
   const v = value as Partial<Snapshot>;
   return v.schemaVersion === 1 && v.scopeId === SCOPE && v.posture === "not-assessed"
-    && isTime(v.observedAt) && v.findings?.state === "not-connected"
-    && v.findings?.items === null && v.findings?.verifiedCount === null
+    && isTime(v.observedAt)
     && Array.isArray(v.sources) && v.sources.length === 4
     && new Set(v.sources.map(s => s?.sourceId)).size === SOURCES.length
     && v.sources.every(s => isSource(s, v.observedAt!))
+    && isSecurityFindingFeed(v.findings, v.sources, v.observedAt!)
     && v.scs?.certification === "not-assessed"
     && Array.isArray(v.scs.requirements)
     && v.scs.requirements.every((r) => typeof r.id === "string"
@@ -207,6 +208,9 @@ export default function SecurityCenter() {
   >({ kind: "loading" });
   const [filter, setFilter] = useState("");
   const [ciAttentionOnly, setCiAttentionOnly] = useState(false);
+  const [findingSeverity, setFindingSeverity] = useState<SecuritySeverity | "all">("all");
+  const [findingCategory, setFindingCategory] = useState<SecurityCategory | "all">("all");
+  const [findingStatus, setFindingStatus] = useState<SecurityFindingStatus | "all">("all");
   const load = async () => {
     setState({ kind: "loading" });
     try {
@@ -226,6 +230,10 @@ export default function SecurityCenter() {
   const ciAttentionCount = ready?.sources.filter((source) => classifySecurityCi(source.ci).needsAttention).length ?? 0;
   const visibleCiSources = ready?.sources.filter((source) => !ciAttentionOnly
     || classifySecurityCi(source.ci).needsAttention) ?? [];
+  const visibleFindings = ready?.findings.state === "verified"
+    ? selectSecurityFindings(ready.findings.items, {
+      severity: findingSeverity, category: findingCategory, status: findingStatus,
+    }) : [];
   const requirements = ready?.scs.requirements.filter((r) =>
     `${r.id} ${r.name} ${r.responsibility}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) ?? [];
   return <section className="admin-audit-panel" id="admin-security-center" aria-labelledby="admin-security-center-title">
@@ -241,7 +249,9 @@ export default function SecurityCenter() {
     {ready && <>
       <div className="admin-audit-state" data-testid="security-center-posture">
         <strong>判定：未評価（Gray）</strong>
-        <p>Finding検証結果未接続／件数は不明。0件・安全・SCS適合を意味しません。</p>
+        <p>{ready.findings.state === "not-connected"
+          ? "Finding検証結果未接続／件数は不明。0件・安全・SCS適合を意味しません。"
+          : "照合済みFindingは対象ソースのみに限定。全体の安全・SCS適合・証跡鮮度を意味しません。"}</p>
       </div>
       <h3>検査ソースと証跡の鮮度</h3>
       <p>CIは公開Repositoryの各Workflowから最大5 Runを取得します。対象SHA・起点・取得日時を確認してください。
@@ -264,6 +274,47 @@ export default function SecurityCenter() {
           <td>{source.freshness}</td><td>{coverageDisplay(source).count}</td>
         </tr>)}</tbody>
       </table></div>
+      <h3>Security Finding（検査済みソース限定）</h3>
+      {ready.findings.state === "not-connected" ? <p data-testid="security-finding-unconnected">
+        Findingデータ提供元は未接続。件数は不明、重大度・対応状態は評価していません。
+      </p> : <>
+        <p role="status">検査済みソースのFinding {ready.findings.verifiedCount} 件。
+          全システムでの件数、現在の安全性・SCS適合や証跡鮮度は保証されません。</p>
+        <div>
+          <label>Finding重大度 <select aria-label="Finding重大度"
+            value={findingSeverity} onChange={event => setFindingSeverity(event.target.value as SecuritySeverity | "all")}>
+            <option value="all">すべて</option>
+            {SECURITY_SEVERITIES.map(value => <option key={value} value={value}>{value}</option>)}
+          </select></label>
+          <label>Finding分類 <select aria-label="Finding分類"
+            value={findingCategory} onChange={event => setFindingCategory(event.target.value as SecurityCategory | "all")}>
+            <option value="all">すべて</option>
+            {SECURITY_CATEGORIES.map(value => <option key={value} value={value}>{value}</option>)}
+          </select></label>
+          <label>Finding状態 <select aria-label="Finding状態"
+            value={findingStatus} onChange={event => setFindingStatus(event.target.value as SecurityFindingStatus | "all")}>
+            <option value="all">すべて</option>
+            {SECURITY_STATUSES.map(value => <option key={value} value={value}>{value}</option>)}
+          </select></label>
+        </div>
+        <p>Finding表示 {visibleFindings.length} / {ready.findings.verifiedCount} 件（合成表示ではありません）。
+          証跡とRemediationは許可済みコードのみ。外部URL・生ログ・承認操作はありません。</p>
+        <div className="admin-audit-table-wrap"><table className="admin-audit-table" data-testid="security-findings-table">
+          <thead><tr><th>Rule / Source</th><th>Severity / Category</th><th>Status / Risk exception</th>
+            <th>Evidence（コード・参照IDのみ）</th><th>Remediation（コードのみ）</th></tr></thead>
+          <tbody>{visibleFindings.map(item => <tr key={`${item.sourceId}:${item.ruleId}:${item.resourceRef ?? ""}`}>
+            <td>{item.ruleId}<small>{item.sourceId}</small></td>
+            <td>{item.severity} / {item.category}</td>
+            <td>{item.status} / {item.riskDisposition === "accepted-expired"
+              ? "例外期限切れ（承認無効）" : item.riskDisposition === "accepted-current"
+                ? "期限内の承認記録あり（再確認要）" : "例外なし"}</td>
+            <td>{item.evidence.map((evidence, i) => <div key={i}>
+              {evidence.kind} / {evidence.code} / {evidence.referenceId ?? "参照ID未登録"}
+            </div>)}</td>
+            <td>{item.remediationCode ?? "対応コード未登録"}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </>}
       <h3>SCS要件別の責任・Control・証跡</h3>
       <p>既存要件対応表の参照元確認日：{ready.scs.sourceVerifiedAt}。これは各要件の監査・証跡の最終確認日ではありません。検査実行やSCS認証取得を示しません。</p>
       <p>テストファイルのリンクは登録済みソースへの案内です。リンク先は閲覧時点のGitHub mainで、稼働アプリ・CI実行対象SHAとは限りません。テスト成功や証跡の存在・鮮度を確認したものではありません。</p>
