@@ -1,3 +1,4 @@
+import { projectRuntimeOsvFindings } from "../src/worker/administration/security-center-api";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { handleSecurityCenterApi, projectSecurityCenter } from "../src/worker/administration/security-center-api";
@@ -351,4 +352,31 @@ test("#420 on-demand CI Finding refuses forged/mismatched step, ambiguous succes
   const snapshot = await unavailable!.json() as {findings:{state:string;items:null;verifiedCount:null}};
   assert.deepEqual(snapshot.findings, { state: "not-connected", items: null, verifiedCount: null });
   assert.equal(reads, 1);
+});
+
+test("#420 OSV real advisory projects a bounded dependency Finding, preserving unknown severity", () => {
+  const now = "2026-10-17T00:00:00.000Z";
+  const advisory = { packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" };
+  const result = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
+    source: "OSV", state: "verified", checkedAt: now, checkedPackages: 12,
+    advisoryCount: 1, advisories: [advisory] }, now);
+  assert.equal(result.posture, "not-assessed");
+  assert.equal(result.findings.state, "verified");
+  assert.equal(result.findings.verifiedCount, 1);
+  assert.equal(result.findings.items?.[0]?.ruleId, "osv_advisory");
+  assert.equal(result.findings.items?.[0]?.severity, "info");
+  assert.equal(result.findings.items?.[0]?.evidence[0]?.code, "dependency_alert");
+  assert.equal(result.sources.find(x => x.sourceId === "dependency_audit")?.checkedFindingCount, 1);
+});
+test("#420 OSV unknown stays disconnected and source-scoped verified zero stays zero", () => {
+  const now = "2026-10-17T00:00:00.000Z";
+  const unavailable = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
+    source: "OSV", state: "unavailable", checkedAt: null, checkedPackages: null,
+    advisoryCount: null, advisories: null }, now);
+  assert.equal(unavailable.findings.state, "not-connected");
+  const zero = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
+    source: "OSV", state: "verified", checkedAt: now, checkedPackages: 12,
+    advisoryCount: 0, advisories: [] }, now);
+  assert.equal(zero.findings.verifiedCount, 0);
+  assert.equal(zero.posture, "not-assessed");
 });
