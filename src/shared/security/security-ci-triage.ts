@@ -25,7 +25,7 @@ export const classifySecurityCi = (ci: CiObservation): CiTriage => {
     label: "CI未接続（未評価）", history: "CI記録未取得", needsAttention: true,
   };
   if (ci.state !== "available") return {
-    label: "CI取得不能（要確認）", history: "CI記録未取得", needsAttention: true,
+    label: "CI取得不能（unavailable） / 要確認", history: "CI記録未取得", needsAttention: true,
   };
   const latest = ci.latest;
   const success = ci.latestSuccessfulRun;
