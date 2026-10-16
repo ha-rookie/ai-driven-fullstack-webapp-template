@@ -58,3 +58,17 @@ test("#420 failed source never renders safe or empty status", async ({ page }) =
   await expect(panel.getByRole("alert")).toContainText("状態を取得できませんでした");
   await expect(panel.getByTestId("security-center-posture")).toHaveCount(0);
 });
+
+test("#420 unauthenticated caller receives no Security Center metadata", async ({ request }) => {
+  const endpoint = "/api/admin/security/center?scopeId=workhub-company";
+  const unauthenticated = await request.get(endpoint);
+  expect(unauthenticated.status()).toBe(401);
+  const body = await unauthenticated.text();
+  expect(body).not.toContain("requirements");
+  expect(body).not.toContain("evidenceReference");
+  expect(body).not.toContain("checkedFindingCount");
+  const duplicateScope = await request.get(endpoint + "&scopeId=workhub-company");
+  expect(duplicateScope.status()).toBe(400);
+  const wrongMethod = await request.post(endpoint);
+  expect(wrongMethod.status()).toBe(405);
+});
