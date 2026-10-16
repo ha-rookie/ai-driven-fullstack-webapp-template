@@ -227,6 +227,6 @@ test("#420 OSV Finding detail reader is bounded and fail-closed for offline, par
     assert.equal(r.state, "unavailable");
   }
   const huge = createRuntimeOsvFindingReader(async () => oneAdvisory(),
-    (async () => Response.json({ ...record(), details: "x".repeat(130_000) })) as typeof fetch);
+    (async () => Response.json({ ...record(), details: "x".repeat(140_000) })) as typeof fetch);
   assert.equal((await huge("preview", AS_OF)).state, "unavailable");
 });
