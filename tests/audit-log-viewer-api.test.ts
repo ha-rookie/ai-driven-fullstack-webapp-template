@@ -103,6 +103,7 @@ test("#420 Audit correlation rejects unsafe IDs and denies unauthorized access b
     "requestId=unsafe%20space",
     "requestId=https%3A%2F%2Fevil.test",
     "requestId=abc%0Ainjected",
+    "requestId=valid&requestId=valid",
     `requestId=${"a".repeat(129)}`,
   ];
   for (const suffix of endpoints) {
