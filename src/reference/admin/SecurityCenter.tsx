@@ -81,7 +81,9 @@ const isSource = (source: Coverage, observedAt: string): boolean => {
       || ci.latestSuccessfulRun?.targetSha !== ci.latest.targetSha)) return false;
   if (ci.latest && ci.latestSuccessfulRun && ci.latestSuccessfulRun.updatedAt > ci.latest.updatedAt) return false;
   const failed = ci.latest?.checkStatus === "completed" && ci.latest.checkConclusion !== "success" && ci.latest.checkConclusion !== "skipped";
-  return !failed || (source.coverageState === "unavailable" && source.sourceHealth === "unavailable");
+  return !failed || (source.coverageState === "unavailable" && source.sourceHealth === "unavailable")
+    || (ci.latest?.checkConclusion === "failure" && source.coverageState === "checked"
+      && source.sourceHealth === "degraded" && source.checkedFindingCount === 1);
 };
 const isSnapshot = (value: unknown): value is Snapshot => {
   if (!value || typeof value !== "object") return false;
@@ -97,6 +99,33 @@ const isSnapshot = (value: unknown): value is Snapshot => {
     && v.scs.requirements.every((r) => typeof r.id === "string"
       && typeof r.name === "string" && typeof r.responsibility === "string"
       && typeof r.control === "string" && r.evidenceFreshness === "unknown");
+};
+
+/** Check that the on-demand CI feed contains only run-bound, known control-step failures. */
+const isObservedControlSnapshot = (value: unknown): value is Snapshot => {
+  if (!isSnapshot(value)) return false;
+  if (value.findings.state === "not-connected") return true;
+  const checked = value.sources.filter(source => source.coverageState === "checked");
+  return checked.length === value.findings.items.length
+    && value.findings.items.length > 0
+    && value.findings.items.every(finding => {
+      const source = checked.find(item => item.sourceId === finding.sourceId);
+      const run = source?.ci.latest;
+      const category = finding.sourceId === "dependency_audit" ? "dependency"
+        : finding.sourceId === "secret_detection" ? "data" : "configuration";
+      const severity = finding.sourceId === "dependency_audit" || finding.sourceId === "secret_detection"
+        ? "high" : "medium";
+      return run?.checkStatus === "completed" && run.checkConclusion === "failure"
+        && finding.ruleId === "ci_step_failure" && finding.category === category
+        && finding.severity === severity && finding.status === "open"
+        && finding.resourceRef === "commit_" + run.targetSha.slice(0, 12)
+        && finding.detectedAt === run.updatedAt && finding.lastObservedAt === run.updatedAt
+        && finding.assessedAt === value.observedAt && finding.riskDisposition === "none"
+        && finding.remediationCode === "review_control" && !finding.auditRequestId
+        && finding.evidence.length === 1 && finding.evidence[0].kind === "ci"
+        && finding.evidence[0].code === "control_check_failed"
+        && finding.evidence[0].referenceId === "run_" + run.runId;
+    });
 };
 
 /** A verified source-bound zero is not a whole-system security verdict. */
@@ -334,6 +363,7 @@ export default function SecurityCenter() {
   const [findingSeverity, setFindingSeverity] = useState<SecuritySeverity | "all">("all");
   const [findingCategory, setFindingCategory] = useState<SecurityCategory | "all">("all");
   const [findingStatus, setFindingStatus] = useState<SecurityFindingStatus | "all">("all");
+  const [controlLookup, setControlLookup] = useState<"idle" | "loading" | "verified" | "unknown" | "unavailable">("idle");
   const load = async () => {
     setState({ kind: "loading" });
     try {
@@ -347,6 +377,28 @@ export default function SecurityCenter() {
       const payload: unknown = await response.json();
       setState(isSnapshot(payload) ? { kind: "ready", data: payload } : { kind: "unavailable" });
     } catch { setState({ kind: "unavailable" }); }
+  };
+  const loadObservedControls = async () => {
+    setControlLookup("loading");
+    try {
+      const response = await fetch("/api/admin/security/center?scopeId=workhub-company&controlFindings=latest", {
+        headers: { accept: "application/json" }, cache: "no-store",
+      });
+      if (response.status === 401 || response.status === 403) {
+        setState({ kind: "denied" }); setControlLookup("unavailable"); return;
+      }
+      if (!response.ok) {
+        setState({ kind: "unavailable" }); setControlLookup("unavailable"); return;
+      }
+      const payload: unknown = await response.json();
+      if (!isObservedControlSnapshot(payload)) {
+        setState({ kind: "unavailable" }); setControlLookup("unavailable"); return;
+      }
+      // Replace the previous observation even when the new result has no verified Finding.
+      // Otherwise an old, once-verified CI failure could be mistaken for the latest result.
+      setState({ kind: "ready", data: payload });
+      setControlLookup(payload.findings.state === "verified" ? "verified" : "unknown");
+    } catch { setState({ kind: "unavailable" }); setControlLookup("unavailable"); }
   };
   useEffect(() => { void load(); }, []);
   const ready = state.kind === "ready" ? state.data : null;
@@ -399,6 +451,21 @@ export default function SecurityCenter() {
       </table></div>
       <OsvRuntimeAdvisories />
       <h3>Security Finding（検査済みソース限定）</h3>
+      <p>既存のGitHub CIに対して、最後のRunで失敗した既知の検査ステップのみを実際に照合し、
+        CI制御異常Findingとして一覧に接続します。脆弱性そのものの検出、CI成功時のFinding 0件、
+        現在の本番環境の安全性は保証しません。過去のSHAでの失敗もあり得ます。</p>
+      <button type="button" disabled={controlLookup === "loading"}
+        onClick={() => { void loadObservedControls(); }}>実CI制御異常Findingを照合</button>
+      {controlLookup === "loading" && <p role="status" data-testid="security-control-lookup">実CI検査ステップを照合中…</p>}
+      {controlLookup === "unknown" && <p role="status" data-testid="security-control-lookup">
+        確認できたCI制御異常Findingはありません。未検査・成功Runを脆弱性0件とは扱いません。
+      </p>}
+      {controlLookup === "unavailable" && <p role="alert" data-testid="security-control-lookup">
+        CI制御異常Findingの照合結果は利用できません（Gray／件数不明）。
+      </p>}
+      {controlLookup === "verified" && <p role="status" data-testid="security-control-lookup">
+        実RunとStepの失敗を確認したCI制御異常のみ表示しています。ほかのFindingは未評価です。
+      </p>}
       {ready.findings.state === "not-connected" ? <p data-testid="security-finding-unconnected">
         Findingデータ提供元は未接続。件数は不明、重大度・対応状態は評価していません。
       </p> : <>

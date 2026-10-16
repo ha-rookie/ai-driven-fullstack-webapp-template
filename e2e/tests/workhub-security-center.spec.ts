@@ -559,3 +559,65 @@ test("#420 malicious OSV advisory ID fails closed and cannot become a positive r
   await expect(panel).not.toContainText("untrusted.test");
   await expect(page.getByTestId("security-finding-unconnected")).toBeVisible();
 });
+
+test("#420 admin manually projects an observed CI control failure through the real Finding UI boundary", async ({ page }) => {
+  await login(page, "kai");
+  const baseline = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/security/center?scopeId=workhub-company");
+    return response.json();
+  });
+  const now: string = baseline.observedAt;
+  const prior = new Date(Date.parse(now) - 60_000).toISOString();
+  const run = { runId: 1042, targetSha: "a".repeat(40),
+    checkStatus: "completed", checkConclusion: "failure", event: "pull_request",
+    updatedAt: prior };
+  baseline.sources[0] = { ...baseline.sources[0],
+    coverageState: "checked", sourceHealth: "degraded",
+    lastSuccessfulCheckAt: now, evidenceValidUntil: new Date(Date.parse(now) + 300_000).toISOString(),
+    checkedFindingCount: 1, freshness: "current",
+    ci: { state: "available", fetchedAt: now, latest: run, latestSuccessfulRun: null } };
+  baseline.findings = { state: "verified", verifiedCount: 1,
+    items: [{ sourceId: "secret_detection", ruleId: "ci_step_failure",
+      category: "data", severity: "high", status: "open",
+      resourceRef: "commit_" + run.targetSha.slice(0, 12),
+      detectedAt: prior, lastObservedAt: prior, assessedAt: now,
+      evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_1042" }],
+      remediationCode: "review_control", riskDisposition: "none" }] };
+  // Synthetic transport fixture; real production data must come from the authorized Worker reader.
+  await page.route("**/api/admin/security/center?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("controlFindings") === "latest") {
+      await route.fulfill({ json: baseline }); return;
+    }
+    await route.continue();
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await panel.getByRole("button", { name: "実CI制御異常Findingを照合" }).click();
+  await expect(panel.getByTestId("security-control-lookup")).toContainText("実RunとStepの失敗");
+  const table = panel.getByTestId("security-findings-table");
+  await expect(table).toContainText("ci_step_failure");
+  await expect(table).toContainText("control_check_failed");
+  await expect(table).toContainText("run_1042");
+  await panel.getByLabel("Finding重大度").selectOption("low");
+  await expect(table.locator("tbody tr")).toHaveCount(0);
+  await panel.getByLabel("Finding重大度").selectOption("high");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
+
+test("#420 no confirmed CI control failure is never displayed as Finding zero", async ({ page }) => {
+  await login(page, "kai");
+  const fallback = await page.evaluate(async () =>
+    (await fetch("/api/admin/security/center?scopeId=workhub-company")).json());
+  await page.route("**/api/admin/security/center?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("controlFindings") !== "latest") {
+      await route.continue(); return;
+    }
+    await route.fulfill({ json: fallback });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await panel.getByRole("button", { name: "実CI制御異常Findingを照合" }).click();
+  await expect(panel.getByTestId("security-control-lookup")).toContainText("未検査・成功Runを脆弱性0件とは扱いません");
+  await expect(panel.getByTestId("security-finding-unconnected")).toBeVisible();
+});

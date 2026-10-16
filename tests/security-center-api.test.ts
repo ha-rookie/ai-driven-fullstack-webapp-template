@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { handleSecurityCenterApi, projectSecurityCenter } from "../src/worker/administration/security-center-api";
 import { unconnectedSecuritySources, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "../src/worker/administration/security-center-source-reader";
+import { normalizeSecurityFinding } from "../src/shared/security/security-finding";
 
 const noSessionDb = {
   prepare() {
@@ -273,4 +274,81 @@ test("#420 OSV upstream errors do not return advisory payload or treat failure a
   const body = await result!.text();
   assert.match(body, /security_center_unavailable/u);
   assert.doesNotMatch(body, /sensitive private data|advisoryCount.*0/u);
+});
+
+test("#420 actual CI control failure projects one real-shaped verified Finding without claiming vulnerability zero", async () => {
+  const endpoint = "https://example.test/api/admin/security/center?scopeId=workhub-company&controlFindings=latest";
+  const run = { runId: 1042, targetSha: "a".repeat(40), checkStatus: "completed" as const,
+    checkConclusion: "failure" as const, event: "pull_request" as const,
+    updatedAt: "2026-10-16T10:00:00.000Z" };
+  let steps = 0;
+  const sources: SecurityCenterSourceReader = async (_environment, now) => {
+    const base = unconnectedSecuritySources(now);
+    return base.map((source, index) => index === 0 ? {
+      ...source, coverageState: "unavailable" as const, sourceHealth: "unavailable" as const,
+      ci: { state: "available" as const, fetchedAt: now, latest: run, latestSuccessfulRun: null },
+    } : source);
+  };
+  const stepReader: SecurityCenterStepReader = async (source, asOf) => {
+    steps++;
+    assert.equal(source.sourceId, "secret_detection");
+    return { schemaVersion: 1, sourceId: "secret_detection", stepCode: "secret_scan",
+      runId: 1042, targetSha: run.targetSha, state: "observed", conclusion: "failure",
+      controlFinding: normalizeSecurityFinding({
+        ruleId: "ci_step_failure", category: "data", severity: "high", status: "open",
+        resourceRef: "commit_" + run.targetSha.slice(0, 12),
+        detectedAt: run.updatedAt, lastObservedAt: run.updatedAt,
+        evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_1042" }],
+        remediationCode: "review_control",
+      }, source.sourceId, asOf) };
+  };
+  const env = { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" };
+  const anonymous = await handleSecurityCenterApi(new Request(endpoint), env, "anon", sources, stepReader);
+  assert.equal(anonymous?.status, 401);
+  const denied = await handleSecurityCenterApi(new Request(endpoint, {
+    headers: { cookie: "app_session=synthetic-session-only" },
+  }), { ...env, DB: sessionDb("employee") }, "denied", sources, stepReader);
+  assert.equal(denied?.status, 403); assert.equal(steps, 0);
+  const allowed = await handleSecurityCenterApi(new Request(endpoint, {
+    headers: { cookie: "app_session=synthetic-session-only" },
+  }), env, "allowed", sources, stepReader);
+  assert.equal(allowed?.status, 200);
+  const snapshot = await allowed!.json() as {
+    posture: string; findings: {state:string;verifiedCount:number;items:Array<{ruleId:string;sourceId:string}>};
+    sources:Array<{coverageState:string;checkedFindingCount:number|null}>;
+  };
+  assert.equal(snapshot.posture, "not-assessed");
+  assert.equal(snapshot.findings.state, "verified");
+  assert.equal(snapshot.findings.verifiedCount, 1);
+  assert.equal(snapshot.findings.items[0].ruleId, "ci_step_failure");
+  assert.equal(snapshot.findings.items[0].sourceId, "secret_detection");
+  assert.equal(snapshot.sources[0].checkedFindingCount, 1);
+  assert.equal(snapshot.sources[1].checkedFindingCount, null);
+  assert.equal(steps, 1);
+});
+
+test("#420 on-demand CI Finding refuses forged/mismatched step, ambiguous success and client-supplied parameters", async () => {
+  const root = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  const env = { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" };
+  const request = (suffix: string) => new Request(root + suffix, {
+    headers: { cookie: "app_session=synthetic-session-only" },
+  });
+  let reads = 0;
+  const sources: SecurityCenterSourceReader = async (_, now) => {
+    reads++;
+    return unconnectedSecuritySources(now);
+  };
+  for (const query of ["&controlFindings=all", "&controlFindings=latest&sourceId=secret_detection",
+    "&controlFindings=latest&controlFindings=latest", "&controlFindings=latest&runId=42",
+    "&controlFindings=latest&url=https://other.test"]) {
+    const denied = await handleSecurityCenterApi(request(query), env, "invalid", sources);
+    assert.equal(denied?.status, 400, query);
+  }
+  assert.equal(reads, 0);
+  const unavailable = await handleSecurityCenterApi(request("&controlFindings=latest"),
+    env, "no-observed-failure", sources, async () => { throw Error("should not fetch unchecked source"); });
+  assert.equal(unavailable?.status, 200);
+  const snapshot = await unavailable!.json() as {findings:{state:string;items:null;verifiedCount:null}};
+  assert.deepEqual(snapshot.findings, { state: "not-connected", items: null, verifiedCount: null });
+  assert.equal(reads, 1);
 });
