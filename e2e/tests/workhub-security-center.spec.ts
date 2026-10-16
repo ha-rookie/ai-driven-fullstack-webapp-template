@@ -166,3 +166,41 @@ test("#420 malformed coverage contract fails closed instead of displaying a secu
   await expect(panel.getByRole("alert")).toContainText("状態を取得できませんでした");
   await expect(panel.getByTestId("security-center-posture")).toHaveCount(0);
 });
+
+test("#420 SCS requirement maps to reviewed GitHub test-source files without claiming verified evidence", async ({ page }) => {
+  await login(page, "kai");
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await expect(panel.getByRole("heading", { name: "セキュリティ確認センター" })).toBeVisible();
+  await panel.getByLabel("要件・責任を検索").fill("3-1-1");
+  const requirement = panel.locator("table").last().locator("tbody tr");
+  await expect(requirement).toHaveCount(1);
+  await expect(requirement.getByRole("link", { name: "scripts/generate-sbom.mjs" }))
+    .toHaveAttribute("href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/scripts/generate-sbom.mjs");
+  await expect(requirement.getByRole("link", { name: "scripts/validate-lockfile-integrity.mjs" }))
+    .toHaveAttribute("rel", "noopener noreferrer");
+  await expect(requirement).toContainText("証跡名：SBOM generation; Lockfile integrity（未検証）");
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+  await panel.getByLabel("要件・責任を検索").fill("1-2-1");
+  await expect(requirement.getByRole("link")).toHaveCount(0);
+  await expect(requirement).toContainText("未登録");
+});
+
+test("#420 unsafe SCS source reference never turns into a clickable external URL", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    const response = await route.fetch();
+    const body = await response.json() as { scs: { requirements: Array<Record<string, unknown>> } };
+    const requirement = body.scs.requirements.find(r => r.id === "3-1-1");
+    if (!requirement) throw new Error("missing SCS test fixture");
+    requirement.testReference = "tests/admin-api.test.ts; https://outside.example/steal";
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await panel.getByLabel("要件・責任を検索").fill("3-1-1");
+  const row = panel.locator("table").last().locator("tbody tr");
+  await expect(row).toContainText("参照形式未対応（リンクなし）");
+  await expect(row.getByRole("link")).toHaveCount(0);
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
