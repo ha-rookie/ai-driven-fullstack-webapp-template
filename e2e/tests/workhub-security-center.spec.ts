@@ -503,3 +503,59 @@ test("#420 injected CI control failure with wrong source/Run evidence fails clos
   await expect(row.getByRole("alert")).toContainText("照合に失敗");
   await expect(row.getByTestId("security-control-finding-secret_detection")).toHaveCount(0);
 });
+
+
+test("#420 admin checks OSV runtime advisories without changing global Finding posture", async ({ page }) => {
+  await login(page, "kai");
+  let calls = 0;
+  await page.route("**/api/admin/security/center?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("dependencyAdvisories") !== "runtime") {
+      await route.continue(); return;
+    }
+    calls++;
+    await route.fulfill({ json: {
+      schemaVersion: 1, scope: "runtime-lock-only", source: "OSV", state: "verified",
+      checkedAt: new Date(Date.now()-1500).toISOString(),
+      checkedPackages: 12, advisoryCount: 2,
+      advisories: [
+        { packageRef: "pkg_08", advisoryId: "GHSA-vqj2-4v8m-8vrq" },
+        { packageRef: "pkg_07", advisoryId: "CVE-2026-12345" },
+      ],
+    } });
+  });
+  await page.goto("/admin");
+  const panel = page.getByTestId("security-osv-runtime-panel");
+  await expect(panel).toContainText("未照会");
+  expect(calls).toBe(0);
+  await panel.getByRole("button", { name: "本番依存12件の脆弱性情報を照会" }).click();
+  await expect(panel.getByTestId("security-osv-verified")).toContainText("アドバイザリ 2 件");
+  await expect(panel.getByText("react / 19.3.0")).toBeVisible();
+  await expect(panel.getByText("tslib / 1.14.1")).toBeVisible();
+  await expect(panel.getByRole("link", { name: "GHSA-vqj2-4v8m-8vrq" }))
+    .toHaveAttribute("href", "https://osv.dev/vulnerability/GHSA-vqj2-4v8m-8vrq");
+  await expect(page.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+  await expect(page.getByTestId("security-finding-unconnected")).toBeVisible();
+  expect(calls).toBe(1);
+});
+
+test("#420 malicious OSV advisory ID fails closed and cannot become a positive result", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("dependencyAdvisories") !== "runtime") {
+      await route.continue(); return;
+    }
+    await route.fulfill({ json: {
+      schemaVersion: 1, source: "OSV", scope: "runtime-lock-only",
+      state: "verified", checkedAt: new Date().toISOString(),
+      checkedPackages: 12, advisoryCount: 1,
+      advisories: [{ packageRef: "pkg_08", advisoryId: "https://untrusted.test/secret" }],
+    } });
+  });
+  await page.goto("/admin");
+  const panel = page.getByTestId("security-osv-runtime-panel");
+  await panel.getByRole("button", { name: "本番依存12件の脆弱性情報を照会" }).click();
+  await expect(panel.getByRole("alert")).toContainText("OSV照会不可（Gray）");
+  await expect(panel.getByTestId("security-osv-verified")).toHaveCount(0);
+  await expect(panel).not.toContainText("untrusted.test");
+  await expect(page.getByTestId("security-finding-unconnected")).toBeVisible();
+});
