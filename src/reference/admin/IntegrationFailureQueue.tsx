@@ -80,6 +80,9 @@ export default function IntegrationFailureQueue({
   const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
   const [state, setState] = useState<State>({ kind: "loading" });
   const [refreshSequence, setRefreshSequence] = useState(0);
+  const [lookupSource, setLookupSource] = useState<FailureSource>("outbound_delivery");
+  const [lookupId, setLookupId] = useState("");
+  const [lookupInvalid, setLookupInvalid] = useState(false);
   const cursor = cursors[cursors.length - 1];
   useEffect(() => {
     let active = true;
@@ -120,6 +123,31 @@ export default function IntegrationFailureQueue({
     {state.kind === "unknown" && <p role="status">両系統の失敗記録を取得できません（0件・正常とは判定しません）</p>}
     {state.kind === "ready" && <>
       <p data-testid="unified-queue-observed-at">キュー取得時点：{state.page.observedAt}（ローカル記録）</p>
+      <form aria-label="記録IDから詳細確認" onSubmit={event => {
+        event.preventDefault();
+        const id = lookupId.trim();
+        if (!idPattern.test(id)) {
+          setLookupInvalid(true);
+          onSelect(null);
+          return;
+        }
+        setLookupInvalid(false);
+        onSelect({ source: lookupSource, id });
+      }}>
+        <p>ログ等で把握したローカル記録IDから直接確認できます（Provider照合・再送はしません）。</p>
+        <label htmlFor="unified-failure-lookup-source">記録の種類</label>
+        <select id="unified-failure-lookup-source" value={lookupSource}
+          onChange={event => { setLookupSource(event.target.value as FailureSource); setLookupInvalid(false); }}>
+          <option value="outbound_delivery">送信Outbox</option>
+          <option value="inbound_webhook">受信Webhook</option>
+        </select>
+        <label htmlFor="unified-failure-lookup-id">記録ID</label>
+        <input id="unified-failure-lookup-id" type="text" autoComplete="off"
+          maxLength={193} value={lookupId}
+          onChange={event => { setLookupId(event.target.value); setLookupInvalid(false); }} />
+        <button type="submit">指定IDの詳細を確認</button>
+        {lookupInvalid && <p role="alert">ローカル記録IDの形式を確認してください</p>}
+      </form>
       {state.page.items.length === 0
         ? <p>現在の対象記録は該当なし（Providerの正常性は未確認）</p>
         : <ul>{state.page.items.map(item => <li key={item.source + ":" + item.id}>
