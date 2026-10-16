@@ -5,7 +5,7 @@ import type { RuntimeEnvironment } from "../../shared/runtime";
 import { readSecurityCenterSources, unconnectedSecuritySources, readSecurityCenterStep, SECURITY_WORKFLOWS, type SecurityCenterSource, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "./security-center-source-reader";
 import scsMapping from "../../../config/scs-control-mapping.json";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage } from "../../shared/security/security-finding";
-import { readRuntimeOsvAdvisories, type RuntimeOsvReader } from "./security-osv-advisory-reader";
+import { readRuntimeOsvAdvisories, readRuntimeOsvFindings, type RuntimeOsvReader, type RuntimeOsvFindingReader } from "./security-osv-advisory-reader";
 
 /** #420: bounded read-only, authenticated, scoped evidence-status projection.
  * This is NOT a scanner, Finding feed, SCS certification or audit verdict.
@@ -93,6 +93,7 @@ export const handleSecurityCenterApi = async (
   sourceReader: SecurityCenterSourceReader = readSecurityCenterSources,
   stepReader: SecurityCenterStepReader = readSecurityCenterStep,
   osvReader: RuntimeOsvReader = readRuntimeOsvAdvisories,
+  osvFindingReader: RuntimeOsvFindingReader = readRuntimeOsvFindings,
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (url.pathname !== ROUTE) return null;
@@ -101,12 +102,15 @@ export const handleSecurityCenterApi = async (
   const details = url.searchParams.has("sourceId");
   const osvDetails = url.searchParams.has("dependencyAdvisories");
   const controlFindings = url.searchParams.has("controlFindings");
+  const osvFindings = url.searchParams.has("osvFindings");
   const selectedSourceId = url.searchParams.get("sourceId");
-  const selectedModes = Number(details) + Number(osvDetails) + Number(controlFindings);
+  const selectedModes = Number(details) + Number(osvDetails) + Number(controlFindings) + Number(osvFindings);
   if (url.searchParams.getAll("scopeId").length !== 1
     || url.searchParams.get("scopeId") !== SCOPE
     || selectedModes > 1
     || url.searchParams.size !== (selectedModes === 1 ? 2 : 1)
+    || (osvFindings && (url.searchParams.getAll("osvFindings").length !== 1
+      || url.searchParams.get("osvFindings") !== "runtime"))
     || (controlFindings && (url.searchParams.getAll("controlFindings").length !== 1
       || url.searchParams.get("controlFindings") !== "latest"))
     || (osvDetails && (url.searchParams.getAll("dependencyAdvisories").length !== 1
@@ -143,8 +147,10 @@ export const handleSecurityCenterApi = async (
     const asOf = new Date().toISOString();
     // Security advisory network traffic occurs only after authn+scoped authz.
     // It is a separate, reviewed lockfile scope; never global Finding evidence.
-    if (osvDetails) {
-      return Response.json(await osvReader(environment, asOf), {
+    if (osvDetails || osvFindings) {
+      const data = osvFindings
+        ? await osvFindingReader(environment, asOf) : await osvReader(environment, asOf);
+      return Response.json(data, {
         headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
       });
     }
