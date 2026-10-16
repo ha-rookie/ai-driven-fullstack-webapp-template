@@ -23,7 +23,7 @@ const safePath = (path: string): boolean => path.length <= 160
  * An invalid member invalidates the whole field to avoid partial trust promotion.
  */
 export const scsTestSourceLinks = (reference: unknown): readonly ScsTestSourceLink[] => {
-  if (typeof reference !== "string" || reference.length > 1024 || !reference.trim()) return [];
+  if (typeof reference !== "string" || reference.length > 1024 || !reference.trim() || /[\r\n]/u.test(reference)) return [];
   const entries = reference.split(";");
   if (entries.length > 8) return [];
   const paths = entries.map((entry) => entry.trim());
