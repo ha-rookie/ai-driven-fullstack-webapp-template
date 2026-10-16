@@ -3,6 +3,7 @@ import test from "node:test";
 import { handleSecurityCenterApi, projectSecurityCenter } from "../src/worker/administration/security-center-api";
 import { unconnectedSecuritySources, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "../src/worker/administration/security-center-source-reader";
 import { normalizeSecurityFinding } from "../src/shared/security/security-finding";
+import type { RuntimeOsvFindingReader } from "../src/worker/administration/security-osv-advisory-reader";
 
 const noSessionDb = {
   prepare() {
@@ -351,4 +352,61 @@ test("#420 on-demand CI Finding refuses forged/mismatched step, ambiguous succes
   const snapshot = await unavailable!.json() as {findings:{state:string;items:null;verifiedCount:null}};
   assert.deepEqual(snapshot.findings, { state: "not-connected", items: null, verifiedCount: null });
   assert.equal(reads, 1);
+});
+
+test("#420 only authenticated scoped system_admin can retrieve source-scoped OSV Finding details", async () => {
+  const url = "https://example.test/api/admin/security/center?scopeId=workhub-company&osvFindings=runtime";
+  let reads = 0; let ciReads = 0;
+  const reader: RuntimeOsvFindingReader = async () => {
+    reads++;
+    return { schemaVersion: 1, scope: "runtime-lock-only", source: "OSV",
+      state: "unavailable", checkedAt: null, checkedPackages: null, coverage: null, findings: null };
+  };
+  const sources: SecurityCenterSourceReader = async (_env, now) => {
+    ciReads++; return unconnectedSecuritySources(now);
+  };
+  const anonymous = await handleSecurityCenterApi(new Request(url),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" },
+    "no-auth", sources, undefined, undefined, reader);
+  assert.equal(anonymous?.status, 401);
+  for (const role of ["employee", null]) {
+    const denied = await handleSecurityCenterApi(new Request(url, {
+      headers: { cookie: "app_session=synthetic-session-only" },
+    }), { DB: sessionDb(role), RUNTIME_ENVIRONMENT: "preview" },
+    "denied", sources, undefined, undefined, reader);
+    assert.equal(denied?.status, 403);
+  }
+  assert.equal(reads, 0); assert.equal(ciReads, 0);
+  const ok = await handleSecurityCenterApi(new Request(url, {
+    headers: { cookie: "app_session=synthetic-session-only" },
+  }), { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" },
+  "authorized", sources, undefined, undefined, reader);
+  assert.equal(ok?.status, 200); assert.equal(ok?.headers.get("cache-control"), "no-store");
+  assert.equal(reads, 1); assert.equal(ciReads, 0);
+  const result = await ok!.json() as { state: string; findings: null };
+  assert.equal(result.state, "unavailable");
+  assert.equal(result.findings, null);
+});
+
+test("#420 source-scoped OSV Finding API forbids arbitrary identifiers, injection and mode mixing", async () => {
+  const root = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  let reads = 0;
+  const reader: RuntimeOsvFindingReader = async () => {
+    reads++;
+    throw new Error("must not be called for rejected requests");
+  };
+  for (const extra of [
+    "&osvFindings=unknown", "&osvFindings=runtime&sourceId=dependency_audit",
+    "&osvFindings=runtime&osvFindings=runtime",
+    "&osvFindings=runtime&dependencyAdvisories=runtime",
+    "&osvFindings=runtime&url=https://evil.example",
+    "&osvFindings=runtime&advisoryId=GHSA-aaaa-bbbb-cccc",
+  ]) {
+    const res = await handleSecurityCenterApi(new Request(root + extra, {
+      headers: { cookie: "app_session=synthetic-session-only" },
+    }), { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" },
+    "invalid", undefined, undefined, undefined, reader);
+    assert.equal(res?.status, 400, extra);
+  }
+  assert.equal(reads, 0);
 });
