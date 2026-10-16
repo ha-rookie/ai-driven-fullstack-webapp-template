@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { handleSecurityCenterApi, projectSecurityCenter } from "../src/worker/administration/security-center-api";
+import { unconnectedSecuritySources, type SecurityCenterSourceReader } from "../src/worker/administration/security-center-source-reader";
 
 const noSessionDb = {
   prepare() {
@@ -88,4 +89,46 @@ test("#420 projection timestamp is a request timestamp, not evidence of a comple
     requirement.remediation === null));
   assert.equal("lastScannedAt" in status, false);
   assert.equal("securityScore" in status, false);
+});
+
+const sessionDb = (role: string | null): D1Database => ({
+  prepare(sql: string) {
+    return { bind() { return { first: async () => sql.includes("JOIN users") ? {
+      id: "fixture-admin", displayName: "Fixture", lastSeenAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    } : role === null ? null : { userId: "fixture-admin", scopeId: "workhub-company", role } }; } };
+  },
+}) as unknown as D1Database;
+const authenticatedRequest = () => new Request(
+  "https://example.test/api/admin/security/center?scopeId=workhub-company",
+  { headers: { cookie: "app_session=synthetic-session-only" } },
+);
+
+test("#420 server authenticates and authorizes every source read, including direct API calls", async () => {
+  let reads = 0;
+  const reader: SecurityCenterSourceReader = async (_environment, asOf) => { reads++; return unconnectedSecuritySources(asOf); };
+  for (const role of [null, "employee"]) {
+    const response = await handleSecurityCenterApi(authenticatedRequest(),
+      { DB: sessionDb(role), RUNTIME_ENVIRONMENT: "preview" }, "denied", reader);
+    assert.equal(response?.status, 403); assert.equal(reads, 0);
+  }
+  const anonymous = await handleSecurityCenterApi(new Request(authenticatedRequest().url),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" }, "anonymous", reader);
+  assert.equal(anonymous?.status, 401); assert.equal(reads, 0);
+  const allowed = await handleSecurityCenterApi(authenticatedRequest(),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" }, "allowed", reader);
+  assert.equal(allowed?.status, 200); assert.equal(reads, 1);
+  assert.equal(allowed?.headers.get("cache-control"), "no-store");
+  const body = await allowed!.json() as { findings: { verifiedCount: unknown } };
+  assert.equal(body.findings.verifiedCount, null);
+});
+
+test("#420 reader failure is 503 with no provider error or invented status", async () => {
+  const response = await handleSecurityCenterApi(authenticatedRequest(),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" }, "reader-failed",
+    async () => { throw new Error("fixture-provider-private-value"); });
+  assert.equal(response?.status, 503);
+  const body = await response!.text();
+  assert.match(body, /security_center_unavailable/u);
+  assert.doesNotMatch(body, /fixture-provider-private-value|checkedFindingCount|requirements/u);
 });
