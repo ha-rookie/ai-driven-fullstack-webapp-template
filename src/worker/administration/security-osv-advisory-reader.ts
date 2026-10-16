@@ -49,7 +49,8 @@ const controlledJson = async (response: Response): Promise<unknown> => {
     || (response.headers.has("content-length")
       && Number(response.headers.get("content-length")) > MAX_BYTES)
     || !response.body) {
-    await response.body?.cancel();
+    // Never wait for cancel() of a tee/clone: another unread branch can deadlock it.
+    void response.body?.cancel().catch(() => {});
     throw new TypeError("OSV unavailable");
   }
   const reader = response.body.getReader();
@@ -63,7 +64,11 @@ const controlledJson = async (response: Response): Promise<unknown> => {
       if (total > MAX_BYTES) throw new RangeError("OSV reply too large");
       pieces.push(value);
     }
-  } finally { await reader.cancel(); }
+  } catch (error) {
+    // Bound the response without blocking forever on a cloned stream.
+    void reader.cancel().catch(() => {});
+    throw error;
+  } finally { reader.releaseLock(); }
   const bytes = new Uint8Array(total);
   let offset = 0;
   for (const part of pieces) { bytes.set(part, offset); offset += part.byteLength; }
