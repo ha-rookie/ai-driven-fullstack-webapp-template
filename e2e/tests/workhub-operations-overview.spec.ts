@@ -312,6 +312,15 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(reconcile).toContainText("再送前の照合手順");
   await expect(reconcile).toContainText("タイムアウトやUNKNOWNを未配送と決めつけない");
   await expect(reconcile).toContainText("共通Operations Core");
+  const manualDecision = reconcile.getByTestId("outbox-manual-reconcile-decision");
+  await expect(manualDecision).toContainText("受領済み・処理済み");
+  await expect(manualDecision).toContainText("二重処理を避け、再送しない");
+  await expect(manualDecision).toContainText("未受領・未処理と確認済み");
+  await expect(manualDecision).toContainText("承認済み・冪等性を確認できる既存復旧手順");
+  await expect(manualDecision).toContainText("この画面から再送はできません");
+  await expect(manualDecision).toContainText("結果不明・証拠不足");
+  await expect(manualDecision).toContainText("担当運用者に調査を引き継ぐ");
+  await expect(manualDecision).toContainText("Token・Payload・Providerの生レスポンスは転記しない");
   await expect(reconcile.getByRole("button")).toHaveCount(0);
 
   await paged.getByRole("button", { name: "次の20件" }).click();

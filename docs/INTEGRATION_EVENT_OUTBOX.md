@@ -114,6 +114,52 @@ The read-only unified queue is also checked through an **actual authenticated lo
 
 The local seed may contain **zero failed records**. A green test with no rows proves only the local endpoint's safe empty/read-only behavior; it does not prove populated cross-source ordering, Provider receipt reconciliation, external document storage connection health, or a Production System Test. The broader #419 list/detail and end-to-end integration acceptance remain open until suitable evidence exists.
 
+## #419 safe retry/reconciliation: operator-led decision and handoff (Stage7 acceptance)
+
+The Integration Operations Console is an **observation and triage tool**, not an automatic
+external Provider remediation engine. Its existing authorized local failure list/detail
+and source-Event trace give an operator a bounded place to start. Missing Provider
+evidence remains **unknown**, not evidence that sending again is safe.
+
+For a `dead_letter` Outbox requiring reconciliation, the operator follows this
+**human-run procedure outside the Template**:
+
+1. **Identify the record.** In the authorized detail, note the environment,
+   Outbox ID, local status, attempt count, updated/last-attempt time, safe failure
+   code, and permitted local Event/correlation identifiers. Do not copy tokens,
+   payloads, raw Provider responses or secret values into an incident ticket.
+2. **Check the external result.** A person authorized to access the Provider's
+   management console checks the Provider-side result using the organisation's
+   existing, permitted procedures. The Template has not made this external check
+   unless a real verifier is explicitly registered. Never treat an unregistered
+   verifier or a timeout as a negative delivery receipt.
+3. **Record the decision in the organisation's existing incident/operations log**
+   (not in this application's database). Choose **exactly one** outcome:
+
+   | Operator result | Required follow-up |
+   | --- | --- |
+   | **Received / processed** | Close or hand off the incident under the existing procedure; **do not resend** |
+   | **Confirmed NOT received / processed** | Record the Provider evidence and seek approval. Only if an existing **separately authorized, idempotency-checked** recovery procedure is available may the authorized operator use it outside this Console. **This screen does not execute or approve retry** |
+   | **Unknown / contradictory / no reliable evidence** | **Do not resend**; retain UNKNOWN and escalate to the responsible operations owner for further Provider-side investigation |
+
+4. **Capture handoff context.** Include the time of the human check, responsible
+   operator, safe record IDs, evidence location/reference, decision, approver
+   (if relevant), and next action in the **existing** issue/incident channel. If
+   the organisation lacks a permitted recovery procedure, the action is
+   escalation—not improvising manual database updates, blind redrive, or asking
+   an AI agent to retry.
+
+**Boundary and evidence:** These are safe **operational directions** satisfying
+`safe retry/reconciliation導線がある`; no new API, persisted audit mechanism,
+Provider SDK, state transition, approval workflow, retry button, implicit
+authorization or delivery-side action is implemented. Existing #429
+`DELIVERY_RETRY` and `INTEGRATION_RECONCILE` policy decisions remain **DENY**
+for the current unverified Provider integration. #430 remains responsible for
+cross-cutting failure-safety validation; #335 for actual external storage
+adapters; formal #694 ST is separate. The local authenticated Worker/SQLite-D1
+and Browser tests verify only local triage and UI instructions, **not a real
+Provider receipt or production operations**.
+
 ## #419 local Outbox-to-Event trace context for failure investigation
 
 The authorized `GET /api/admin/integrations/outbox/:id?scopeId=workhub-company` detail provides bounded **local provenance**, separate from both a Provider delivery receipt and a persisted Audit Event. The existing Outbox's `integration_event_id` joins an Integration Event **only within the same runtime environment**. The detail returns a `trace` projection:
