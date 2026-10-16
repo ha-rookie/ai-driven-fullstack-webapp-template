@@ -39,7 +39,7 @@ export const isSecurityFindingFeed = (
     if (!value || typeof value !== "object" || Array.isArray(value)
       || !allowedKeys(value, ["ruleId", "sourceId", "category", "severity", "status",
         "resourceRef", "detectedAt", "lastObservedAt", "assessedAt", "evidence",
-        "remediationCode", "exception", "riskDisposition"])) return false;
+        "remediationCode", "auditRequestId", "exception", "riskDisposition"])) return false;
     const raw = value as Record<string, unknown>;
     const sourceId = raw.sourceId;
     if (typeof sourceId !== "string" || !count.has(sourceId)
@@ -49,9 +49,11 @@ export const isSecurityFindingFeed = (
         ruleId: raw.ruleId, category: raw.category, severity: raw.severity,
         status: raw.status, resourceRef: raw.resourceRef, detectedAt: raw.detectedAt,
         lastObservedAt: raw.lastObservedAt, evidence: raw.evidence,
-        remediationCode: raw.remediationCode, exception: raw.exception,
+        remediationCode: raw.remediationCode, auditRequestId: raw.auditRequestId,
+        exception: raw.exception,
       }, sourceId, raw.assessedAt);
-      if (raw.riskDisposition !== normalized.riskDisposition) return false;
+      if (raw.riskDisposition !== normalized.riskDisposition
+        || raw.auditRequestId !== normalized.auditRequestId) return false;
       const key = [normalized.sourceId, normalized.ruleId, normalized.resourceRef ?? ""].join(":");
       if (seen.has(key)) return false;
       seen.add(key);
