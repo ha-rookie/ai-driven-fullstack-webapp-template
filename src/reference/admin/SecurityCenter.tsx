@@ -7,6 +7,7 @@ type Coverage = {
   readonly sourceHealth: "ready" | "degraded" | "unavailable" | "unmonitored";
   readonly freshness: "current" | "stale" | "unknown";
   readonly lastSuccessfulCheckAt?: string;
+  readonly evidenceValidUntil?: string;
   readonly checkedFindingCount: number | null;
 };
 type Requirement = {
@@ -26,20 +27,63 @@ interface Snapshot {
     readonly requirements: readonly Requirement[];
   };
 }
+const ISO_TIME = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u;
+const validTime = (v: unknown): v is string =>
+  typeof v === "string" && ISO_TIME.test(v) && Number.isFinite(Date.parse(v))
+    && new Date(v).toISOString() === v;
+const sourceIds = new Set(["secret_detection", "dependency_audit", "configuration_check", "scs_control_mapping"]);
+const validCoverage = (value: unknown, observedAt: string): value is Coverage => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const s = value as Partial<Coverage>;
+  if (!sourceIds.has(s.sourceId ?? "") || !["checked", "not-checked", "unavailable", "not-applicable"].includes(s.coverageState ?? "")
+    || !["ready", "degraded", "unavailable", "unmonitored"].includes(s.sourceHealth ?? "")
+    || !["current", "stale", "unknown"].includes(s.freshness ?? "")) return false;
+  if (s.coverageState !== "checked") {
+    return s.checkedFindingCount === null && s.freshness === "unknown"
+      && (s.coverageState === "unavailable" ? s.sourceHealth === "unavailable"
+        : s.sourceHealth === "unmonitored");
+  }
+  if (!["ready", "degraded"].includes(s.sourceHealth ?? "") || !validTime(s.lastSuccessfulCheckAt)
+    || Date.parse(s.lastSuccessfulCheckAt) > Date.parse(observedAt)
+    || typeof s.checkedFindingCount !== "number" || !Number.isSafeInteger(s.checkedFindingCount)
+    || s.checkedFindingCount < 0) return false;
+  if (s.freshness === "unknown") return s.evidenceValidUntil === undefined;
+  return validTime(s.evidenceValidUntil) && (s.freshness === "current"
+    ? Date.parse(s.evidenceValidUntil) >= Date.parse(observedAt)
+    : Date.parse(s.evidenceValidUntil) < Date.parse(observedAt));
+};
 const isSnapshot = (value: unknown): value is Snapshot => {
   if (!value || typeof value !== "object") return false;
   const v = value as Partial<Snapshot>;
-  return v.schemaVersion === 1 && v.scopeId === SCOPE && v.posture === "not-assessed"
-    && v.findings?.state === "not-connected" && v.findings?.verifiedCount === null
+  return v.schemaVersion === 1 && v.scopeId === SCOPE && validTime(v.observedAt)
+    && v.posture === "not-assessed" && v.findings?.state === "not-connected"
+    && v.findings?.verifiedCount === null && v.findings?.items === null
     && Array.isArray(v.sources) && v.sources.length === 4
-    && v.sources.every((s) => s.coverageState === "not-checked"
-      && s.sourceHealth === "unmonitored" && s.freshness === "unknown"
-      && s.checkedFindingCount === null)
+    && v.sources.every(s => validCoverage(s, v.observedAt!))
+    && new Set(v.sources.map(s => s.sourceId)).size === 4
     && v.scs?.certification === "not-assessed"
     && Array.isArray(v.scs.requirements)
-    && v.scs.requirements.every((r) => typeof r.id === "string"
+    && v.scs.requirements.every(r => typeof r.id === "string"
       && typeof r.name === "string" && typeof r.responsibility === "string"
       && typeof r.control === "string" && r.evidenceFreshness === "unknown");
+};
+/** A verified source-bound zero is not a whole-system security verdict. */
+const coverageDisplay = (source: Coverage) => {
+  if (source.coverageState === "unavailable") return { label: "利用不可（Gray）", count: "不明" };
+  if (source.coverageState !== "checked") return {
+    label: source.coverageState === "not-applicable" ? "対象外（Gray）" : "未検査（Gray）",
+    count: "不明",
+  };
+  const expired = source.evidenceValidUntil !== undefined
+    && Date.parse(source.evidenceValidUntil) < Date.now();
+  if (source.freshness === "stale" || expired) return {
+    label: "証跡期限切れ（Gray）", count: `${source.checkedFindingCount}件（過去の検査値）`,
+  };
+  if (source.freshness !== "current") return {
+    label: "証跡鮮度不明（Gray）", count: `${source.checkedFindingCount}件（鮮度不明）`,
+  };
+  return { label: "当該ソース確認済（全体の安全判定ではない）",
+    count: `${source.checkedFindingCount}件（当該ソースのみ）` };
 };
 
 export default function SecurityCenter() {
@@ -83,11 +127,11 @@ export default function SecurityCenter() {
       </div>
       <h3>検査ソースと証跡の鮮度</h3>
       <div className="admin-audit-table-wrap"><table className="admin-audit-table">
-        <thead><tr><th>検査ソース</th><th>Coverage</th><th>Health</th><th>最終成功</th><th>Evidence freshness</th></tr></thead>
+        <thead><tr><th>検査ソース</th><th>評価状態</th><th>Health</th><th>最終成功</th><th>Evidence freshness</th><th>Finding件数</th></tr></thead>
         <tbody>{ready.sources.map((source) => <tr key={source.sourceId}>
-          <td>{source.sourceId}</td><td>{source.coverageState}（未検査）</td>
+          <td>{source.sourceId}</td><td>{coverageDisplay(source).label}</td>
           <td>{source.sourceHealth}</td><td>{source.lastSuccessfulCheckAt ?? "未取得"}</td>
-          <td>{source.freshness}</td>
+          <td>{source.freshness}</td><td>{coverageDisplay(source).count}</td>
         </tr>)}</tbody>
       </table></div>
       <h3>SCS要件別の責任・Control・証跡</h3>
