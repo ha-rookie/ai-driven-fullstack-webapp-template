@@ -250,7 +250,7 @@ test("#420 exact Audit request correlation is parameter-bound and remains enviro
   assert.match(call.sql, /scope_id = \?/u);
   assert.match(call.sql, /request_id = \?/u);
   assert.doesNotMatch(call.sql, /CF-123.NRT/u);
-  assert.deepEqual(call.values, ["preview", "workhub-company", "CF-123.NRT:one", 20]);
+  assert.deepEqual(call.values, ["preview", "CF-123.NRT:one", "workhub-company", 20]);
   const before = fake.calls.length;
   for (const unsafe of ["x".repeat(129), "spaces not allowed", "https://example.test", "x\nsecret"]) {
     await assert.rejects(() => store.search({ scopeId: "workhub-company", requestId: unsafe }), TypeError);
