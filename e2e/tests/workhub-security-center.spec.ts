@@ -607,12 +607,12 @@ test("#420 admin manually projects an observed CI control failure through the re
 
 test("#420 no confirmed CI control failure is never displayed as Finding zero", async ({ page }) => {
   await login(page, "kai");
+  const fallback = await page.evaluate(async () =>
+    (await fetch("/api/admin/security/center?scopeId=workhub-company")).json());
   await page.route("**/api/admin/security/center?**", async route => {
     if (new URL(route.request().url()).searchParams.get("controlFindings") !== "latest") {
       await route.continue(); return;
     }
-    const fallback = await page.evaluate(async () =>
-      (await fetch("/api/admin/security/center?scopeId=workhub-company")).json());
     await route.fulfill({ json: fallback });
   });
   await page.goto("/admin");
