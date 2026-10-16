@@ -621,3 +621,23 @@ test("#420 no confirmed CI control failure is never displayed as Finding zero", 
   await expect(panel.getByTestId("security-control-lookup")).toContainText("未検査・成功Runを脆弱性0件とは扱いません");
   await expect(panel.getByTestId("security-finding-unconnected")).toBeVisible();
 });
+
+test("#420 OSV runtime Finding button keeps unknown Gray when provider is unavailable", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("dependencyFindings") !== "runtime") {
+      await route.continue(); return;
+    }
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    await route.fulfill({ json: { ...snapshot, dependencyScope: {
+      state: "unavailable", checkedPackages: null, checkedAt: null,
+      advisoryCount: null, advisories: null,
+    } } });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await panel.getByRole("button", { name: "OSV実アドバイザリFindingを照合" }).click();
+  await expect(panel.getByTestId("osv-finding-unknown")).toBeVisible();
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
