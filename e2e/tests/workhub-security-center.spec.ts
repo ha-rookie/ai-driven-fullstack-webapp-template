@@ -204,3 +204,57 @@ test("#420 unsafe SCS source reference never turns into a clickable external URL
   await expect(row.getByRole("link")).toHaveCount(0);
   await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
 });
+
+test("#420 CI attention filter keeps failures, missing runs and offline sources visible without a security verdict", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    // Explicit synthetic post-authorization workflow metadata, NOT an actual scan finding.
+    const fetchedAt = "2026-10-16T12:00:00.000Z";
+    const oldSuccess = { runId: 9050, targetSha: "a".repeat(40), checkStatus: "completed",
+      checkConclusion: "success", event: "pull_request", updatedAt: "2026-10-16T10:00:00.000Z" };
+    const latestSuccess = { ...oldSuccess, runId: 9051, updatedAt: "2026-10-16T11:00:00.000Z" };
+    const latestFailure = { ...oldSuccess, runId: 9052, targetSha: "b".repeat(40),
+      checkConclusion: "failure", updatedAt: "2026-10-16T11:30:00.000Z" };
+    body.sources[0].ci = { state: "available", fetchedAt,
+      latest: latestSuccess, latestSuccessfulRun: latestSuccess };
+    body.sources[1] = { ...body.sources[1], coverageState: "unavailable", sourceHealth: "unavailable",
+      ci: { state: "available", fetchedAt, latest: latestFailure, latestSuccessfulRun: oldSuccess } };
+    body.sources[2].ci = { state: "available", fetchedAt, latest: null, latestSuccessfulRun: null };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  const rows = panel.locator(".admin-audit-table").first().locator("tbody tr");
+  await expect(rows).toHaveCount(4);
+  await expect(panel.getByText("CI要確認 3 / 4 ソース", { exact: false })).toBeVisible();
+  await expect(panel.getByTestId("security-source-secret_detection")).toContainText("CI最新Run成功（Finding未評価）");
+  await expect(panel.getByTestId("security-source-dependency_audit")).toContainText("過去の成功Run（別SHA");
+  await panel.getByLabel("CI要確認のソースのみ表示").check();
+  await expect(rows).toHaveCount(3);
+  await expect(panel.getByTestId("security-source-secret_detection")).toHaveCount(0);
+  await expect(panel.getByTestId("security-source-dependency_audit")).toContainText("失敗／中断（要確認）");
+  await expect(panel.getByTestId("security-source-configuration_check")).toContainText("CI実行記録なし");
+  await expect(panel.getByTestId("security-source-scs_control_mapping")).toContainText("CI未接続");
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+  await panel.getByLabel("CI要確認のソースのみ表示").uncheck();
+  await expect(rows).toHaveCount(4);
+});
+
+test("#420 inconsistent latest CI success and bounded success history fail closed", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const success = { runId: 9900, targetSha: "a".repeat(40), checkStatus: "completed",
+      checkConclusion: "success", event: "pull_request", updatedAt: "2026-10-16T10:00:00.000Z" };
+    body.sources[0].ci = { state: "available", fetchedAt: "2026-10-16T12:00:00.000Z",
+      latest: success, latestSuccessfulRun: null };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await expect(panel.getByRole("alert")).toContainText("状態を取得できませんでした");
+  await expect(panel.getByTestId("security-center-posture")).toHaveCount(0);
+});
