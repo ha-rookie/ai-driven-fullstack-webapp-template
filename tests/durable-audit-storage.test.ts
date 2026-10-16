@@ -257,3 +257,23 @@ test("#420 exact Audit request correlation is parameter-bound and remains enviro
   }
   assert.equal(fake.calls.length, before);
 });
+
+
+test("#420 Audit source index and hash-verified record must agree on correlation and scope", async () => {
+  const fake = new FakeD1();
+  const recordJson = JSON.stringify({
+    kind: "audit", timestamp: "2026-10-03T00:00:00.000Z",
+    requestId: "different-request", method: "POST", path: "/api/example",
+    category: "mutation", action: "write", outcome: "success",
+    scopeId: "workhub-company",
+  });
+  fake.rows = [{
+    id: "audit-correlation-bad-index", environment: "preview",
+    occurred_at: "2026-10-03T00:00:00.000Z",
+    record_json: recordJson, record_sha256: await sha256Text(recordJson),
+  }];
+  const store = createStore(fake);
+  await assert.rejects(() => store.search({ scopeId: "workhub-company",
+    requestId: "CF-123.NRT" }), DurableAuditIntegrityError);
+  assert.match(fake.calls.at(-1)!.sql, /request_id = \?/u);
+});
