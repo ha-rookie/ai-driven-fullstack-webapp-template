@@ -93,7 +93,9 @@ export const projectObservedCiControlFindings = async (
 export const projectRuntimeOsvFindings = (result: RuntimeOsvResult, asOf: string) => {
   const base = projectSecurityCenter(asOf);
   if (result.state !== "verified" || result.checkedPackages !== 12
-    || result.checkedAt !== asOf || result.advisoryCount !== result.advisories.length) {
+    || result.checkedAt !== asOf || result.advisoryCount !== result.advisories.length
+    || result.advisories.some(a => !/^pkg_[0-9]{2}$/u.test(a.packageRef)
+      || !/^(?:GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}|CVE-[0-9]{4}-[0-9]{4,}|OSV-[0-9]{4}-[0-9]+)$/u.test(a.advisoryId))) {
     return { ...base, dependencyScope: { state: "unavailable" as const, checkedPackages: null,
       checkedAt: null, advisoryCount: null, advisories: null } };
   }
