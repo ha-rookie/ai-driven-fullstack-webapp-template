@@ -91,7 +91,7 @@ export default function SecurityCenter() {
         </tr>)}</tbody>
       </table></div>
       <h3>SCS要件別の責任・Control・証跡</h3>
-      <p>既存の要件対応表（確認日 {ready.scs.sourceVerifiedAt}）の静的参照です。検査実行や認証取得を示しません。</p>
+      <p>既存要件対応表の参照元確認日：{ready.scs.sourceVerifiedAt}。これは各要件の監査・証跡の最終確認日ではありません。検査実行やSCS認証取得を示しません。</p>
       <label>要件・責任を検索 <input value={filter} onChange={(event) => setFilter(event.target.value)}
         placeholder="例：3-1-1、Project Responsibility" /></label>
       <div className="admin-audit-table-wrap"><table className="admin-audit-table">
