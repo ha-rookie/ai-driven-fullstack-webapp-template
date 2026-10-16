@@ -327,9 +327,12 @@ test("#420 injected stale or wrong-source CI step evidence fails closed", async 
 
 test("#420 source-verified Finding contracts show independent severity/category/status and safe evidence codes", async ({ page }) => {
   await login(page, "kai");
+  // Fetch once while authenticated; do not keep an upstream APIResponse alive
+  // inside the route callback where browser navigation can dispose it.
+  const baseline = await page.evaluate(async () =>
+    (await fetch("/api/admin/security/center?scopeId=workhub-company")).json());
   await page.route("**/api/admin/security/center?**", async route => {
-    const response = await route.fetch();
-    const body = await response.json();
+    const body = structuredClone(baseline);
     // Synthetic post-auth UI fixture only. Production endpoint remains NOT CONNECTED.
     const asOf: string = body.observedAt;
     const earlier = (minutes: number) => new Date(Date.parse(asOf) - minutes * 60_000).toISOString();
@@ -352,7 +355,7 @@ test("#420 source-verified Finding contracts show independent severity/category/
       exception: { reasonCode: "mitigation_documented", approvalRef: "approval_one", expiresAt: earlier(5) },
       riskDisposition: "accepted-expired" };
     body.findings = { state: "verified", items: [first, second], verifiedCount: 2 };
-    await route.fulfill({ response, json: body });
+    await route.fulfill({ json: body });
   });
   await page.goto("/admin");
   const panel = page.locator("#admin-security-center");
