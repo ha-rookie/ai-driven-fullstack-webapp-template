@@ -140,7 +140,7 @@ test("#419 malformed / absent / ambiguous Provider observation always fails clos
   assert.deepEqual(await f.store.getOutbox("outbox-419", "test"), f.row);
 });
 
-test("#419 Provider throws/timeout, missing event, and concurrent version change fail closed", async () => {
+test("#419 Provider exception and concurrent outbox version change fail closed", async () => {
   const f = await fixture();
   const thrown = await f.assess({
     async verify() { throw new Error("Bearer secret-provider-token"); },
@@ -173,4 +173,66 @@ test("#419 invalid local identifiers reject before Provider lookup", async () =>
   const f = await fixture();
   await assert.rejects(() => f.assess(undefined, "test", "../path"), /bounded local identifiers/u);
   await assert.rejects(() => f.assess(undefined, "production?x=1"), /bounded local identifiers/u);
+});
+
+
+test("#419 missing source event is unverified without a Provider lookup", async () => {
+  const f = await fixture();
+  const before = await f.store.getOutbox("outbox-419", "test");
+  // Simulate an inconsistent read: the Outbox exists but its source Event is absent.
+  Object.defineProperty(f.store, "getEvent", { value: async () => null });
+  let calls = 0;
+  const result = await f.assess({
+    async verify() { calls += 1; return f.evidence; },
+  });
+  assert.deepEqual(result, {
+    kind: "unverified", reason: "provider_evidence_unavailable", manualRetryAllowed: false,
+  });
+  assert.equal(calls, 0);
+  assert.deepEqual(await f.store.getOutbox("outbox-419", "test"), before);
+});
+
+test("#419 throwing accessors and proxies cannot crash or leak a receipt assessment", async () => {
+  const f = await fixture();
+  const toxic = { ...f.evidence };
+  Object.defineProperty(toxic, "checkedAt", {
+    enumerable: true,
+    get() { throw new Error("Bearer secret-provider-token"); },
+  });
+  const dangerous = [
+    toxic,
+    new Proxy({ ...f.evidence }, {
+      ownKeys() { throw new Error("Bearer secret-provider-token"); },
+    }),
+    new Proxy({ ...f.evidence }, {
+      getPrototypeOf() { throw new Error("Bearer secret-provider-token"); },
+    }),
+  ];
+  for (const evidence of dangerous) {
+    const result = await f.assess({ async verify() { return evidence; } });
+    assert.deepEqual(result, {
+      kind: "unverified", reason: "provider_evidence_unavailable", manualRetryAllowed: false,
+    });
+    assert.doesNotMatch(JSON.stringify(result), /Bearer|secret-provider-token/u);
+  }
+  assert.deepEqual(await f.store.getOutbox("outbox-419", "test"), f.row);
+});
+
+test("#419 adapter accessor changes cannot flip a validated receipt outcome", async () => {
+  const f = await fixture();
+  const observation = { ...f.evidence };
+  let reads = 0;
+  Object.defineProperty(observation, "outcome", {
+    enumerable: true,
+    get() {
+      reads += 1;
+      return reads === 1 ? "not_delivered" : "delivered";
+    },
+  });
+  const result = await f.assess({ async verify() { return observation; } });
+  assert.deepEqual(result, {
+    kind: "verified_non_delivery", checkedAt: NOW, manualRetryAllowed: false,
+  });
+  assert.equal(reads, 1, "the validated outcome must be read from the adapter only once");
+  assert.deepEqual(await f.store.getOutbox("outbox-419", "test"), f.row);
 });
