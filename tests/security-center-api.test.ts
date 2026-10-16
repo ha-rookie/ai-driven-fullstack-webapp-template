@@ -382,6 +382,21 @@ test("#420 two real OSV advisories on one package have distinct Finding identiti
   assert.equal(projected.sources.find(x => x.sourceId === "dependency_audit")?.checkedFindingCount, 2);
 });
 
+test("#420 cached OSV result preserves actual check time without inventing fresh scan", () => {
+  const time = "2026-10-17T00:04:59.000Z";
+  const checkedAt = "2026-10-17T00:00:00.000Z";
+  const result = { schemaVersion: 1 as const, scope: "runtime-lock-only" as const,
+    source: "OSV" as const, state: "verified" as const, checkedAt, checkedPackages: 12,
+    advisoryCount: 1, advisories: [{ packageRef: "pkg_01", advisoryId: "CVE-2026-12345" }] };
+  const valid = projectRuntimeOsvFindings(result, time);
+  assert.equal(valid.findings.state, "verified");
+  assert.equal(valid.findings.items?.[0]?.detectedAt, checkedAt);
+  assert.equal(valid.findings.items?.[0]?.assessedAt, time);
+  assert.equal(valid.sources.find(s => s.sourceId === "dependency_audit")?.lastSuccessfulCheckAt, checkedAt);
+  const expired = projectRuntimeOsvFindings(result, "2026-10-17T00:05:00.000Z");
+  assert.equal(expired.findings.state, "not-connected");
+});
+
 test("#420 OSV unknown stays disconnected and source-scoped verified zero stays zero", () => {
   const now = "2026-10-17T00:00:00.000Z";
   const unavailable = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
