@@ -99,8 +99,10 @@ export const projectRuntimeOsvFindings = (result: RuntimeOsvResult, asOf: string
     return { ...base, dependencyScope: { state: "unavailable" as const, checkedPackages: null,
       checkedAt: null, advisoryCount: null, advisories: null } };
   }
-  const items = result.advisories.map(advisory => normalizeSecurityFinding({
-    ruleId: "osv_advisory", category: "dependency", severity: "info", status: "open",
+  // Rule identity is scoped to this immutable response position; the trusted
+  // advisory ID remains in dependencyScope. Avoid collisions for multiple IDs per package.
+  const items = result.advisories.map((advisory, index) => normalizeSecurityFinding({
+    ruleId: "osv_advisory_" + index, category: "dependency", severity: "info", status: "open",
     resourceRef: advisory.packageRef, detectedAt: asOf, lastObservedAt: asOf,
     evidence: [{ kind: "dependency", code: "dependency_alert" }],
     remediationCode: "update_dependency",
