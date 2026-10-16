@@ -4,6 +4,7 @@ import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import type { RuntimeEnvironment } from "../../shared/runtime";
 import { readSecurityCenterSources, unconnectedSecuritySources, readSecurityCenterStep, SECURITY_WORKFLOWS, type SecurityCenterSource, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "./security-center-source-reader";
 import scsMapping from "../../../config/scs-control-mapping.json";
+import { normalizeSecurityFinding, normalizeSecuritySourceCoverage } from "../../shared/security/security-finding";
 import { readRuntimeOsvAdvisories, type RuntimeOsvReader } from "./security-osv-advisory-reader";
 
 /** #420: bounded read-only, authenticated, scoped evidence-status projection.
@@ -38,6 +39,55 @@ export const projectSecurityCenter = (asOf: string, sources: readonly SecurityCe
   },
 });
 
+/**
+ * A manually requested, narrowly verified feed of *CI control-step failures*.
+ * It is never a vulnerability-scanner result or proof of zero vulnerabilities.
+ * No failure/ambiguous/unavailable source is promoted to a checked zero.
+ */
+export const projectObservedCiControlFindings = async (
+  sources: readonly SecurityCenterSource[], asOf: string, stepReader: SecurityCenterStepReader,
+) => {
+  const observed = await Promise.all(sources.map(async source => {
+    const latest = source.ci.latest;
+    if (source.ci.state !== "available" || !latest
+      || latest.checkStatus !== "completed" || latest.checkConclusion !== "failure"
+      || !source.ci.fetchedAt || Date.parse(asOf) - Date.parse(source.ci.fetchedAt) > 300_000) return null;
+    const policy = SECURITY_WORKFLOWS.find(item => item.sourceId === source.sourceId);
+    if (!policy) return null;
+    const result = await stepReader(source, asOf);
+    if (result.state !== "observed" || result.conclusion !== "failure"
+      || result.sourceId !== source.sourceId || result.stepCode !== policy.stepCode
+      || result.runId !== latest.runId || result.targetSha !== latest.targetSha
+      || !result.controlFinding) return null;
+    const category = source.sourceId === "dependency_audit" ? "dependency"
+      : source.sourceId === "secret_detection" ? "data" : "configuration";
+    const severity = source.sourceId === "secret_detection" || source.sourceId === "dependency_audit"
+      ? "high" : "medium";
+    const expected = normalizeSecurityFinding({
+      ruleId: "ci_step_failure", category, severity, status: "open",
+      resourceRef: "commit_" + latest.targetSha.slice(0, 12),
+      detectedAt: latest.updatedAt, lastObservedAt: latest.updatedAt,
+      evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_" + latest.runId }],
+      remediationCode: "review_control",
+    }, source.sourceId, asOf);
+    // The source reader must not substitute raw logs, a different run, or forged data.
+    return JSON.stringify(result.controlFinding) === JSON.stringify(expected)
+      ? { sourceId: source.sourceId, finding: expected } : null;
+  }));
+  const actual = observed.filter((item): item is NonNullable<typeof item> => item !== null);
+  if (actual.length === 0) return projectSecurityCenter(asOf, sources);
+  const checkedSources = sources.map(source => actual.some(item => item.sourceId === source.sourceId)
+    ? { ...normalizeSecuritySourceCoverage({
+      sourceId: source.sourceId, coverageState: "checked", sourceHealth: "degraded",
+      lastSuccessfulCheckAt: asOf,
+      evidenceValidUntil: new Date(Date.parse(asOf) + 300_000).toISOString(),
+      checkedFindingCount: 1,
+    }, asOf), ci: source.ci } : source);
+  return { ...projectSecurityCenter(asOf, checkedSources),
+    findings: { state: "verified" as const, items: actual.map(item => item.finding),
+      verifiedCount: actual.length } };
+};
+
 export const handleSecurityCenterApi = async (
   request: Request, env: Env, requestId: string,
   sourceReader: SecurityCenterSourceReader = readSecurityCenterSources,
@@ -47,14 +97,18 @@ export const handleSecurityCenterApi = async (
   const url = new URL(request.url);
   if (url.pathname !== ROUTE) return null;
   if (request.method !== "GET") return reject(requestId, 405, "method_not_allowed");
-  // Two strictly bounded read modes on one existing route. No arbitrary Run/URL input.
+  // Fixed read modes on one scoped API; callers cannot provide a run, SHA or URL.
   const details = url.searchParams.has("sourceId");
   const osvDetails = url.searchParams.has("dependencyAdvisories");
+  const controlFindings = url.searchParams.has("controlFindings");
   const selectedSourceId = url.searchParams.get("sourceId");
+  const selectedModes = Number(details) + Number(osvDetails) + Number(controlFindings);
   if (url.searchParams.getAll("scopeId").length !== 1
     || url.searchParams.get("scopeId") !== SCOPE
-    || (details && osvDetails)
-    || url.searchParams.size !== (details || osvDetails ? 2 : 1)
+    || selectedModes > 1
+    || url.searchParams.size !== (selectedModes === 1 ? 2 : 1)
+    || (controlFindings && (url.searchParams.getAll("controlFindings").length !== 1
+      || url.searchParams.get("controlFindings") !== "latest"))
     || (osvDetails && (url.searchParams.getAll("dependencyAdvisories").length !== 1
       || url.searchParams.get("dependencyAdvisories") !== "runtime"))
     || (details && (url.searchParams.getAll("sourceId").length !== 1
@@ -99,6 +153,11 @@ export const handleSecurityCenterApi = async (
       const source = sources.find(item => item.sourceId === selectedSourceId);
       if (!source) return reject(requestId, 503, "security_center_unavailable");
       return Response.json(await stepReader(source, asOf), {
+        headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
+      });
+    }
+    if (controlFindings) {
+      return Response.json(await projectObservedCiControlFindings(sources, asOf, stepReader), {
         headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
       });
     }
