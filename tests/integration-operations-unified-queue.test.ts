@@ -56,7 +56,8 @@ const fixture = (options: { failedSource?: Source; role?: string } = {}) => {
                   delivered_at: null, dead_lettered_at: null } : null;
               }
               if (sql.includes("FROM inbound_webhook_receipts")) {
-                return inRows.find(r => r.environment === args[0] && r.id === args[1]) ?? null;
+                const row = inRows.find(r => r.environment === args[0] && r.id === args[1]);
+                return row ? { ...row } : null;
               }
               throw new Error("Unrecognized query");
             },
