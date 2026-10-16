@@ -33,7 +33,7 @@ test("#420 no connected security source is never reported as zero or safe", () =
 
 test("#420 only fixed-scope GET may reach server-side authorization", async () => {
   const base = "https://example.test/api/admin/security/center";
-  const env = { DB: noSessionDb };
+  const env = { DB: noSessionDb, RUNTIME_ENVIRONMENT: "test" };
   assert.equal(await handleSecurityCenterApi(new Request("https://example.test/api/admin/other"),
     env, "request-no-match"), null);
   assert.equal((await handleSecurityCenterApi(new Request(base + "?scopeId=workhub-company",
@@ -46,4 +46,46 @@ test("#420 only fixed-scope GET may reach server-side authorization", async () =
   const anonymous = await handleSecurityCenterApi(
     new Request(base + "?scopeId=workhub-company"), env, "request-anon");
   assert.equal(anonymous?.status, 401);
+});
+
+test("#420 rejects missing runtime context with 503 rather than inventing findings", async () => {
+  const endpoint = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  const response = await handleSecurityCenterApi(
+    new Request(endpoint), { DB: noSessionDb }, "request-no-runtime");
+  assert.equal(response?.status, 503);
+  const body = await response!.text();
+  assert.match(body, /runtime_environment_required/u);
+  assert.doesNotMatch(body, /checkedFindingCount|sourceKind|control|evidenceReference/u);
+});
+
+test("#420 rejects every unsupported HTTP method before authentication or data exposure", async () => {
+  const endpoint = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  const env = { DB: noSessionDb, RUNTIME_ENVIRONMENT: "test" };
+  for (const method of ["POST", "PUT", "DELETE", "HEAD"]) {
+    const response = await handleSecurityCenterApi(new Request(endpoint, { method }), env, "request-method");
+    assert.equal(response?.status, 405, method);
+  }
+});
+
+test("#420 anonymous response contains no security source, SCS control or evidence data", async () => {
+  const endpoint = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  const response = await handleSecurityCenterApi(
+    new Request(endpoint), { DB: noSessionDb, RUNTIME_ENVIRONMENT: "test" }, "request-anon");
+  assert.equal(response?.status, 401);
+  const body = await response!.text();
+  assert.match(body, /authentication_required/u);
+  assert.doesNotMatch(body, /checkedFindingCount|sourceKind|requirement|evidenceReference/u);
+});
+
+test("#420 projection timestamp is a request timestamp, not evidence of a completed scan", () => {
+  const time = "2026-10-16T09:00:00.000Z";
+  const status = projectSecurityCenter(time);
+  assert.equal(status.observedAt, time);
+  assert.ok(status.sources.every(source => source.lastSuccessfulCheckAt === undefined));
+  assert.ok(status.scs.requirements.every(requirement =>
+    requirement.evidenceFreshness === "unknown" &&
+    requirement.finding === null &&
+    requirement.remediation === null));
+  assert.equal("lastScannedAt" in status, false);
+  assert.equal("securityScore" in status, false);
 });
