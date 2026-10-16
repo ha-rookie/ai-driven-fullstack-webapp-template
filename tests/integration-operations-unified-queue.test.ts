@@ -50,10 +50,15 @@ const fixture = (options: { failedSource?: Source; role?: string } = {}) => {
                 return { scopeId: "workhub-company", userId: "operator",
                   role: options.role ?? "system_admin" };
               }
-              if (sql.includes("FROM integration_outbox")) {
+              if (sql.includes("FROM integration_outbox AS o")) {
+                // This mock recognizes the real detail's same-environment JOIN.
+                assert.match(sql, /e\.environment = o\.environment/u);
                 const row = outRows.find(r => r.environment === args[0] && r.id === args[1]);
                 return row ? { ...row, available_at: time, last_attempt_at: null,
-                  delivered_at: null, dead_lettered_at: null } : null;
+                  delivered_at: null, dead_lettered_at: null,
+                  source_event_id: "event-" + row.id,
+                  correlation_id: row.id === "out-00" ? "corr-unit-419" : null,
+                  causation_id: null } : null;
               }
               if (sql.includes("FROM inbound_webhook_receipts")) {
                 const row = inRows.find(r => r.environment === args[0] && r.id === args[1]);
@@ -155,6 +160,14 @@ test("#419 exact local details are read only and source-specific after a populat
     const record = body[field] as Record<string, unknown>;
     assert.ok(record);
     assert.equal(record.failureCode, "other");
+    if (source === "outbox") {
+      assert.deepEqual(body.trace, {
+        sourceEventStatus: "recorded",
+        sourceEventId: "event-out-00",
+        correlationId: "corr-unit-419",
+        causationId: null,
+      });
+    }
     assert.doesNotMatch(JSON.stringify(body), /raw-provider-credential|raw-provider-signature/u);
   }
   assert.equal((await f.call(route, "POST"))?.status, 405);
