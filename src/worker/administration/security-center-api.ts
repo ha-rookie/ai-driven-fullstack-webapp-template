@@ -2,7 +2,7 @@ import { requireAuthenticatedUser, requireScopedAuthorization } from "../authori
 import { apiErrorResponse } from "../http";
 import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import type { RuntimeEnvironment } from "../../shared/runtime";
-import { readSecurityCenterSources, unconnectedSecuritySources, type SecurityCenterSource, type SecurityCenterSourceReader } from "./security-center-source-reader";
+import { readSecurityCenterSources, unconnectedSecuritySources, readSecurityCenterStep, SECURITY_WORKFLOWS, type SecurityCenterSource, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "./security-center-source-reader";
 import scsMapping from "../../../config/scs-control-mapping.json";
 
 /** #420: bounded read-only, authenticated, scoped evidence-status projection.
@@ -40,12 +40,19 @@ export const projectSecurityCenter = (asOf: string, sources: readonly SecurityCe
 export const handleSecurityCenterApi = async (
   request: Request, env: Env, requestId: string,
   sourceReader: SecurityCenterSourceReader = readSecurityCenterSources,
+  stepReader: SecurityCenterStepReader = readSecurityCenterStep,
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (url.pathname !== ROUTE) return null;
   if (request.method !== "GET") return reject(requestId, 405, "method_not_allowed");
-  if (url.searchParams.size !== 1 || url.searchParams.getAll("scopeId").length !== 1
-    || url.searchParams.get("scopeId") !== SCOPE) {
+  // Two strictly bounded read modes on one existing route. No arbitrary Run/URL input.
+  const details = url.searchParams.has("sourceId");
+  const selectedSourceId = url.searchParams.get("sourceId");
+  if (url.searchParams.getAll("scopeId").length !== 1
+    || url.searchParams.get("scopeId") !== SCOPE
+    || url.searchParams.size !== (details ? 2 : 1)
+    || (details && (url.searchParams.getAll("sourceId").length !== 1
+      || !SECURITY_WORKFLOWS.some(p => p.sourceId === selectedSourceId)))) {
     return reject(requestId, 400, "invalid_security_center_query");
   }
   // Fail closed when a real runtime context is absent; never substitute a synthetic scan.
@@ -75,6 +82,13 @@ export const handleSecurityCenterApi = async (
   try {
     const asOf = new Date().toISOString();
     const sources = await sourceReader(environment, asOf);
+    if (details) {
+      const source = sources.find(item => item.sourceId === selectedSourceId);
+      if (!source) return reject(requestId, 503, "security_center_unavailable");
+      return Response.json(await stepReader(source, asOf), {
+        headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
+      });
+    }
     return Response.json(projectSecurityCenter(asOf, sources), {
       headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
     });

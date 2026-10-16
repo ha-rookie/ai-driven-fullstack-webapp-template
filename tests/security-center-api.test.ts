@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { handleSecurityCenterApi, projectSecurityCenter } from "../src/worker/administration/security-center-api";
-import { unconnectedSecuritySources, type SecurityCenterSourceReader } from "../src/worker/administration/security-center-source-reader";
+import { unconnectedSecuritySources, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "../src/worker/administration/security-center-source-reader";
 
 const noSessionDb = {
   prepare() {
@@ -131,4 +131,67 @@ test("#420 reader failure is 503 with no provider error or invented status", asy
   const body = await response!.text();
   assert.match(body, /security_center_unavailable/u);
   assert.doesNotMatch(body, /fixture-provider-private-value|checkedFindingCount|requirements/u);
+});
+
+test("#420 fixed CI control-step query rejects arbitrary sources, run IDs, URLs and duplicate keys", async () => {
+  const root = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  const env = { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" };
+  let reads = 0;
+  const sources: SecurityCenterSourceReader = async (_environment, asOf) => {
+    reads++; return unconnectedSecuritySources(asOf);
+  };
+  for (const suffix of ["&sourceId=evil", "&runId=42", "&sourceId=secret_detection&runId=42",
+    "&sourceId=secret_detection&sourceId=secret_detection", "&sourceId=secret_detection&url=evil",
+    "&sourceId=", "&sourceId=https%3A%2F%2Fevil.test"]) {
+    const response = await handleSecurityCenterApi(
+      new Request(root + suffix), env, "invalid-params", sources);
+    assert.equal(response?.status, 400, suffix);
+  }
+  assert.equal(reads, 0);
+});
+
+test("#420 user/role check completes before any public GitHub CI job/step request", async () => {
+  const url = "https://example.test/api/admin/security/center?scopeId=workhub-company&sourceId=secret_detection";
+  let sourcesRead = 0; let stepsRead = 0;
+  const sourceReader: SecurityCenterSourceReader = async (_env, now) => {
+    sourcesRead++; return unconnectedSecuritySources(now);
+  };
+  const stepReader: SecurityCenterStepReader = async () => {
+    stepsRead++; return { schemaVersion: 1, sourceId: "secret_detection", stepCode: "secret_scan",
+      runId: null, targetSha: null, state: "not-run", conclusion: null };
+  };
+  const anonymous = await handleSecurityCenterApi(new Request(url),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" }, "anon", sourceReader, stepReader);
+  assert.equal(anonymous?.status, 401);
+  for (const role of ["employee", null]) {
+    const request = new Request(url, { headers: { cookie: "app_session=synthetic-session-only" } });
+    const denied = await handleSecurityCenterApi(request,
+      { DB: sessionDb(role), RUNTIME_ENVIRONMENT: "preview" }, "denied", sourceReader, stepReader);
+    assert.equal(denied?.status, 403);
+  }
+  assert.equal(sourcesRead, 0); assert.equal(stepsRead, 0);
+  const allowed = await handleSecurityCenterApi(
+    new Request(url, { headers: { cookie: "app_session=synthetic-session-only" } }),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" }, "allowed",
+    sourceReader, stepReader);
+  assert.equal(allowed?.status, 200);
+  assert.equal(allowed?.headers.get("cache-control"), "no-store");
+  assert.equal(sourcesRead, 1); assert.equal(stepsRead, 1);
+  assert.deepEqual(await allowed?.json(), {
+    schemaVersion: 1, sourceId: "secret_detection", stepCode: "secret_scan",
+    runId: null, targetSha: null, state: "not-run", conclusion: null,
+  });
+});
+
+test("#420 CI job-read failure cannot leak upstream response, actor, logs or server context", async () => {
+  const url = "https://example.test/api/admin/security/center?scopeId=workhub-company&sourceId=secret_detection";
+  const response = await handleSecurityCenterApi(
+    new Request(url, { headers: { cookie: "app_session=synthetic-session-only" } }),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" }, "failed",
+    async (_env, time) => unconnectedSecuritySources(time),
+    async () => { throw new Error("fixture-private-provider-error"); });
+  assert.equal(response?.status, 503);
+  const body = await response!.text();
+  assert.doesNotMatch(body, /fixture-private-provider-error|Run ID|logs_url|checkedFindingCount/u);
+  assert.match(body, /security_center_unavailable/u);
 });

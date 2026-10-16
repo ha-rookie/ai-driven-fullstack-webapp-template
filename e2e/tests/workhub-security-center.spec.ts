@@ -258,3 +258,69 @@ test("#420 inconsistent latest CI success and bounded success history fail close
   await expect(panel.getByRole("alert")).toContainText("状態を取得できませんでした");
   await expect(panel.getByTestId("security-center-posture")).toHaveCount(0);
 });
+
+test("#420 admin inspects the actual GitHub CI step from latest run without interpreting it as Finding", async ({ page }) => {
+  await login(page, "kai");
+  const run = { runId: 7301, targetSha: "a".repeat(40), checkStatus: "completed",
+    checkConclusion: "success", event: "pull_request", updatedAt: "2026-10-16T10:00:00.000Z" };
+  let detailQueries = 0;
+  await page.route("**/api/admin/security/center?**", async route => {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.searchParams.has("sourceId")) {
+      detailQueries++;
+      expect(requestUrl.searchParams.get("sourceId")).toBe("secret_detection");
+      expect(requestUrl.searchParams.has("runId")).toBe(false);
+      await route.fulfill({ json: { schemaVersion: 1,
+        sourceId: "secret_detection", stepCode: "secret_scan",
+        runId: run.runId, targetSha: run.targetSha,
+        state: "observed", conclusion: "success" } });
+      return;
+    }
+    const response = await route.fetch();
+    const body = await response.json();
+    body.sources[0].ci = { state: "available", fetchedAt: "2026-10-16T12:00:00.000Z",
+      latest: run, latestSuccessfulRun: run };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+  const row = panel.getByTestId("security-source-secret_detection");
+  await expect(row).toContainText("CI最新Run成功（Finding未評価）");
+  await expect(row.getByText("検査ステップを確認", { exact: true })).toBeVisible();
+  expect(detailQueries).toBe(0);
+  await row.getByRole("button", { name: "検査ステップを確認" }).click();
+  await expect(row.getByTestId("security-step-secret_detection")).toContainText("GitHub CIステップ: success");
+  await expect(row.getByTestId("security-step-secret_detection")).toContainText("Run #7301");
+  await expect(row.getByTestId("security-step-secret_detection")).toContainText("Finding結果ではありません");
+  expect(detailQueries).toBe(1);
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
+
+test("#420 injected stale or wrong-source CI step evidence fails closed", async ({ page }) => {
+  await login(page, "kai");
+  const run = { runId: 7302, targetSha: "b".repeat(40), checkStatus: "completed",
+    checkConclusion: "failure", event: "pull_request", updatedAt: "2026-10-16T10:00:00.000Z" };
+  await page.route("**/api/admin/security/center?**", async route => {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.searchParams.has("sourceId")) {
+      await route.fulfill({ json: { schemaVersion: 1, sourceId: "dependency_audit",
+        stepCode: "secret_scan", runId: run.runId, targetSha: run.targetSha,
+        state: "observed", conclusion: "success", logs_url: "https://evil.test" } });
+      return;
+    }
+    const response = await route.fetch();
+    const body = await response.json();
+    body.sources[0] = { ...body.sources[0], coverageState: "unavailable", sourceHealth: "unavailable",
+      ci: { state: "available", fetchedAt: "2026-10-16T12:00:00.000Z",
+        latest: run, latestSuccessfulRun: null } };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  const row = panel.getByTestId("security-source-secret_detection");
+  await row.getByRole("button", { name: "検査ステップを確認" }).click();
+  await expect(row.getByRole("alert")).toContainText("照合に失敗");
+  await expect(row.getByTestId("security-step-secret_detection")).toHaveCount(0);
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
