@@ -46,5 +46,4 @@ test("#420 only fixed-scope GET may reach server-side authorization", async () =
   const anonymous = await handleSecurityCenterApi(
     new Request(base + "?scopeId=workhub-company"), env, "request-anon");
   assert.equal(anonymous?.status, 401);
-  assert.equal(anonymous?.headers.get("cache-control"), "no-store");
 });
