@@ -5,7 +5,7 @@ import type { RuntimeEnvironment } from "../../shared/runtime";
 import { readSecurityCenterSources, unconnectedSecuritySources, readSecurityCenterStep, SECURITY_WORKFLOWS, type SecurityCenterSource, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "./security-center-source-reader";
 import scsMapping from "../../../config/scs-control-mapping.json";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage } from "../../shared/security/security-finding";
-import { readRuntimeOsvAdvisories, type RuntimeOsvReader } from "./security-osv-advisory-reader";
+import { readRuntimeOsvAdvisories, type RuntimeOsvReader, type RuntimeOsvResult } from "./security-osv-advisory-reader";
 
 /** #420: bounded read-only, authenticated, scoped evidence-status projection.
  * This is NOT a scanner, Finding feed, SCS certification or audit verdict.
@@ -88,6 +88,33 @@ export const projectObservedCiControlFindings = async (
       verifiedCount: actual.length } };
 };
 
+
+/** OSV advisories are real source IDs; their severity and remediation state are not known. */
+export const projectRuntimeOsvFindings = (result: RuntimeOsvResult, asOf: string) => {
+  const base = projectSecurityCenter(asOf);
+  if (result.state !== "verified" || result.checkedPackages !== 12
+    || result.checkedAt !== asOf || result.advisoryCount !== result.advisories.length) {
+    return { ...base, dependencyScope: { state: "unavailable" as const, checkedPackages: null,
+      checkedAt: null, advisoryCount: null, advisories: null } };
+  }
+  const items = result.advisories.map(advisory => normalizeSecurityFinding({
+    ruleId: "osv_advisory", category: "dependency", severity: "info", status: "open",
+    resourceRef: advisory.packageRef, detectedAt: asOf, lastObservedAt: asOf,
+    evidence: [{ kind: "dependency", code: "dependency_alert" }],
+    remediationCode: "update_dependency",
+  }, "dependency_audit", asOf));
+  return { ...base, dependencyScope: { state: "verified" as const,
+    checkedPackages: 12, checkedAt: asOf, advisoryCount: items.length,
+    advisories: result.advisories }, findings: {
+      state: "verified" as const, items, verifiedCount: items.length,
+    }, sources: base.sources.map(source => source.sourceId === "dependency_audit"
+      ? { ...normalizeSecuritySourceCoverage({
+        sourceId: source.sourceId, coverageState: "checked", sourceHealth: "ready",
+        lastSuccessfulCheckAt: asOf, evidenceValidUntil: new Date(Date.parse(asOf) + 300_000).toISOString(),
+        checkedFindingCount: items.length,
+      }, asOf), ci: source.ci } : source) };
+};
+
 export const handleSecurityCenterApi = async (
   request: Request, env: Env, requestId: string,
   sourceReader: SecurityCenterSourceReader = readSecurityCenterSources,
@@ -101,12 +128,15 @@ export const handleSecurityCenterApi = async (
   const details = url.searchParams.has("sourceId");
   const osvDetails = url.searchParams.has("dependencyAdvisories");
   const controlFindings = url.searchParams.has("controlFindings");
+  const dependencyFindings = url.searchParams.has("dependencyFindings");
   const selectedSourceId = url.searchParams.get("sourceId");
-  const selectedModes = Number(details) + Number(osvDetails) + Number(controlFindings);
+  const selectedModes = Number(details) + Number(osvDetails) + Number(controlFindings) + Number(dependencyFindings);
   if (url.searchParams.getAll("scopeId").length !== 1
     || url.searchParams.get("scopeId") !== SCOPE
     || selectedModes > 1
     || url.searchParams.size !== (selectedModes === 1 ? 2 : 1)
+    || (dependencyFindings && (url.searchParams.getAll("dependencyFindings").length !== 1
+      || url.searchParams.get("dependencyFindings") !== "runtime"))
     || (controlFindings && (url.searchParams.getAll("controlFindings").length !== 1
       || url.searchParams.get("controlFindings") !== "latest"))
     || (osvDetails && (url.searchParams.getAll("dependencyAdvisories").length !== 1
@@ -145,6 +175,12 @@ export const handleSecurityCenterApi = async (
     // It is a separate, reviewed lockfile scope; never global Finding evidence.
     if (osvDetails) {
       return Response.json(await osvReader(environment, asOf), {
+        headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
+      });
+    }
+    if (dependencyFindings) {
+      const result = await osvReader(environment, asOf);
+      return Response.json(projectRuntimeOsvFindings(result, asOf), {
         headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
       });
     }
