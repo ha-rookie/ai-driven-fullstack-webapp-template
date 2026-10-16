@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    419
+    724
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-15: Existing #132/#41 WBS Stage6 #414 Admin Operations Overview completed 6/6 and Closed after PR #701 (main 76ca77035b61e11172289caa534034cdc1ef8473), with formal System Test #694 separate Not Run. Stage7 #419 Integration Operations Console is the next existing WBS priority: #304 outbound/inbound foundation is Closed, while #335 external storage adapters remain tracking/Open. #419 already has read-only Outbox list/detail/watch (#559/#560/#561), but provider-neutral connection projection, actual provider reconciliation / safe retry boundaries and focused browser/integration acceptance are Open. Shift the focus lane to [419] through base-approved governance exception #597; do not add provider-specific integrations or pretend provider receipt verification exists. Stage8 #420 and Stage9 #431 remain later. #430 remains cross-cutting; #429 operations core must be reused. Existing WBS #132 body, milestones and priority remain unchanged. No Preview/Production deployments, Remote D1, migrations, Secrets or Cloudflare resource changes are permitted; ST #694 and other external evaluations remain separate. Policy change ONLY; subsequent #419 code PRs must independently satisfy the base-main work selection gate and require separate HEAD approval before merge."
+  "notes": "2026-10-16: #132 Admin / Operations Portal Stage7 #419 achieved original Reference/Local acceptance 5/5 and Closed after approved PR #723 (main fc14556bf5129e275022b7342c5bba6ffd851fcf). Stage6 #414 was already Closed 6/6. The next WBS Stage8 remains #420 Security / Self-Audit Center, but its prerequisite #410 Continuous Security Assurance / Self Audit Finding contract is an Open Tracking Issue; #420 is not ready to implement a real data-backed Security Center yet. Explicit user authorization on 2026-10-16 permits a separate governance-only focus transition to the narrowly-scoped #410 child #724 (SecurityFinding provider-neutral contract, coverage/freshness distinction, sanitized normalization and focused unit tests). Keep WBS Stage order, milestones and priority unchanged; #430 P1 Failure-Safety remains cross-cutting, #411/#412 track independent security boundaries, and #694 formal System Test stays separate Not Run. This policy change does not implement #724 or #420, does not authorize implementing broader #410 Tracking work, and does not promote Stage9 #431. After #724 is independently implemented, reviewed, CI-verified and explicitly approved for merge, another separately authorized governance transition will be needed before #420 implementation PRs. No Preview/Production deployment, Remote D1, migrations, Secrets, or Cloudflare resource changes authorized. Policy-only PR requires separate exact-HEAD approval to merge."
 }
