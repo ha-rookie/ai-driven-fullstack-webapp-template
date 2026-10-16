@@ -297,7 +297,7 @@ export default function SecurityCenter() {
             {SECURITY_STATUSES.map(value => <option key={value} value={value}>{value}</option>)}
           </select></label>
         </div>
-        <p>Finding表示 {visibleFindings.length} / {ready.findings.verifiedCount} 件（合成表示ではありません）。
+        <p>Finding表示 {visibleFindings.length} / {ready.findings.verifiedCount} 件。
           証跡とRemediationは許可済みコードのみ。外部URL・生ログ・承認操作はありません。</p>
         <div className="admin-audit-table-wrap"><table className="admin-audit-table" data-testid="security-findings-table">
           <thead><tr><th>Rule / Source</th><th>Severity / Category</th><th>Status / Risk exception</th>
