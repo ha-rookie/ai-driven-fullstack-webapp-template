@@ -38,6 +38,7 @@ import { handleWorkhubBusinessApi } from "./worker/workhub-business-api";
 import { handleWorkhubUsersAccessApi } from "./worker/administration/workhub-users-access-api";
 import { handleWorkhubInvitationApi } from "./worker/administration/workhub-invitation-api";
 import { handleWorkhubOperationsOverviewApi } from "./worker/administration/workhub-operations-overview-api";
+import { handleSecurityCenterApi } from "./worker/administration/security-center-api";
 import {
   handleWorkhubDemoConfig,
   handleWorkhubLogin,
@@ -253,6 +254,11 @@ export default {
       request, env, requestContext.requestId, { masterViewer: workhubMasterViewerOptions },
     );
     if (operationsOverviewResponse) return api(operationsOverviewResponse);
+
+    const securityCenterResponse = await handleSecurityCenterApi(
+      request, env, requestContext.requestId,
+    );
+    if (securityCenterResponse) return api(securityCenterResponse);
 
     const auditViewerResponse = await handleAuditLogViewerApi(
       request,
