@@ -94,6 +94,12 @@ The Admin Operations Overview combines **local** Outbox (`retry_wait` / `dead_le
 
 The UI displays the server's `observedAt` time (not a guaranteed snapshot or SLA time) and has an explicit **refresh this queue** control. Refresh and moving between pages clear the previously selected detail before the next read, so an older row is not mistaken for the current list entry. A denied, malformed or unavailable read must remain unavailable, never be represented as a healthy zero. Refresh performs only the existing GET and must not trigger delivery, replay, reconciliation or any other remote side effect.
 
+## Local unified failure queue acceptance evidence (#419)
+
+The read-only unified queue is also checked through an **actual authenticated local Worker HTTP request**, not solely through the existing intercepted Browser UI fixtures. The targeted Browser acceptance covers server-bound scope/role authorization, fixed 20-item page shape, both local Outbox and inbound receipt source identifiers, no-store, `providerReceipt: unverified`, no manual retry capability, invalid/duplicate cursor rejection, and denial of a POST mutation. It may inspect independently protected existing detail routes when the local database actually contains a returned item.
+
+The local seed may contain **zero failed records**. A green test with no rows proves only the local endpoint's safe empty/read-only behavior; it does not prove populated cross-source ordering, Provider receipt reconciliation, external document storage connection health, or a Production System Test. The broader #419 list/detail and end-to-end integration acceptance remain open until suitable evidence exists.
+
 ## Environment isolation
 
 Integration Event and Outbox primary/unique keys include `environment`. Preview and Production must not share destinations, secrets, or endpoints by implicit fallback.
