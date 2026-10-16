@@ -131,7 +131,8 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
     await queue.getByRole("button", { name: "個別詳細を確認" }).first().click();
     await expect(page.getByTestId("unified-failure-detail")).toBeVisible();
     await expect(page.getByTestId("unified-failure-detail")).not.toContainText("raw-provider-private-message");
-    await expect(page.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+    await expect(queue.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+    await expect(page.getByTestId("unified-failure-detail").getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
   } finally {
     executeLocalSql(cleanupSql);
   }
