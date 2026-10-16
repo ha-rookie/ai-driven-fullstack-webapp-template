@@ -301,7 +301,7 @@ export default function SecurityCenter() {
           証跡とRemediationは許可済みコードのみ。外部URL・生ログ・承認操作はありません。</p>
         <div className="admin-audit-table-wrap"><table className="admin-audit-table" data-testid="security-findings-table">
           <thead><tr><th>Rule / Source</th><th>Severity / Category</th><th>Status / Risk exception</th>
-            <th>Evidence（コード・参照IDのみ）</th><th>Remediation（コードのみ）</th></tr></thead>
+            <th>Evidence（コード・参照IDのみ）</th><th>Remediation・監査記録照合</th></tr></thead>
           <tbody>{visibleFindings.map(item => <tr key={`${item.sourceId}:${item.ruleId}:${item.resourceRef ?? ""}`}>
             <td>{item.ruleId}<small>{item.sourceId}</small></td>
             <td>{item.severity} / {item.category}</td>
@@ -311,7 +311,13 @@ export default function SecurityCenter() {
             <td>{item.evidence.map((evidence, i) => <div key={i}>
               {evidence.kind} / {evidence.code} / {evidence.referenceId ?? "参照ID未登録"}
             </div>)}</td>
-            <td>{item.remediationCode ?? "対応コード未登録"}</td>
+            <td>{item.remediationCode ?? "対応コード未登録"}
+              <div>{item.auditRequestId
+                ? <a href={`/admin?auditRequestId=${encodeURIComponent(item.auditRequestId)}#admin-audit-and-security`}>
+                  監査ログをリクエストIDで照合（{item.auditRequestId}）
+                </a>
+                : "監査相関ID未登録（ログとの関連は未確認）"}</div>
+            </td>
           </tr>)}</tbody>
         </table></div>
       </>}
