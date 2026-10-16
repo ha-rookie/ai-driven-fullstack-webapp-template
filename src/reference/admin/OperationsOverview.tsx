@@ -82,6 +82,15 @@ interface OutboxDetail {
       readonly blocker: "provider_receipt_unverified";
       readonly executionAllowed: false;
     };
+    /** Missing on older versions: explicitly unknown, never authorization. */
+    readonly reconcileGate?: {
+      readonly operationId: "INTEGRATION_RECONCILE";
+      readonly risk: "CONTROLLED_CHANGE" | "HUMAN_GATE";
+      readonly policyDecision: "DENY";
+      readonly policyVersion: "operations-policy-v1";
+      readonly blocker: "provider_reconcile_adapter_not_registered";
+      readonly executionAllowed: false;
+    };
   };
 }
 interface AuditSnapshot {
@@ -218,7 +227,15 @@ const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
   && value.decision.operationGate.policyDecision === "DENY"
   && value.decision.operationGate.policyVersion === "operations-policy-v1"
   && value.decision.operationGate.blocker === "provider_receipt_unverified"
-  && value.decision.operationGate.executionAllowed === false;
+  && value.decision.operationGate.executionAllowed === false
+  && (value.decision.reconcileGate === undefined
+    || (isRecord(value.decision.reconcileGate)
+      && value.decision.reconcileGate.operationId === "INTEGRATION_RECONCILE"
+      && ["CONTROLLED_CHANGE", "HUMAN_GATE"].includes(String(value.decision.reconcileGate.risk))
+      && value.decision.reconcileGate.policyDecision === "DENY"
+      && value.decision.reconcileGate.policyVersion === "operations-policy-v1"
+      && value.decision.reconcileGate.blocker === "provider_reconcile_adapter_not_registered"
+      && value.decision.reconcileGate.executionAllowed === false));
 
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
@@ -416,6 +433,14 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
             {"（リスク: " + detail.data.decision.operationGate.risk
               + " / Policy: " + detail.data.decision.operationGate.policyVersion + "）"}
             外部Providerの受領未確認のため、DELIVERY_RETRYは実行できません。
+          </p>
+          <p data-testid="outbox-reconcile-gate">
+            {detail.data.decision.reconcileGate
+              ? <>共通Operations Core判定：<strong>外部照合禁止（DENY）</strong>
+                {"（Risk: " + detail.data.decision.reconcileGate.risk
+                  + " / Policy: " + detail.data.decision.reconcileGate.policyVersion + "）"}
+                Provider照合Adapter未登録のため、INTEGRATION_RECONCILEは実行できません。</>
+              : <>外部照合のPolicy判定は未取得です。照合は実行できません。</>}
           </p>
           {detail.data.decision.nextAction === "reconcile_external_first" && (
             <section data-testid="outbox-reconcile-checklist" aria-label="照合手順">

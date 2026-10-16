@@ -31,33 +31,37 @@ const DELIVERY_RETRY_DEFINITION: OperationDefinition = {
   externalSideEffect: true,
   requiresVerification: true,
 };
+const INTEGRATION_RECONCILE_DEFINITION: OperationDefinition = {
+  id: "INTEGRATION_RECONCILE",
+  capability: "integrations:reconcile",
+  baseRisk: "CONTROLLED_CHANGE",
+  reversible: false,
+  idempotent: false,
+  externalSideEffect: true,
+  requiresVerification: true,
+};
 
-const blockedDeliveryRetryGate = (
+/** Shared #429 policy evidence only. No executable preview or command handler. */
+const blockedIntegrationOperationGate = (
+  definition: OperationDefinition,
+  blocker: "provider_receipt_unverified" | "provider_reconcile_adapter_not_registered",
   environment: OperationRequest["environment"],
   outboxId: string,
   scopeId: string,
   requestId: string,
 ) => {
-  const preview = decideOperationPolicy(
-    { allowed: false, reason: "provider_receipt_unverified" },
-    {
-      definition: DELIVERY_RETRY_DEFINITION,
-      actorKind: "HUMAN",
-      environment,
-      target: { resourceType: "integration_outbox", resourceId: outboxId, scopeId },
-      affectedCount: 1,
-      correlationId: requestId,
-    },
-  );
-  if (preview.policyDecision !== "DENY") throw new Error("Retry gate failed closed");
-  // Do not return an executable OperationPreview, a provider id or arbitrary
-  // credentials. A later retry route must independently authorize and verify.
+  const preview = decideOperationPolicy({ allowed: false, reason: blocker }, {
+    definition, actorKind: "HUMAN", environment,
+    target: { resourceType: "integration_outbox", resourceId: outboxId, scopeId },
+    affectedCount: 1, correlationId: requestId,
+  });
+  if (preview.policyDecision !== "DENY") throw new Error("Integration operation must be denied");
   return {
     operationId: preview.operationId,
     risk: preview.risk,
     policyDecision: preview.policyDecision,
     policyVersion: OPERATIONS_POLICY_VERSION,
-    blocker: "provider_receipt_unverified" as const,
+    blocker,
     executionAllowed: false as const,
   };
 };
@@ -521,7 +525,13 @@ export const handleIntegrationOperationsApi = async (
           nextAction: nextAction(detail.status),
           providerOutcome: "unverified",
           manualRetryAllowed: false,
-          operationGate: blockedDeliveryRetryGate(
+          operationGate: blockedIntegrationOperationGate(
+            DELIVERY_RETRY_DEFINITION, "provider_receipt_unverified",
+            environment as OperationRequest["environment"], detail.id, scopeId, requestId,
+          ),
+          // No #335 Provider receipt adapter exists. Reconciliation is also DENY.
+          reconcileGate: blockedIntegrationOperationGate(
+            INTEGRATION_RECONCILE_DEFINITION, "provider_reconcile_adapter_not_registered",
             environment as OperationRequest["environment"], detail.id, scopeId, requestId,
           ),
           rationale: "Provider delivery outcome is not verified. Never re-send solely from Outbox status.",

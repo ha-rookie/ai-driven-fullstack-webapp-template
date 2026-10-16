@@ -108,6 +108,7 @@ test("overview summarizes bounded authorized signals without claiming complete h
     }),
   }));
   let forgedDecision = false;
+  let forgedReconcile = false;
   await page.route("**/api/admin/integrations/outbox/safe-1?**", (route) => route.fulfill({
     status: 200, contentType: "application/json",
     body: JSON.stringify({
@@ -121,7 +122,11 @@ test("overview summarizes bounded authorized signals without claiming complete h
         operationGate: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
           policyDecision: forgedDecision ? "ALLOW" : "DENY",
           policyVersion: "operations-policy-v1",
-          blocker: "provider_receipt_unverified", executionAllowed: false } },
+          blocker: "provider_receipt_unverified", executionAllowed: false },
+        reconcileGate: { operationId: "INTEGRATION_RECONCILE", risk: "CONTROLLED_CHANGE",
+          policyDecision: forgedReconcile ? "ALLOW" : "DENY",
+          policyVersion: "operations-policy-v1",
+          blocker: "provider_reconcile_adapter_not_registered", executionAllowed: false } },
     }),
   }));
   await page.route("**/api/admin/audit?**", (route) => {
@@ -287,6 +292,9 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(detail.getByTestId("outbox-operation-gate")).toContainText("共通Operations Core判定：再送禁止");
   await expect(detail.getByTestId("outbox-operation-gate")).toContainText("CONTROLLED_CHANGE");
   await expect(detail.getByTestId("outbox-operation-gate")).toContainText("DELIVERY_RETRYは実行できません");
+  await expect(detail.getByTestId("outbox-reconcile-gate")).toContainText("外部照合禁止（DENY）");
+  await expect(detail.getByTestId("outbox-reconcile-gate")).toContainText("INTEGRATION_RECONCILEは実行できません");
+  await expect(detail.getByTestId("outbox-reconcile-gate").getByRole("button")).toHaveCount(0);
   await page.getByTestId("outbox-watch").getByRole("button", { name: "状態と対応方針を確認" }).click();
   await expect(detail).toContainText("個別Outbox確認：due-1");
   await expect(detail).toContainText("送信待ちです。送信処理の状態を確認してください。");
@@ -360,6 +368,13 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
   await expect(paged.getByTestId("outbox-detail")).toContainText("取得できません");
   await expect(paged).not.toContainText("DELIVERY_RETRYは実行できません");
+  // An independently forged ALLOW for reconciliation is also rejected.
+  forgedDecision = false;
+  forgedReconcile = true;
+  await paged.getByRole("button", { name: "次の20件" }).click();
+  await paged.getByRole("button", { name: "前の20件" }).click();
+  await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
+  await expect(paged.getByTestId("outbox-detail")).toContainText("取得できません");
   await expect(page.locator("#admin-integration-outbox")).not.toContainText("sensitive-provider-credential");
   await page.locator("#admin-integration-inbound")
     .getByRole("button", { name: "受信失敗記録を確認" }).click();
