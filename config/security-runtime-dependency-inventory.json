@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "scope": "runtime-lock-only",
+  "lockfileVersion": 3,
+  "packages": [
+    {
+      "ref": "pkg_01",
+      "path": "node_modules/@pdf-lib/fontkit",
+      "version": "1.1.1",
+      "name": "@pdf-lib/fontkit"
+    },
+    {
+      "ref": "pkg_02",
+      "path": "node_modules/@pdf-lib/standard-fonts",
+      "version": "1.0.0",
+      "name": "@pdf-lib/standard-fonts"
+    },
+    {
+      "ref": "pkg_03",
+      "path": "node_modules/@pdf-lib/upng",
+      "version": "1.0.1",
+      "name": "@pdf-lib/upng"
+    },
+    {
+      "ref": "pkg_04",
+      "path": "node_modules/fflate",
+      "version": "0.8.3",
+      "name": "fflate"
+    },
+    {
+      "ref": "pkg_05",
+      "path": "node_modules/pako",
+      "version": "1.0.11",
+      "name": "pako"
+    },
+    {
+      "ref": "pkg_06",
+      "path": "node_modules/pdf-lib",
+      "version": "1.17.1",
+      "name": "pdf-lib"
+    },
+    {
+      "ref": "pkg_07",
+      "path": "node_modules/pdf-lib/node_modules/tslib",
+      "version": "1.14.1",
+      "name": "tslib"
+    },
+    {
+      "ref": "pkg_08",
+      "path": "node_modules/react",
+      "version": "19.3.0",
+      "name": "react"
+    },
+    {
+      "ref": "pkg_09",
+      "path": "node_modules/react-dom",
+      "version": "19.3.0",
+      "name": "react-dom"
+    },
+    {
+      "ref": "pkg_10",
+      "path": "node_modules/scheduler",
+      "version": "0.28.0",
+      "name": "scheduler"
+    },
+    {
+      "ref": "pkg_11",
+      "path": "node_modules/tslib",
+      "version": "2.8.1",
+      "name": "tslib"
+    },
+    {
+      "ref": "pkg_12",
+      "path": "node_modules/write-excel-file",
+      "version": "4.1.1",
+      "name": "write-excel-file"
+    }
+  ]
+}
