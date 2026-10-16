@@ -305,11 +305,58 @@ const isOsvReport = (input: unknown): input is OsvReport => {
   }
   return true;
 };
+type OsvFindingReport = {
+  readonly schemaVersion: 1; readonly scope: "runtime-lock-only"; readonly source: "OSV";
+  readonly state: "verified"; readonly checkedAt: string; readonly checkedPackages: number;
+  readonly coverage: SecuritySourceCoverage; readonly findings: SecurityFindingFeed;
+};
+const isOsvFindingReport = (value: unknown, batch: OsvReport): value is OsvFindingReport => {
+  if (!value || typeof value !== "object" || Array.isArray(value) || batch.state !== "verified") return false;
+  const v = value as Partial<OsvFindingReport>;
+  if (Object.keys(value).sort().join(",") !==
+    ["schemaVersion", "scope", "source", "state", "checkedAt", "checkedPackages", "coverage", "findings"].sort().join(",")
+    || v.schemaVersion !== 1 || v.scope !== "runtime-lock-only" || v.source !== "OSV"
+    || v.state !== "verified" || v.checkedAt !== batch.checkedAt
+    || v.checkedPackages !== runtimeInventory.packages.length || !v.coverage) return false;
+  const coverage = v.coverage;
+  const raw = { ...coverage } as Record<string, unknown>;
+  delete raw.freshness;
+  try {
+    const normalized = normalizeSecuritySourceCoverage(raw, new Date().toISOString());
+    if (normalized.sourceId !== "dependency_audit" || normalized.coverageState !== "checked"
+      || normalized.lastSuccessfulCheckAt !== v.checkedAt
+      || JSON.stringify(normalized) !== JSON.stringify(coverage)
+      || !isSecurityFindingFeed(v.findings, [normalized], new Date().toISOString())
+      || v.findings?.state !== "verified"
+      || v.findings.items.length !== batch.advisoryCount) return false;
+    const expected = new Set((batch.advisories ?? []).map(a => a.packageRef + ":" + a.advisoryId));
+    return v.findings.items.every(item => {
+      const id = item.ruleId.startsWith("osv_")
+        ? item.ruleId.slice(4).toUpperCase().replace(/_/gu, "-") : "";
+      const slug = id.toLowerCase().replace(/-/gu, "_");
+      return expected.has(item.resourceRef + ":" + id)
+        && item.sourceId === "dependency_audit" && item.category === "dependency"
+        && item.status === "open" && item.riskDisposition === "none"
+        && item.assessedAt >= v.checkedAt && item.detectedAt === v.checkedAt
+        && item.lastObservedAt === v.checkedAt && item.remediationCode === "update_dependency"
+        && item.evidence.length === 1 && item.evidence[0].kind === "dependency"
+        && item.evidence[0].code === "dependency_alert"
+        && item.evidence[0].referenceId === item.resourceRef + "_" + slug;
+    });
+  } catch { return false; }
+};
 const OsvRuntimeAdvisories = () => {
   const [result, setResult] = useState<
     { readonly state: "idle" | "loading" | "unavailable" }
     | { readonly state: "verified"; readonly report: OsvReport }>({ state: "idle" });
+  const [details, setDetails] = useState<
+    { readonly state: "idle" | "loading" | "unavailable" }
+    | { readonly state: "verified"; readonly report: OsvFindingReport }>({ state: "idle" });
+  const [severity, setSeverity] = useState<SecuritySeverity | "all">("all");
+  const [category, setCategory] = useState<SecurityCategory | "all">("all");
+  const [findingStatus, setFindingStatus] = useState<SecurityFindingStatus | "all">("all");
   const load = async () => {
+    setDetails({ state: "idle" });
     setResult({ state: "loading" });
     try {
       const response = await fetch(
@@ -321,6 +368,21 @@ const OsvRuntimeAdvisories = () => {
         ? { state: "verified", report: data } : { state: "unavailable" });
     } catch { setResult({ state: "unavailable" }); }
   };
+  const loadDetails = async () => {
+    if (result.state !== "verified") return;
+    setDetails({ state: "loading" });
+    try {
+      const response = await fetch(
+        "/api/admin/security/center?scopeId=workhub-company&osvFindings=runtime",
+        { headers: { accept: "application/json" }, cache: "no-store" });
+      if (!response.ok) { setDetails({ state: "unavailable" }); return; }
+      const data: unknown = await response.json();
+      setDetails(isOsvFindingReport(data, result.report)
+        ? { state: "verified", report: data } : { state: "unavailable" });
+    } catch { setDetails({ state: "unavailable" }); }
+  };
+  const filtered = details.state === "verified" && details.report.findings.state === "verified"
+    ? selectSecurityFindings(details.report.findings.items, { severity, category, status: findingStatus }) : [];
   return <div data-testid="security-osv-runtime-panel">
     <h3>本番依存ライブラリの脆弱性アドバイザリ（OSV）</h3>
     <p>現在のpackage-lockに記録された本番用12エントリを個別に照会します。
@@ -349,6 +411,47 @@ const OsvRuntimeAdvisories = () => {
             </tr>;
           })}</tbody>
         </table></div>}
+      <h4>真正OSVアドバイザリのFinding・証跡（12ロック依存のみ）</h4>
+      <p>原票の対象npmパッケージと重大度が実証できた場合だけSecurityFinding契約へ接続します。
+        対応状態openは固定ロック版へのOSV警告がある意味であり、稼働環境の脆弱性や修復状況の判断ではありません。</p>
+      <button type="button" disabled={details.state === "loading"}
+        onClick={() => { void loadDetails(); }}>OSV原票の重大度とFindingを照合</button>
+      {details.state === "loading" && <p role="status">OSV原票を検証しています…</p>}
+      {details.state === "unavailable" && <p role="alert" data-testid="security-osv-finding-unavailable">
+        原票の重大度・対象パッケージの完全照合不可（Gray）。推定値・0件として表示しません。</p>}
+      {details.state === "verified" && details.report.findings.state === "verified" && <div data-testid="security-osv-finding-verified">
+        <p role="status">検証済OSV Finding {details.report.findings.verifiedCount} 件／
+          {details.report.checkedPackages} ロック依存（証跡時刻 {details.report.checkedAt}）。
+          これ以外の依存・デプロイ済コード・SCSは未評価（Gray）です。</p>
+        <label>OSV重大度 <select aria-label="OSV重大度" value={severity}
+          onChange={event => setSeverity(event.target.value as SecuritySeverity | "all")}>
+          <option value="all">すべて</option>
+          {SECURITY_SEVERITIES.map(x => <option key={x} value={x}>{x}</option>)}
+        </select></label>
+        <label>OSV分類 <select aria-label="OSV分類" value={category}
+          onChange={event => setCategory(event.target.value as SecurityCategory | "all")}>
+          <option value="all">すべて</option>
+          {SECURITY_CATEGORIES.map(x => <option key={x} value={x}>{x}</option>)}
+        </select></label>
+        <label>OSV状態 <select aria-label="OSV状態" value={findingStatus}
+          onChange={event => setFindingStatus(event.target.value as SecurityFindingStatus | "all")}>
+          <option value="all">すべて</option>
+          {SECURITY_STATUSES.map(x => <option key={x} value={x}>{x}</option>)}
+        </select></label>
+        <div className="admin-audit-table-wrap"><table className="admin-audit-table"
+          data-testid="security-osv-finding-table">
+          <thead><tr><th>ロック依存</th><th>Rule / Severity / Status</th><th>Evidence</th><th>Remediation</th></tr></thead>
+          <tbody>{filtered.map(item => {
+            const pkg = runtimeInventory.packages.find(p => p.ref === item.resourceRef);
+            return <tr key={item.ruleId + ":" + item.resourceRef}>
+              <td>{pkg?.name ?? "未照合"} / {pkg?.version ?? "未照合"}</td>
+              <td>{item.ruleId} / {item.severity} / {item.status}</td>
+              <td>{item.evidence.map((e, i) => <span key={i}>{e.kind} / {e.code} / {e.referenceId}</span>)}</td>
+              <td>{item.remediationCode ?? "未登録（未対応）"}</td>
+            </tr>;
+          })}</tbody>
+        </table></div>
+      </div>}
     </div>}
   </div>;
 };
