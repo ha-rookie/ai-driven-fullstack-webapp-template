@@ -188,3 +188,137 @@ test("#419 non-admin cannot read paged failed Outbox history", async ({ page }) 
     (await fetch("/api/admin/integrations/outbox/_failures?scopeId=workhub-company")).status);
   expect(denied).toBe(403);
 });
+
+test("#419 live local unified outbound/inbound failure API enforces read-only safety", async ({ page }) => {
+  // No browser route mock: exercise the real local authenticated Worker + D1.
+  await login(page);
+  const actual = await page.evaluate(async () => {
+    const url = "/api/admin/integrations/failures?scopeId=workhub-company";
+    const result = await fetch(url);
+    const body: unknown = await result.json();
+    const invalidCursor = await fetch(url + "&cursor=bad%20cursor");
+    const duplicateCursor = await fetch(url + "&cursor=YWJj&cursor=YWJj");
+    const otherScope = await fetch("/api/admin/integrations/failures?scopeId=other-company");
+    const unexpectedFilter = await fetch(url + "&provider=another");
+    const forbiddenMutation = await fetch(url, { method: "POST" });
+    return {
+      status: result.status, body, cacheControl: result.headers.get("cache-control"),
+      invalidCursor: invalidCursor.status, duplicateCursor: duplicateCursor.status,
+      otherScope: otherScope.status, unexpectedFilter: unexpectedFilter.status,
+      mutation: forbiddenMutation.status,
+    };
+  });
+  expect(actual.status).toBe(200);
+  expect(actual.cacheControl).toBe("no-store");
+  expect(actual.invalidCursor).toBe(400);
+  expect(actual.duplicateCursor).toBe(400);
+  expect(actual.unexpectedFilter).toBe(400);
+  expect(actual.otherScope).toBe(403);
+  expect(actual.mutation).toBe(405);
+
+  const body = actual.body as Record<string, unknown>;
+  expect(body.coverage).toBe("environment");
+  expect(body.source).toBe("local_failure_queue");
+  expect(body.environment).toBe("local");
+  expect(body.pageLimit).toBe(20);
+  expect(body.sources).toEqual(["outbound_delivery", "inbound_webhook"]);
+  expect(body.providerReceipt).toBe("unverified");
+  expect(body.manualRetryAllowed).toBe(false);
+  expect(typeof body.observedAt).toBe("string");
+  expect(Number.isFinite(Date.parse(body.observedAt as string))).toBe(true);
+  expect(Array.isArray(body.items)).toBe(true);
+  const items = body.items as Record<string, unknown>[];
+  expect(items.length).toBeLessThanOrEqual(20);
+  for (const item of items) {
+    expect(["outbound_delivery", "inbound_webhook"]).toContain(item.source);
+    expect(item.source === "outbound_delivery"
+      ? ["retry_wait", "dead_letter"] : ["failed", "dead_letter"]).toContain(item.status);
+    expect(typeof item.id).toBe("string");
+    expect(Number.isSafeInteger(item.attemptCount)).toBe(true);
+    expect(Number.isSafeInteger(item.version)).toBe(true);
+    expect(typeof item.failureCode).toBe("string");
+    expect(item).not.toHaveProperty("rawPayload");
+    expect(item).not.toHaveProperty("destinationKey");
+    expect(item).not.toHaveProperty("secret");
+    expect(item).not.toHaveProperty("providerResponse");
+  }
+  expect(body.nextCursor === null || typeof body.nextCursor === "string").toBe(true);
+  expect(JSON.stringify(body)).not.toMatch(
+    /rawProviderResponse|rawPayload|accessToken|refreshToken|destinationKey|providerSecret/iu,
+  );
+  if (typeof body.nextCursor === "string") {
+    const next = await page.evaluate(async (cursor: string) =>
+      (await fetch("/api/admin/integrations/failures?scopeId=workhub-company&cursor="
+        + encodeURIComponent(cursor))).status, body.nextCursor);
+    expect(next).toBe(200);
+  }
+  // Optional data-dependent detail smoke: no write or invented Provider fixture.
+  if (items.length > 0) {
+    const first = items[0];
+    const route = first.source === "outbound_delivery"
+      ? "/api/admin/integrations/outbox/" : "/api/admin/integrations/inbound/";
+    const detail = await page.evaluate(async ({ route, id }: { route: string; id: string }) => {
+      const response = await fetch(route + encodeURIComponent(id) + "?scopeId=workhub-company");
+      return { status: response.status, body: await response.json() as unknown };
+    }, { route, id: String(first.id) });
+    expect(detail.status).toBe(200);
+    expect(JSON.stringify(detail.body)).not.toMatch(
+      /rawProviderResponse|rawPayload|accessToken|refreshToken|destinationKey|providerSecret/iu,
+    );
+  }
+});
+
+test("#419 non-admin is denied real unified integration failure queue API", async ({ page }) => {
+  await login(page, "aoi");
+  const status = await page.evaluate(async () =>
+    (await fetch("/api/admin/integrations/failures?scopeId=workhub-company")).status);
+  expect(status).toBe(403);
+});
+
+test("#419 exact known local failure ID opens existing authorized read-only detail from an empty queue", async ({ page }) => {
+  await login(page);
+  // A valid empty local queue does not imply Provider health, and must not block
+  // investigation of an exact ID already known from an incident report.
+  await page.route("**/api/admin/integrations/failures?**", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      coverage: "environment", source: "local_failure_queue",
+      environment: "local", observedAt: "2026-10-16T00:00:00.000Z",
+      pageLimit: 20, sources: ["outbound_delivery", "inbound_webhook"],
+      items: [], nextCursor: null, providerReceipt: "unverified",
+      manualRetryAllowed: false,
+    }),
+  }));
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "送受信の失敗をまとめて確認", exact: true }).click();
+  const queue = page.getByTestId("unified-integration-failures");
+  await expect(queue).toContainText("現在の対象記録は該当なし");
+  const lookup = queue.getByRole("form", { name: "記録IDから詳細確認" });
+  await expect(lookup).toBeVisible();
+
+  await lookup.getByRole("textbox", { name: "記録ID" }).fill("../unsafe/path");
+  await lookup.getByRole("button", { name: "指定IDの詳細を確認" }).click();
+  await expect(lookup.getByRole("alert")).toContainText("ローカル記録IDの形式");
+  await expect(page.getByTestId("unified-failure-detail")).toHaveCount(0);
+
+  await lookup.getByRole("combobox", { name: "記録の種類" }).selectOption("inbound_webhook");
+  await lookup.getByRole("textbox", { name: "記録ID" }).fill("  inbound-incident-17  ");
+  const inboundRequest = page.waitForRequest(r =>
+    new URL(r.url()).pathname === "/api/admin/integrations/inbound/inbound-incident-17");
+  await lookup.getByRole("button", { name: "指定IDの詳細を確認" }).click();
+  const inbound = await inboundRequest;
+  expect(inbound.method()).toBe("GET");
+  expect(new URL(inbound.url()).searchParams.get("scopeId")).toBe("workhub-company");
+  await expect(page.getByTestId("unified-failure-detail")).toBeVisible();
+  await expect(lookup.getByRole("alert")).toHaveCount(0);
+
+  await lookup.getByRole("combobox", { name: "記録の種類" }).selectOption("outbound_delivery");
+  await lookup.getByRole("textbox", { name: "記録ID" }).fill("outbox-incident-20");
+  const outboxRequest = page.waitForRequest(r =>
+    new URL(r.url()).pathname === "/api/admin/integrations/outbox/outbox-incident-20");
+  await lookup.getByRole("button", { name: "指定IDの詳細を確認" }).click();
+  const outbound = await outboxRequest;
+  expect(outbound.method()).toBe("GET");
+  expect(new URL(outbound.url()).searchParams.get("scopeId")).toBe("workhub-company");
+  await expect(queue.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+});

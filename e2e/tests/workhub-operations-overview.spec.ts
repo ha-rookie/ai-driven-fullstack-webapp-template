@@ -101,9 +101,14 @@ test("overview summarizes bounded authorized signals without claiming complete h
         deliveredAt: null, deadLetteredAt: null,
         updatedAt: "2026-10-09T00:00:00.000Z", version: 1, failureCode: "other" },
       decision: { nextAction: "queued", providerOutcome: "unverified",
-        manualRetryAllowed: false },
+        manualRetryAllowed: false,
+        operationGate: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
+          policyDecision: "DENY", policyVersion: "operations-policy-v1",
+          blocker: "provider_receipt_unverified", executionAllowed: false } },
     }),
   }));
+  let forgedDecision = false;
+  let forgedReconcile = false;
   await page.route("**/api/admin/integrations/outbox/safe-1?**", (route) => route.fulfill({
     status: 200, contentType: "application/json",
     body: JSON.stringify({
@@ -111,19 +116,17 @@ test("overview summarizes bounded authorized signals without claiming complete h
       outbox: { outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
         availableAt: "2026-10-09T00:00:00.000Z", lastAttemptAt: "2026-10-09T00:00:00.000Z",
         deliveredAt: null, deadLetteredAt: "2026-10-10T00:00:00.000Z",
-        updatedAt: "2026-10-10T00:00:00.000Z", version: 3, failureCode: "other" },
+        updatedAt: "2026-10-10T00:00:00.000Z", version: 3, failureCode: "delivery_outcome_unknown" },
       decision: { nextAction: "reconcile_external_first", providerOutcome: "unverified",
-        manualRetryAllowed: false },
-      recoveryReadiness: {
-        kind: "policy_readiness_not_execution_preview", policyVersion: "operations-policy-v1",
-        providerOutcome: "unverified", rawProviderSecret: "must-not-appear",
-        reconcile: { operationId: "INTEGRATION_RECONCILE", risk: "CONTROLLED_CHANGE",
-          policyDecision: "DENY", executable: false, guardReason: "policy_denied",
-          blockingReason: "provider_reconcile_adapter_not_registered" },
-        retry: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
-          policyDecision: "DENY", executable: false, guardReason: "policy_denied",
-          blockingReason: "provider_receipt_unverified" },
-      },
+        manualRetryAllowed: false,
+        operationGate: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
+          policyDecision: forgedDecision ? "ALLOW" : "DENY",
+          policyVersion: "operations-policy-v1",
+          blocker: "provider_receipt_unverified", executionAllowed: false },
+        reconcileGate: { operationId: "INTEGRATION_RECONCILE", risk: "CONTROLLED_CHANGE",
+          policyDecision: forgedReconcile ? "ALLOW" : "DENY",
+          policyVersion: "operations-policy-v1",
+          blocker: "provider_reconcile_adapter_not_registered", executionAllowed: false } },
     }),
   }));
   await page.route("**/api/admin/audit?**", (route) => {
@@ -194,6 +197,73 @@ test("overview summarizes bounded authorized signals without claiming complete h
       }),
     });
   });
+  // Locally persisted verified-receipt failures, independent of outbound Outbox.
+  await page.route("**/api/admin/integrations/inbound/_failures?**", route => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        coverage: "environment", source: "local_inbound_receipt",
+        environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+        pageLimit: 20, replayAvailable: false,
+        items: cursor === null
+          ? [{ receiptId: "inbound-1", providerKey: "demo.webhook", status: "dead_letter",
+            attemptCount: 3, receivedAt: "2026-10-09T00:00:00.000Z",
+            updatedAt: "2026-10-10T00:00:00.000Z", version: 5,
+            failureCode: "business_processing_failed" }]
+          : [{ receiptId: "older-inbound", providerKey: "demo.webhook", status: "failed",
+            attemptCount: 1, receivedAt: "2026-10-08T00:00:00.000Z",
+            updatedAt: "2026-10-08T00:00:00.000Z", version: 2,
+            failureCode: "other" }],
+        nextCursor: cursor === null ? "opaque2" : null,
+        replayKey: "never-show-replay-key",
+        rawProviderSecret: "never-show-inbound-credential",
+      }),
+    });
+  });
+  await page.route("**/api/admin/integrations/inbound/inbound-1?**", route =>
+    route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        coverage: "environment", source: "local_inbound_receipt",
+        environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+        receipt: { receiptId: "inbound-1", providerKey: "demo.webhook",
+          status: "dead_letter", attemptCount: 3, version: 5,
+          receivedAt: "2026-10-09T00:00:00.000Z",
+          updatedAt: "2026-10-10T00:00:00.000Z",
+          failureCode: "business_processing_failed" },
+        decision: { nextAction: "inspect_processing_failure",
+          manualRetryAllowed: false, replayAvailable: false },
+        rawPayload: "never-show-inbound-payload",
+      }),
+    }));
+  let queueCorrupted = false;
+  await page.route("**/api/admin/integrations/failures?**", route => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    const items = cursor === null
+      ? [
+        { source: "outbound_delivery", id: "safe-1", status: "dead_letter",
+          attemptCount: 2, updatedAt: "2026-10-10T00:00:00.000Z",
+          version: 3, failureCode: "other", providerKey: null },
+        { source: "inbound_webhook", id: "inbound-1", status: "dead_letter",
+          attemptCount: 3, updatedAt: "2026-10-10T00:00:00.000Z",
+          version: 5, failureCode: "business_processing_failed",
+          providerKey: queueCorrupted ? "untrusted<script>" : "demo.webhook" },
+      ] : [
+        { source: "outbound_delivery", id: "older-queue", status: "retry_wait",
+          attemptCount: 1, updatedAt: "2026-10-09T00:00:00.000Z",
+          version: 2, failureCode: "provider_unavailable", providerKey: null },
+      ];
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        coverage: "environment", source: "local_failure_queue",
+        environment: "local", observedAt: "2026-10-10T00:00:00.000Z",
+        pageLimit: 20, sources: ["outbound_delivery", "inbound_webhook"],
+        items, nextCursor: cursor === null ? "queue2" : null,
+        providerReceipt: "unverified", manualRetryAllowed: false,
+        rawPayload: "never-show-queue-raw-payload",
+        suppressedProviderCredential: "never-show-queue-credential",
+      }),
+    });
+  });
   await page.goto("/admin");
   const summary = page.locator("#admin-operations-overview");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
@@ -216,14 +286,15 @@ test("overview summarizes bounded authorized signals without claiming complete h
   const detail = page.getByTestId("outbox-detail");
   await expect(detail).toContainText("外部サービス側の配送結果を照合してください");
   await expect(detail).toContainText("Version: 3");
+  await expect(detail.getByTestId("delivery-outcome-unknown")).toContainText("自動再送停止");
+  await expect(detail.getByTestId("delivery-outcome-unknown")).toContainText("既存Redriveも拒否されます");
   await expect(detail).toContainText("外部配送結果：未照合");
-  const readiness = detail.getByTestId("integration-recovery-readiness");
-  await expect(readiness).toContainText("Policy: operations-policy-v1");
-  await expect(readiness).toContainText("外部結果の照合：禁止（DENY）");
-  await expect(readiness).toContainText("手動再送：禁止（DENY）");
-  await expect(readiness).toContainText("Provider受領証跡が未確認");
-  await expect(readiness).not.toContainText("must-not-appear");
-  await expect(readiness.getByRole("button")).toHaveCount(0);
+  await expect(detail.getByTestId("outbox-operation-gate")).toContainText("共通Operations Core判定：再送禁止");
+  await expect(detail.getByTestId("outbox-operation-gate")).toContainText("CONTROLLED_CHANGE");
+  await expect(detail.getByTestId("outbox-operation-gate")).toContainText("DELIVERY_RETRYは実行できません");
+  await expect(detail.getByTestId("outbox-reconcile-gate")).toContainText("外部照合禁止（DENY）");
+  await expect(detail.getByTestId("outbox-reconcile-gate")).toContainText("INTEGRATION_RECONCILEは実行できません");
+  await expect(detail.getByTestId("outbox-reconcile-gate").getByRole("button")).toHaveCount(0);
   await page.getByTestId("outbox-watch").getByRole("button", { name: "状態と対応方針を確認" }).click();
   await expect(detail).toContainText("個別Outbox確認：due-1");
   await expect(detail).toContainText("送信待ちです。送信処理の状態を確認してください。");
@@ -237,13 +308,92 @@ test("overview summarizes bounded authorized signals without claiming complete h
   await expect(paged).not.toContainText("never-render-paged");
   await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
   await expect(paged.getByTestId("outbox-detail")).toContainText("Version: 3");
+  const reconcile = paged.getByTestId("outbox-reconcile-checklist");
+  await expect(reconcile).toContainText("再送前の照合手順");
+  await expect(reconcile).toContainText("タイムアウトやUNKNOWNを未配送と決めつけない");
+  await expect(reconcile).toContainText("共通Operations Core");
+  await expect(reconcile.getByRole("button")).toHaveCount(0);
+
   await paged.getByRole("button", { name: "次の20件" }).click();
   await expect(paged).toContainText("old-safe-1");
   await expect(paged).not.toContainText("never-render-paged");
   await paged.getByRole("button", { name: "前の20件" }).click();
   await expect(paged).toContainText("safe-1");
   await expect(paged.getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
+  // #419 unified local queue reuses both existing independently-authorized detail routes.
+  const unifiedSection = page.locator("#admin-integration-failure-queue");
+  await unifiedSection.getByRole("button", { name: "送受信の失敗をまとめて確認" }).click();
+  const unified = page.getByTestId("unified-integration-failures");
+  await expect(unified).toContainText("safe-1");
+  await expect(unified).toContainText("inbound-1");
+  await expect(unified.getByTestId("unified-queue-observed-at"))
+    .toContainText("2026-10-10T00:00:00.000Z");
+  await expect(unified).toContainText("送信Outbox");
+  await expect(unified).toContainText("受信Webhook");
+  await expect(unified).toContainText("外部ストレージ");
+  await expect(unified).not.toContainText("never-show-queue-raw-payload");
+  await expect(unified).not.toContainText("never-show-queue-credential");
+  await expect(unified.getByRole("button", { name: /再送|再処理|再実行/u })).toHaveCount(0);
+  await unified.getByRole("button", { name: "個別詳細を確認" }).first().click();
+  const unifiedDetail = page.getByTestId("unified-failure-detail");
+  await expect(unifiedDetail.getByTestId("outbox-detail")).toContainText("個別Outbox確認：safe-1");
+  await expect(unifiedDetail).toContainText("再送禁止");
+  await unified.getByRole("button", { name: "個別詳細を確認" }).nth(1).click();
+  await expect(unifiedDetail.getByTestId("inbound-webhook-detail")).toContainText("受信Webhookの個別確認：inbound-1");
+  await expect(unifiedDetail).toContainText("再実行不可");
+  await unified.getByRole("button", { name: "次の20件" }).click();
+  await expect(unifiedDetail).toHaveCount(0); // Prior-page detail must not survive paging.
+  await expect(unified).toContainText("older-queue");
+  await unified.getByRole("button", { name: "前の20件" }).click();
+  await expect(unified).toContainText("safe-1");
+  await expect(unifiedDetail).toHaveCount(0);
+  await unified.getByRole("button", { name: "個別詳細を確認" }).first().click();
+  await expect(unifiedDetail).toContainText("safe-1");
+  await unified.getByRole("button", { name: "失敗記録を更新" }).click();
+  await expect(unifiedDetail).toHaveCount(0); // Refresh discards stale selection.
+  await expect(unified).toContainText("inbound-1");
+  await expect(unified.getByTestId("unified-queue-observed-at"))
+    .toContainText("キュー取得時点");
+  // A corrupt provider key invalidates the WHOLE response, never displays untrusted data.
+  queueCorrupted = true;
+  await unifiedSection.getByRole("button", { name: "統合失敗キューを閉じる" }).click();
+  await unifiedSection.getByRole("button", { name: "送受信の失敗をまとめて確認" }).click();
+  await expect(page.getByTestId("unified-integration-failures"))
+    .toContainText("両系統の失敗記録を取得できません");
+  await expect(unifiedSection).not.toContainText("untrusted<script>");
+  await expect(unifiedSection.getByRole("button", { name: /再送|再処理|再実行/u })).toHaveCount(0);
+  await unifiedSection.getByRole("button", { name: "統合失敗キューを閉じる" }).click();
+  // An untrusted HTTP response must never turn a forged ALLOW into an action.
+  forgedDecision = true;
+  await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
+  await expect(paged.getByTestId("outbox-detail")).toContainText("取得できません");
+  await expect(paged).not.toContainText("DELIVERY_RETRYは実行できません");
+  // An independently forged ALLOW for reconciliation is also rejected.
+  forgedDecision = false;
+  forgedReconcile = true;
+  await paged.getByRole("button", { name: "次の20件" }).click();
+  await paged.getByRole("button", { name: "前の20件" }).click();
+  await paged.getByRole("button", { name: "既存の個別詳細を確認" }).click();
+  await expect(paged.getByTestId("outbox-detail")).toContainText("取得できません");
   await expect(page.locator("#admin-integration-outbox")).not.toContainText("sensitive-provider-credential");
+  await page.locator("#admin-integration-inbound")
+    .getByRole("button", { name: "受信失敗記録を確認" }).click();
+  const inbound = page.getByTestId("inbound-webhook-failures");
+  await expect(inbound).toContainText("inbound-1");
+  await expect(inbound).toContainText("demo.webhook");
+  await expect(inbound).toContainText("business_processing_failed");
+  await expect(inbound).not.toContainText("never-show-replay-key");
+  await expect(inbound).not.toContainText("never-show-inbound-credential");
+  await inbound.getByRole("button", { name: "受信処理の詳細を確認" }).click();
+  const inboundDetail = inbound.getByTestId("inbound-webhook-detail");
+  await expect(inboundDetail).toContainText("Version: 5");
+  await expect(inboundDetail).toContainText("再実行不可");
+  await expect(inboundDetail).not.toContainText("never-show-inbound-payload");
+  await expect(inbound.getByRole("button", { name: /再送|再処理|再実行/u })).toHaveCount(0);
+  await inbound.getByRole("button", { name: "次の20件" }).click();
+  await expect(inbound).toContainText("older-inbound");
+  await inbound.getByRole("button", { name: "前の20件" }).click();
+  await expect(inbound).toContainText("inbound-1");
   await expect(card(page, "Metrics / Alert").locator("strong")).toHaveText("未接続");
   await expect(summary.getByTestId("operations-overview-environment")).toContainText("Server Environment: local");
   await expect(summary.getByText(/複数Scopeへ転用不可/u)).toBeVisible();
@@ -389,48 +539,4 @@ test("overview refuses to combine a job count from a different environment", asy
   await expect(card(page, "外部連携Outbox").locator("strong")).toHaveText("環境情報が不一致");
   await expect(card(page, "外部連携Outbox")).toHaveAttribute("data-source-state", "unknown");
   await expect(card(page, "Database Readiness").locator("strong")).toHaveText("応答あり");
-});
-
-test("#419 forged ALLOW recovery preview fails closed, never mounts an action", async ({ page }) => {
-  await login(page);
-  await page.route("**/api/admin/operations/overview?**", route => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: overviewFixture({ outbox: ready({
-      coverage: "environment", environment: "local", observedAt: "2026-10-15T00:00:00.000Z",
-      counts: { retryWait: 0, deadLetter: 1 },
-      watch: { duePending: 0, dueRetryWait: 0, processing: 0, oldestProcessingUpdatedAt: null },
-      sampleLimit: 8, attentionItems: [],
-      items: [{ outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
-        updatedAt: "2026-10-15T00:00:00.000Z", failureCode: "other" }],
-    }) }),
-  }));
-  await page.route("**/api/admin/integrations/outbox/safe-1?**", route => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({
-      coverage: "environment", environment: "local", observedAt: "2026-10-15T00:00:00.000Z",
-      outbox: { outboxId: "safe-1", status: "dead_letter", attemptCount: 2,
-        availableAt: "2026-10-14T00:00:00.000Z", lastAttemptAt: null,
-        deliveredAt: null, deadLetteredAt: "2026-10-15T00:00:00.000Z",
-        updatedAt: "2026-10-15T00:00:00.000Z", version: 3, failureCode: "other" },
-      decision: { nextAction: "reconcile_external_first", providerOutcome: "unverified",
-        manualRetryAllowed: false },
-      recoveryReadiness: {
-        kind: "policy_readiness_not_execution_preview", policyVersion: "operations-policy-v1",
-        providerOutcome: "unverified",
-        reconcile: { operationId: "INTEGRATION_RECONCILE", risk: "CONTROLLED_CHANGE",
-          policyDecision: "ALLOW", executable: true, guardReason: "policy_denied",
-          blockingReason: "provider_reconcile_adapter_not_registered" },
-        retry: { operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
-          policyDecision: "DENY", executable: false, guardReason: "policy_denied",
-          blockingReason: "provider_receipt_unverified" },
-      },
-    }),
-  }));
-  await page.goto("/admin");
-  await page.locator("#admin-integration-outbox")
-    .getByRole("button", { name: "状態と対応方針を確認" }).first().click();
-  const detail = page.getByTestId("outbox-detail");
-  await expect(detail).toContainText("取得できません。再試行はできません");
-  await expect(detail.getByTestId("integration-recovery-readiness")).toHaveCount(0);
-  await expect(page.locator("#admin-integration-outbox").getByRole("button", { name: /再送|再実行/u })).toHaveCount(0);
 });

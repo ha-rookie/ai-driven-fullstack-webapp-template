@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import InboundWebhookFailures, { ReceiptDetail } from "./InboundWebhookFailures";
+import IntegrationFailureQueue, { type FailureSelection } from "./IntegrationFailureQueue";
 
 /**
  * #414: bounded read-only projection from existing server-authorized APIs.
@@ -52,21 +54,6 @@ interface FailedOutboxPage {
   readonly nextCursor: string | null;
   readonly providerReceipt: "unverified";
 }
-interface BlockedRecoveryOperation {
-  readonly operationId: "INTEGRATION_RECONCILE" | "DELIVERY_RETRY";
-  readonly risk: "CONTROLLED_CHANGE" | "HUMAN_GATE";
-  readonly policyDecision: "DENY";
-  readonly executable: false;
-  readonly guardReason: "policy_denied";
-  readonly blockingReason: "provider_reconcile_adapter_not_registered" | "provider_receipt_unverified";
-}
-interface RecoveryReadiness {
-  readonly kind: "policy_readiness_not_execution_preview";
-  readonly policyVersion: "operations-policy-v1";
-  readonly providerOutcome: "unverified";
-  readonly reconcile: BlockedRecoveryOperation;
-  readonly retry: BlockedRecoveryOperation;
-}
 interface OutboxDetail {
   readonly coverage: "environment";
   readonly environment: string;
@@ -87,9 +74,24 @@ interface OutboxDetail {
     readonly nextAction: "reconcile_external_first" | "await_scheduled_retry" | "observe_in_progress" | "queued" | "none";
     readonly providerOutcome: "unverified";
     readonly manualRetryAllowed: false;
+    readonly operationGate: {
+      readonly operationId: "DELIVERY_RETRY";
+      readonly risk: "CONTROLLED_CHANGE" | "HUMAN_GATE";
+      readonly policyDecision: "DENY";
+      readonly policyVersion: "operations-policy-v1";
+      readonly blocker: "provider_receipt_unverified";
+      readonly executionAllowed: false;
+    };
+    /** Missing on older versions: explicitly unknown, never authorization. */
+    readonly reconcileGate?: {
+      readonly operationId: "INTEGRATION_RECONCILE";
+      readonly risk: "CONTROLLED_CHANGE" | "HUMAN_GATE";
+      readonly policyDecision: "DENY";
+      readonly policyVersion: "operations-policy-v1";
+      readonly blocker: "provider_reconcile_adapter_not_registered";
+      readonly executionAllowed: false;
+    };
   };
-  /** Older local fixtures may omit this; absence must never enable recovery. */
-  readonly recoveryReadiness?: RecoveryReadiness;
 }
 interface AuditSnapshot {
   readonly items: readonly { readonly category: string; readonly action: string }[];
@@ -186,7 +188,7 @@ const hasOutboxSummary = (value: unknown): value is OutboxSummary =>
     && typeof item.updatedAt === "string" && typeof item.failureCode === "string");
 const safeFailureCodes = new Set([
   "event_missing", "delivery_exception", "retryable_failure", "permanent_failure",
-  "provider_unavailable", "destination_disabled", "other",
+  "provider_unavailable", "destination_disabled", "delivery_outcome_unknown", "other",
 ]);
 const hasFailedOutboxPage = (value: unknown): value is FailedOutboxPage =>
   isRecord(value) && value.coverage === "environment"
@@ -203,17 +205,6 @@ const hasFailedOutboxPage = (value: unknown): value is FailedOutboxPage =>
     && typeof item.updatedAt === "string" && item.updatedAt.length <= 64
     && Number.isFinite(Date.parse(item.updatedAt))
     && safeFailureCodes.has(String(item.failureCode)));
-const hasBlockedRecovery = (value: unknown, id: "INTEGRATION_RECONCILE" | "DELIVERY_RETRY",
-  blocker: "provider_reconcile_adapter_not_registered" | "provider_receipt_unverified"): value is BlockedRecoveryOperation =>
-  isRecord(value) && value.operationId === id && value.policyDecision === "DENY"
-  && (value.risk === "CONTROLLED_CHANGE" || value.risk === "HUMAN_GATE")
-  && value.executable === false && value.guardReason === "policy_denied"
-  && value.blockingReason === blocker;
-const hasRecoveryReadiness = (value: unknown): value is RecoveryReadiness =>
-  isRecord(value) && value.kind === "policy_readiness_not_execution_preview"
-  && value.policyVersion === "operations-policy-v1" && value.providerOutcome === "unverified"
-  && hasBlockedRecovery(value.reconcile, "INTEGRATION_RECONCILE", "provider_reconcile_adapter_not_registered")
-  && hasBlockedRecovery(value.retry, "DELIVERY_RETRY", "provider_receipt_unverified");
 const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
   isRecord(value) && value.coverage === "environment"
   && typeof value.environment === "string" && typeof value.observedAt === "string"
@@ -230,7 +221,21 @@ const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
     .includes(String(value.decision.nextAction))
   && value.decision.providerOutcome === "unverified"
   && value.decision.manualRetryAllowed === false
-  && (value.recoveryReadiness === undefined || hasRecoveryReadiness(value.recoveryReadiness));
+  && isRecord(value.decision.operationGate)
+  && value.decision.operationGate.operationId === "DELIVERY_RETRY"
+  && ["CONTROLLED_CHANGE", "HUMAN_GATE"].includes(String(value.decision.operationGate.risk))
+  && value.decision.operationGate.policyDecision === "DENY"
+  && value.decision.operationGate.policyVersion === "operations-policy-v1"
+  && value.decision.operationGate.blocker === "provider_receipt_unverified"
+  && value.decision.operationGate.executionAllowed === false
+  && (value.decision.reconcileGate === undefined
+    || (isRecord(value.decision.reconcileGate)
+      && value.decision.reconcileGate.operationId === "INTEGRATION_RECONCILE"
+      && ["CONTROLLED_CHANGE", "HUMAN_GATE"].includes(String(value.decision.reconcileGate.risk))
+      && value.decision.reconcileGate.policyDecision === "DENY"
+      && value.decision.reconcileGate.policyVersion === "operations-policy-v1"
+      && value.decision.reconcileGate.blocker === "provider_reconcile_adapter_not_registered"
+      && value.decision.reconcileGate.executionAllowed === false));
 
 const hasAudit = (value: unknown): value is AuditSnapshot =>
   isRecord(value) && Array.isArray(value.items)
@@ -416,24 +421,39 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
           <p>再試行可能になる予定時刻：{detail.data.outbox.availableAt}
             {" / 最終試行：" + (detail.data.outbox.lastAttemptAt ?? "記録なし")}</p>
           <p>更新：{detail.data.outbox.updatedAt} / 診断コード：{detail.data.outbox.failureCode}</p>
+          {detail.data.outbox.failureCode === "delivery_outcome_unknown" && (
+            <p data-testid="delivery-outcome-unknown"><strong>配送結果不明・自動再送停止：</strong>
+              タイムアウト等の後に外部Providerが受領済みの可能性があります。
+              既存Redriveも拒否されます。外部側の結果が確認されるまで再送しないでください。</p>
+          )}
           <p><strong>次の確認：</strong>{actionLabel[detail.data.decision.nextAction]}</p>
           <p>外部配送結果：未照合。再送可否は判断できません（この画面では再送しません）。</p>
-          <div data-testid="integration-recovery-readiness">
-            <h5>照合・再送の共通Risk Policy判定（参照専用）</h5>
-            {detail.data.recoveryReadiness
-              ? <>
-                <p>Policy: {detail.data.recoveryReadiness.policyVersion}。これは実行承認・再送可能通知ではありません。</p>
-                <p>外部結果の照合：<strong>禁止（DENY）</strong>。
-                  Provider照合Adapterが未登録です。
-                  Risk: {detail.data.recoveryReadiness.reconcile.risk}。</p>
-                <p>手動再送：<strong>禁止（DENY）</strong>。
-                  Provider受領証跡が未確認です。
-                  Risk: {detail.data.recoveryReadiness.retry.risk}。</p>
-                <p>次に必要なこと：外部Providerの受領結果を検証できるAdapter・証跡と、
-                  二重送信防止/承認/監査を含む#429/#430の実行経路を接続してから再評価します。</p>
-              </>
-              : <p>操作のPolicy判断は取得できません。照合・再送はできません。</p>}
-          </div>
+          <p data-testid="outbox-operation-gate">
+            共通Operations Core判定：<strong>再送禁止</strong>
+            {"（リスク: " + detail.data.decision.operationGate.risk
+              + " / Policy: " + detail.data.decision.operationGate.policyVersion + "）"}
+            外部Providerの受領未確認のため、DELIVERY_RETRYは実行できません。
+          </p>
+          <p data-testid="outbox-reconcile-gate">
+            {detail.data.decision.reconcileGate
+              ? <>共通Operations Core判定：<strong>外部照合禁止（DENY）</strong>
+                {"（Risk: " + detail.data.decision.reconcileGate.risk
+                  + " / Policy: " + detail.data.decision.reconcileGate.policyVersion + "）"}
+                Provider照合Adapter未登録のため、INTEGRATION_RECONCILEは実行できません。</>
+              : <>外部照合のPolicy判定は未取得です。照合は実行できません。</>}
+          </p>
+          {detail.data.decision.nextAction === "reconcile_external_first" && (
+            <section data-testid="outbox-reconcile-checklist" aria-label="照合手順">
+              <h5>再送前の照合手順（操作・照合結果の登録機能は未実装）</h5>
+              <ol>
+                <li>外部Providerの配送履歴を、対象の配送ID・日時・宛先の管理された情報と突き合わせる。秘密情報はここへ入力しない。</li>
+                <li>外部側で受領・処理済みか、未処理か、不明かを確認する。タイムアウトやUNKNOWNを未配送と決めつけない。</li>
+                <li>結果が不明なら再送せず、運用担当者に調査を引き継ぐ。受領済みの場合も二重配送を避ける。</li>
+                <li>確認結果・承認・監査証跡と冪等性が揃うまでは、共通Operations Core経由の再送申請も実行も行わない。</li>
+              </ol>
+              <p>この画面は参照専用です。Provider照合API・監査記録の保存・DELIVERY_RETRYの実行は提供していません。</p>
+            </section>
+          )}
         </>}
   </div>;
 };
@@ -490,6 +510,9 @@ export default function OperationsOverview() {
   const [generation, setGeneration] = useState(0);
   const [selectedOutboxId, setSelectedOutboxId] = useState<string | null>(null);
   const [showFailedPages, setShowFailedPages] = useState(false);
+  const [showInboundFailures, setShowInboundFailures] = useState(false);
+  const [showUnifiedFailures, setShowUnifiedFailures] = useState(false);
+  const [unifiedSelection, setUnifiedSelection] = useState<FailureSelection | null>(null);
   const [state, setState] = useState<
     | { readonly kind: "loading" }
     | { readonly kind: "ready"; readonly data: OverviewSnapshot }
@@ -512,6 +535,8 @@ export default function OperationsOverview() {
   const environment = ready
     ? ready.master.kind === "ready" ? ready.master.data.environment : unavailableLabel(ready.master)
     : "取得中";
+  const inboundEnvironment = ready?.master.kind === "ready"
+    ? ready.master.data.environment : outboxSnapshot?.environment ?? null;
 
   return <section id="admin-operations-overview" className="admin-audit-panel admin-operations-overview"
     aria-labelledby="admin-operations-overview-title">
@@ -523,13 +548,36 @@ export default function OperationsOverview() {
       </div>
       <div className="admin-overview-refresh">
         <button type="button" disabled={state.kind === "loading"}
-          onClick={() => { setSelectedOutboxId(null); setGeneration((value) => value + 1); }}>最新状態を確認</button>
+          onClick={() => { setSelectedOutboxId(null); setUnifiedSelection(null); setGeneration((value) => value + 1); }}>最新状態を確認</button>
         <small>{ready ? "取得日時: " + new Date(ready.updatedAt).toLocaleString("ja-JP") : "取得中…"}</small>
       </div>
     </div>
     <div className="admin-overview-grid" aria-label="運用状況の概要">
       {cards.map((item) => <StatusCard key={item.title} {...item} />)}
     </div>
+    <section id="admin-integration-failure-queue" className="admin-overview-outbox"
+      aria-label="送受信の統合失敗キュー">
+      <h3>送受信の失敗をまとめて確認</h3>
+      <p>送信Outboxと受信Webhookのローカル失敗記録を、同じ時系列で一次切り分けします。
+        外部文書ストレージのProvider監視や、外部での配送結果照合は対象外です。</p>
+      {inboundEnvironment ? <>
+        <button type="button" onClick={() => {
+          setShowUnifiedFailures(open => !open);
+          setUnifiedSelection(null);
+        }}>{showUnifiedFailures ? "統合失敗キューを閉じる" : "送受信の失敗をまとめて確認"}</button>
+        {showUnifiedFailures ? <>
+          <IntegrationFailureQueue key={inboundEnvironment + ":" + generation}
+            environment={inboundEnvironment} onSelect={setUnifiedSelection} />
+          {unifiedSelection && <div data-testid="unified-failure-detail">
+            {unifiedSelection.source === "outbound_delivery"
+              ? <OutboxDetailPanel key={"outbound:" + unifiedSelection.id}
+                  outboxId={unifiedSelection.id} environment={inboundEnvironment} />
+              : <ReceiptDetail key={"inbound:" + unifiedSelection.id}
+                  receiptId={unifiedSelection.id} environment={inboundEnvironment} />}
+          </div>}
+        </> : null}
+      </> : <p>環境情報を取得できないため統合キューを表示できません。</p>}
+    </section>
     <section id="admin-integration-outbox" className="admin-overview-outbox" aria-label="外部連携の失敗記録">
       <h3>直近の外部連携失敗記録</h3>
       <p>Outboxに残っている失敗・再試行待ちの最新{outboxSnapshot?.sampleLimit ?? 8}件まで。Providerの稼働監視や配送履歴全件ではありません。</p>
@@ -571,6 +619,20 @@ export default function OperationsOverview() {
           .some((item) => item.outboxId === selectedOutboxId)
         ? <OutboxDetailPanel key={selectedOutboxId} outboxId={selectedOutboxId}
             environment={outboxSnapshot.environment} /> : null}
+    </section>
+    <section id="admin-integration-inbound" className="admin-overview-outbox"
+      aria-label="受信Webhookの失敗記録">
+      <h3>受信Webhookの失敗記録</h3>
+      <p>送信Outboxとは別の、受信側の失敗・Dead Letterを調べます。
+        既存D1の受信処理記録が対象で、Providerの疎通監視や外部ストレージの障害を示すものではありません。</p>
+      {inboundEnvironment ? <>
+        <button type="button" onClick={() => setShowInboundFailures(value => !value)}>
+          {showInboundFailures ? "受信失敗記録を閉じる" : "受信失敗記録を確認"}
+        </button>
+        {showInboundFailures
+          ? <InboundWebhookFailures key={inboundEnvironment} environment={inboundEnvironment} />
+          : null}
+      </> : <p>環境情報を取得できないため確認できません。</p>}
     </section>
     <p className="admin-overview-footnote" data-testid="operations-overview-environment">
       Server Environment: <strong>{environment}</strong> / Scope: {SCOPE_ID} / Application Version: 未提供

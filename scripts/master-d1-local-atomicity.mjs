@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { getPlatformProxy } from "wrangler";
@@ -24,10 +24,14 @@ try {
     "src/worker/auth/application-session.ts",
     "src/worker.ts",
     "--outDir", compiled, "--rootDir", "src", "--target", "ES2023",
-    "--module", "CommonJS", "--moduleResolution", "Node",
+    "--module", "CommonJS", "--moduleResolution", "Node", "--esModuleInterop",
     "--types", "node,@cloudflare/workers-types", "--strict", "--skipLibCheck",
   ], { stdio: "inherit" });
   writeFileSync(join(compiled, "package.json"), '{"type":"commonjs"}');
+  // Compiled Worker imports shared reporting dependencies. Node resolves them
+  // relative to /tmp/.../compiled, not from this harness in the repo root.
+  // Reuse npm ci dependencies; keep the local D1 test isolated and offline.
+  symlinkSync(resolve("node_modules"), join(compiled, "node_modules"), "dir");
   const require = createRequire(import.meta.url);
   const { D1MasterDataStore } = require(join(compiled, "worker/master-data/d1-store.js"));
   const { handleMasterDataViewerApi } = require(join(compiled, "worker/administration/master-data-viewer-api.js"));
@@ -43,7 +47,7 @@ try {
   });
   const db = proxy.env.DB;
   assert.ok(db && typeof db.batch === "function", "Wrangler local D1 batch() must be available");
-  for (const migration of ["0002_auth_foundation", "0003_authorization_foundation", "0007_session_idle_timeout", "0008_user_lifecycle", "0016_durable_audit_storage", "0017_async_job_runs", "0022_master_data", "0026_integration_event_outbox"]) {
+  for (const migration of ["0002_auth_foundation", "0003_authorization_foundation", "0007_session_idle_timeout", "0008_user_lifecycle", "0016_durable_audit_storage", "0017_async_job_runs", "0022_master_data", "0026_integration_event_outbox", "0027_inbound_webhook_receipts"]) {
     // D1 exec() splits source text on newlines; real migration CREATE TABLE
     // statements are multiline. Execute each semicolon-delimited DDL statement.
     const source = readFileSync(resolve("migrations", migration + ".sql"), "utf8");
@@ -272,6 +276,31 @@ try {
     id.startsWith("pending-future-") ? "2099-01-01T00:00:00.000Z" : createdAt, 1,
     id === "r-9" ? "sensitive-provider-credential" : "provider_unavailable", 1, createdAt, createdAt)));
 
+  // A provider exception may mean accepted-but-response-lost. Keep the existing
+  // dead-letter record for manual reconciliation; never claim retry eligibility.
+  await db.prepare(
+    "UPDATE integration_outbox SET failure_code = ? WHERE environment = ? AND id = ?",
+  ).bind("delivery_outcome_unknown", "test", "dl-1").run();
+
+  // Existing #304 inbound receipt persistence: no new schema or live Provider.
+  // 22 current failures exceed one page, while processed/other Environment
+  // records must never appear. Tokens/event identity are not read by the API.
+  const inboundFixtures = [
+    ...Array.from({ length: 21 }, (_, n) => ["test", "failed", "ib-" + n, n]),
+    ["test", "dead_letter", "ib-dead", 21],
+    ["test", "processed", "ib-ok", 22],
+    ["production", "failed", "ib-prod", 23],
+  ];
+  await db.batch(inboundFixtures.map(([environment, status, id, n]) => {
+    const timestamp = new Date(Date.parse(createdAt) + Number(n) * 1000).toISOString();
+    return db.prepare(
+      "INSERT INTO inbound_webhook_receipts(id,environment,provider_key,replay_key,event_type,received_at,status,attempt_count,failure_code,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+    ).bind(id, environment, "demo.webhook", "private-replay-token-" + id,
+      "private.business.event", timestamp, status, 2,
+      id === "ib-dead" ? "sensitive-provider-credential" : "business_processing_failed",
+      3, timestamp, timestamp);
+  }));
+
   await db.prepare("UPDATE master_items SET retired_at=? WHERE id=?")
     .bind(createdAt, projectRetired).run();
 
@@ -396,10 +425,18 @@ try {
     assert.equal(detailBody.decision.nextAction, "reconcile_external_first");
     assert.equal(detailBody.decision.providerOutcome, "unverified");
     assert.equal(detailBody.decision.manualRetryAllowed, false);
+    assert.deepEqual(detailBody.decision.operationGate, {
+      operationId: "DELIVERY_RETRY", risk: "CONTROLLED_CHANGE",
+      policyDecision: "DENY", policyVersion: "operations-policy-v1",
+      blocker: "provider_receipt_unverified", executionAllowed: false,
+    }, "shared Operations Core denies the unverified retry before any provider action");
     assert.ok(!("payload" in detailBody) && !("destinationKey" in detailBody.outbox));
     const pendingDetail = await outboxGet(admin,
       baseUrl + "/api/admin/integrations/outbox/r-1?scopeId=workhub-company");
-    assert.equal((await pendingDetail.json()).decision.nextAction, "await_scheduled_retry");
+    const pendingBody = await pendingDetail.json();
+    assert.equal(pendingBody.decision.nextAction, "await_scheduled_retry");
+    assert.equal(pendingBody.decision.operationGate.policyDecision, "DENY",
+      "scheduled retry must not authorize a manual retry");
     const doneDetail = await outboxGet(admin,
       baseUrl + "/api/admin/integrations/outbox/done?scopeId=workhub-company");
     assert.equal((await doneDetail.json()).decision.nextAction, "none");
@@ -423,7 +460,168 @@ try {
       + "/api/admin/integrations/outbox/dl-1?scopeId=other-company")).status, 403);
     assert.equal((await db.prepare("SELECT version FROM integration_outbox WHERE id='dl-1' AND environment='test'")
       .first()).version, 1, "read-only detail never modifies Outbox");
+    const unknownDeliveryDetail = await outboxGet(admin,
+      baseUrl + "/api/admin/integrations/outbox/dl-1?scopeId=workhub-company");
+    assert.equal(unknownDeliveryDetail.status, 200);
+    const unknownDeliveryBody = await unknownDeliveryDetail.json();
+    assert.equal(unknownDeliveryBody.outbox.status, "dead_letter");
+    assert.equal(unknownDeliveryBody.outbox.failureCode, "delivery_outcome_unknown");
+    assert.equal(unknownDeliveryBody.decision.nextAction, "reconcile_external_first");
+    assert.equal(unknownDeliveryBody.decision.manualRetryAllowed, false);
+    assert.equal(unknownDeliveryBody.decision.operationGate.policyDecision, "DENY");
+    assert.equal(unknownDeliveryBody.decision.operationGate.blocker, "provider_receipt_unverified");
+    assert.equal((await db.prepare(
+      "SELECT version FROM integration_outbox WHERE id = ? AND environment = ?",
+    ).bind("dl-1", "test").first()).version, 1);
     console.log("Wrangler Local D1 Outbox detail passed: read only, reconcile guidance, mask, cross-environment denial");
+
+    // Actual Worker HTTP + real isolated D1 inbound webhook failure drilldown.
+    const inboundUrl = baseUrl + "/api/admin/integrations/inbound/_failures?scopeId=workhub-company";
+    const inboundGet = (session, url = inboundUrl, method = "GET") => fetch(url, {
+      method, headers: session ? { cookie: "app_session=" + session.token } : {},
+    });
+    const inboundPageResponse = await inboundGet(admin);
+    assert.equal(inboundPageResponse.status, 200);
+    assert.equal(inboundPageResponse.headers.get("cache-control"), "no-store");
+    const inboundPage = await inboundPageResponse.json();
+    assert.equal(inboundPage.coverage, "environment");
+    assert.equal(inboundPage.source, "local_inbound_receipt");
+    assert.equal(inboundPage.environment, "test");
+    assert.equal(inboundPage.replayAvailable, false);
+    assert.equal(inboundPage.pageLimit, 20);
+    assert.equal(inboundPage.items.length, 20, "inbound receipts paginate 20 records at most");
+    assert.ok(inboundPage.items.every((item) =>
+      ["failed", "dead_letter"].includes(item.status)
+      && item.providerKey === "demo.webhook"
+      && ["business_processing_failed", "other"].includes(item.failureCode)
+      && !item.receiptId.startsWith("ib-prod") && item.receiptId !== "ib-ok"));
+    assert.ok(inboundPage.items.some(item => item.receiptId === "ib-dead"
+      && item.failureCode === "other"), "untrusted provider failure code must be masked");
+    assert.ok(inboundPage.nextCursor);
+    assert.ok(!JSON.stringify(inboundPage).includes("private-replay-token")
+      && !JSON.stringify(inboundPage).includes("sensitive-provider-credential")
+      && !JSON.stringify(inboundPage).includes("private.business.event"));
+    const inboundPage2Response = await inboundGet(admin,
+      inboundUrl + "&cursor=" + encodeURIComponent(inboundPage.nextCursor));
+    assert.equal(inboundPage2Response.status, 200);
+    const inboundPage2 = await inboundPage2Response.json();
+    assert.equal(inboundPage2.items.length, 2);
+    assert.equal(inboundPage2.nextCursor, null);
+    assert.ok(inboundPage2.items.every(item => !inboundPage.items.some(
+      previous => previous.receiptId === item.receiptId)));
+
+    const inboundDetailUrl = baseUrl + "/api/admin/integrations/inbound/ib-dead?scopeId=workhub-company";
+    const inboundDetailResponse = await inboundGet(admin, inboundDetailUrl);
+    assert.equal(inboundDetailResponse.status, 200);
+    assert.equal(inboundDetailResponse.headers.get("cache-control"), "no-store");
+    const inboundDetail = await inboundDetailResponse.json();
+    assert.deepEqual(inboundDetail.receipt, {
+      receiptId: "ib-dead", providerKey: "demo.webhook",
+      status: "dead_letter", attemptCount: 2,
+      receivedAt: new Date(Date.parse(createdAt) + 21000).toISOString(),
+      updatedAt: new Date(Date.parse(createdAt) + 21000).toISOString(),
+      version: 3, failureCode: "other",
+    });
+    assert.deepEqual(inboundDetail.decision, {
+      nextAction: "inspect_processing_failure", manualRetryAllowed: false,
+      replayAvailable: false,
+      rationale: "Verified receipt metadata cannot safely replay a provider event.",
+    });
+    assert.ok(!JSON.stringify(inboundDetail).includes("private-replay-token")
+      && !JSON.stringify(inboundDetail).includes("sensitive-provider-credential")
+      && !JSON.stringify(inboundDetail).includes("private.business.event"));
+    assert.equal((await inboundGet(admin,
+      baseUrl + "/api/admin/integrations/inbound/ib-ok?scopeId=workhub-company")).status, 404);
+    assert.equal((await inboundGet(admin,
+      baseUrl + "/api/admin/integrations/inbound/ib-prod?scopeId=workhub-company")).status, 404);
+    assert.equal((await inboundGet(admin,
+      baseUrl + "/api/admin/integrations/inbound/not-found?scopeId=workhub-company")).status, 404);
+    assert.equal((await inboundGet(null, inboundDetailUrl)).status, 401);
+    assert.equal((await inboundGet(observer, inboundUrl)).status, 403);
+    assert.equal((await inboundGet(observer, inboundDetailUrl)).status, 403);
+    assert.equal((await inboundGet(admin,
+      baseUrl + "/api/admin/integrations/inbound/ib-dead?scopeId=other-company")).status, 403);
+    assert.equal((await inboundGet(admin, inboundUrl + "&cursor=bad!")).status, 400);
+    assert.equal((await inboundGet(admin, inboundDetailUrl + "&cursor=bad")).status, 400);
+    assert.equal((await inboundGet(admin, inboundUrl + "&status=failed")).status, 400);
+    assert.equal((await inboundGet(admin, inboundDetailUrl, "POST")).status, 405);
+    assert.equal((await inboundGet(admin,
+      baseUrl + "/api/admin/integrations/inbound/%2F?scopeId=workhub-company")).status, 400);
+    const inboundRowAfter = await db.prepare(
+      "SELECT version,status,attempt_count FROM inbound_webhook_receipts WHERE id='ib-dead' AND environment='test'",
+    ).first();
+    assert.deepEqual(inboundRowAfter, { version: 3, status: "dead_letter", attempt_count: 2 },
+      "inbound listing/detail must not mutate receipt or retry processing");
+    console.log("Wrangler Local D1 inbound webhook failure list/detail passed: 22 paged, auth, scope/environment, masked and read-only");
+
+    // #419: true merged observation over 22 inbound + 13 outbound CURRENT failures.
+    // Records share timestamps across sources: preserve composite keyset ordering.
+    const queueUrl = baseUrl + "/api/admin/integrations/failures?scopeId=workhub-company";
+    const queueGet = (session, url = queueUrl, method = "GET") => fetch(url, {
+      method, headers: session ? { cookie: "app_session=" + session.token } : {},
+    });
+    const queueFirstResponse = await queueGet(admin);
+    assert.equal(queueFirstResponse.status, 200);
+    assert.equal(queueFirstResponse.headers.get("cache-control"), "no-store");
+    const queueFirst = await queueFirstResponse.json();
+    assert.deepEqual(queueFirst.sources, ["outbound_delivery", "inbound_webhook"]);
+    assert.equal(queueFirst.source, "local_failure_queue");
+    assert.equal(queueFirst.coverage, "environment");
+    assert.equal(queueFirst.environment, "test");
+    assert.equal(queueFirst.manualRetryAllowed, false);
+    assert.equal(queueFirst.providerReceipt, "unverified");
+    assert.equal(queueFirst.pageLimit, 20);
+    assert.equal(queueFirst.items.length, 20);
+    assert.equal(queueFirst.items[0].id, "ib-dead");
+    assert.ok(queueFirst.nextCursor);
+    const queueSecondResponse = await queueGet(admin,
+      queueUrl + "&cursor=" + encodeURIComponent(queueFirst.nextCursor));
+    assert.equal(queueSecondResponse.status, 200);
+    const queueSecond = await queueSecondResponse.json();
+    assert.equal(queueSecond.items.length, 15, "second page includes both existing transports");
+    assert.equal(queueSecond.nextCursor, null);
+    const queueItems = [...queueFirst.items, ...queueSecond.items];
+    assert.equal(queueItems.length, 35, "the whole local failure queue has 22 inbound + 13 outbound");
+    assert.equal(new Set(queueItems.map(row => row.source + ":" + row.id)).size, 35);
+    assert.equal(queueItems.filter(row => row.source === "inbound_webhook").length, 22);
+    assert.equal(queueItems.filter(row => row.source === "outbound_delivery").length, 13);
+    assert.ok(queueItems.some(row =>
+      row.source === "outbound_delivery" && row.id === "r-9" && row.failureCode === "other"));
+    assert.ok(queueItems.some(row =>
+      row.source === "inbound_webhook" && row.id === "ib-dead" && row.failureCode === "other"));
+    assert.ok(!queueItems.some(row => ["pd-0", "ib-prod", "ib-ok", "done"].includes(row.id)));
+    assert.ok(queueItems.every(row => !("payload" in row) && !("replayKey" in row)
+      && !("destinationKey" in row) && !("providerEventId" in row)));
+    assert.ok(!JSON.stringify(queueItems).includes("sensitive-provider-credential")
+      && !JSON.stringify(queueItems).includes("private-replay-token")
+      && !JSON.stringify(queueItems).includes("private.business.event"));
+    const orderKey = row => [row.updatedAt, row.source, row.id];
+    for (let i = 1; i < queueItems.length; i++) {
+      const before = orderKey(queueItems[i - 1]);
+      const after = orderKey(queueItems[i]);
+      assert.ok(before[0] > after[0]
+        || (before[0] === after[0] && (before[1] > after[1]
+          || (before[1] === after[1] && before[2] > after[2]))),
+      "composite keyset must remain globally sorted across equal timestamps and channels");
+    }
+    assert.equal((await queueGet(null)).status, 401);
+    assert.equal((await queueGet(observer)).status, 403);
+    assert.equal((await queueGet(admin, queueUrl + "&cursor=bad!")).status, 400);
+    assert.equal((await queueGet(admin, queueUrl + "&cursor=YWJj")).status, 400);
+    assert.equal((await queueGet(admin, queueUrl + "&cursor=a&cursor=b")).status, 400);
+    assert.equal((await queueGet(admin, queueUrl + "&status=failed")).status, 400);
+    assert.equal((await queueGet(admin,
+      baseUrl + "/api/admin/integrations/failures?scopeId=other-company")).status, 403);
+    assert.equal((await queueGet(admin, queueUrl, "POST")).status, 405);
+    const sourceAfterQueue = await db.prepare(
+      "SELECT version,status FROM integration_outbox WHERE id='dl-1' AND environment='test'",
+    ).first();
+    assert.deepEqual(sourceAfterQueue, { version: 1, status: "dead_letter" });
+    const inboundAfterQueue = await db.prepare(
+      "SELECT version,status FROM inbound_webhook_receipts WHERE id='ib-dead' AND environment='test'",
+    ).first();
+    assert.deepEqual(inboundAfterQueue, { version: 3, status: "dead_letter" });
+    console.log("Wrangler Local D1 unified integration failure queue passed: 35 merged / 2 pages / same timestamp / auth / masking / no mutations");
 
     await assertWorkerRead(projectSchedule, admin, ["schedule"]);
     await assertWorkerRead(projectRetire, admin, ["retire"]);
@@ -466,6 +664,12 @@ try {
       "integration summary must also revoke privileges on the same live session");
     assert.equal((await outboxGet(admin, detailUrl)).status, 403,
       "integration detail must also revoke privileges on the same live session");
+    assert.equal((await inboundGet(admin, inboundUrl)).status, 403,
+      "inbound failure list must revoke privileges on the same live session");
+    assert.equal((await inboundGet(admin, inboundDetailUrl)).status, 403,
+      "inbound failure detail must revoke privileges on the same live session");
+    assert.equal((await queueGet(admin)).status, 403,
+      "cross-channel failure queue must revoke privileges on the same live session");
   } finally {
     await new Promise((resolve, reject) =>
       httpServer.close((err) => err ? reject(err) : resolve()));

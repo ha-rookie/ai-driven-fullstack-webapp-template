@@ -72,7 +72,43 @@ The same `(environment, integrationEventId, destinationKey)` is unique. A determ
 
 External delivery happens before the local Outbox can be marked `delivered`. A crash or CAS conflict after the provider accepted the request can cause a later retry. This is an inherent at-least-once boundary. Provider adapters should use the stable event identity as an idempotency key when the provider supports it.
 
-Permanent adapter failures move the Outbox to `dead_letter`. Retryable failures move it to `retry_wait`; #51 then owns retry execution.
+Permanent adapter failures move the Outbox to `dead_letter`. **Only provider-verified non-delivery** may be returned as `retryable_failure` and move to `retry_wait`; #51 then owns retry execution. An adapter must never classify a network timeout, exception, or ambiguous provider response as proven non-delivery.
+
+## Adapter outcome payload validation — #419/#430
+
+Provider Adapters are a runtime trust boundary; TypeScript types alone do not validate JavaScript, third-party SDK or network-derived results. `relayOutboxOnce` only acts on explicit `delivered`, `retryable_failure` or `permanent_failure` discriminators. For failure kinds, the optional `failureCode` must be one of the **versioned safe codes** recognized by the relay (including reference-only `temporary` / `provider_rejected`), never a raw Provider message or credential. A missing code uses its known kind-specific generic code. A present malformed/unrecognized code never reaches D1 or jobs: the outcome is quarantined as `delivery_outcome_unknown`.
+
+An optional `retryAfterMs` must be a positive safe integer when supplied; absent means the existing default (30 seconds), and a valid large value is capped at 24 hours. A present zero/negative/non-numeric/unsafe value is not interpreted as permission to retry. A malformed recognized-kind result, like a missing/unrecognized kind, is quarantined as UNKNOWN, not rescheduled. This is runtime-shape validation, **not** proof that an adapter truthfully classified non-delivery: adapters must independently substantiate `retryable_failure`, and actual Provider receipt reconciliation remains unimplemented.
+
+## UNKNOWN external delivery outcome — #419/#430 fail-safe
+
+If the adapter throws (including timeout after the request may have reached the provider), explicitly reports `unknown`, or returns a **missing / unrecognized runtime outcome** (for example, a malformed Provider response), `relayOutboxOnce` records the durable `dead_letter` status with the **distinguishing** safe failure code `delivery_outcome_unknown`. This is a **quarantine for investigation**, not proof of permanent rejection or proof of failure. The #51 job classifies this result as non-retryable so an automatic scheduled re-send cannot duplicate a possibly accepted external side effect. A repeat relay call will see terminal `dead_letter` and will not invoke the Provider again.
+
+The existing generic `redriveDeadLetterOutbox` helper **unconditionally denies** records with `delivery_outcome_unknown`, even if a caller supplies an authorizer that returns true. This safeguard cannot be bypassed by `reasonCode`, an authorization decision, or advancing a clock. A future #419 integration reconciliation flow must independently verify Provider-side receipt/outcome, include appropriate idempotency and auditable authorization, and only then define a distinct safe transition. **No automatic reconciliation, Provider query, approval issuance, or actual re-send is implemented here**; #335 adapters are still required for real Provider evidence.
+
+Other existing explicit `retryable_failure` adapter results retain the normal backoff behavior, but adapters MUST guarantee no external side effect when emitting them. The system does not offer exactly-once delivery; callers still need stable identities, deduplication, and Provider-specific receipts.
+
+## Local integration failure queue (#419 operator view)
+
+The Admin Operations Overview combines **local** Outbox (`retry_wait` / `dead_letter`) and verified inbound webhook receipt (`failed` / `dead_letter`) records in one bounded, environment-scoped, authorized read-only failure queue. An entry opens its existing separately authorized local detail endpoint. It is **not** a Provider-side error history, an external-storage monitor or proof that the Provider accepted or rejected a message. A zero-row result does not imply healthy integrations.
+
+The UI displays the server's `observedAt` time (not a guaranteed snapshot or SLA time) and has an explicit **refresh this queue** control. Refresh and moving between pages clear the previously selected detail before the next read, so an older row is not mistaken for the current list entry. A denied, malformed or unavailable read must remain unavailable, never be represented as a healthy zero. Refresh performs only the existing GET and must not trigger delivery, replay, reconciliation or any other remote side effect.
+
+### Exact local failure ID investigation
+
+When an operator already has a **local** Outbox or verified inbound receipt ID from an incident record, the console may open the existing separately authorized detail by selecting the source and entering the exact record ID. This is not a free-text Provider search or a way to enumerate records. The ID must conform to the existing local identifier format; the server's current Session/Role/Scope/Environment and exact-ID checks remain authoritative. The client only dispatches the existing read-only GET, and a missing/denied detail remains missing/denied. This lookup can be used when the current paginated local failure queue is empty, but not when the queue cannot be retrieved or its permission is denied; an empty result never proves Provider health. It does not initiate reconciliation or retry, and it does not validate external Provider receipt or storage status.
+
+## Local unified failure queue acceptance evidence (#419)
+
+The read-only unified queue is also checked through an **actual authenticated local Worker HTTP request**, not solely through the existing intercepted Browser UI fixtures. The targeted Browser acceptance covers server-bound scope/role authorization, fixed 20-item page shape, both local Outbox and inbound receipt source identifiers, no-store, `providerReceipt: unverified`, no manual retry capability, invalid/duplicate cursor rejection, and denial of a POST mutation. It may inspect independently protected existing detail routes when the local database actually contains a returned item.
+
+The local seed may contain **zero failed records**. A green test with no rows proves only the local endpoint's safe empty/read-only behavior; it does not prove populated cross-source ordering, Provider receipt reconciliation, external document storage connection health, or a Production System Test. The broader #419 list/detail and end-to-end integration acceptance remain open until suitable evidence exists.
+
+## Populated unified failure queue regression (#419)
+
+A deterministic service-level test exercises the **real** authorized `handleIntegrationOperationsApi` handler with an in-memory D1 **test double**, populated with local outbound delivery and inbound verified receipt failures. The two sources share timestamps, so the test verifies source-aware keyset pagination across the 20-row boundary, safe failure-code normalization, exact separately authorized detail access, environment isolation, and the rule that **either source's read error invalidates the entire page** rather than producing a misleading empty or incomplete success. The handler remains GET-only with `providerReceipt: unverified`, and this test performs no Provider call or persistent write.
+
+This is distinct from PR #716's browser test over a real local Worker and potentially empty local D1, and from mocked browser UI presentation scenarios. Because the in-memory test double is not SQLite, SQL query-plan/index performance and full seeded D1 cross-source behavior are **not** proven by this new test. Neither test provides actual external Provider receipt verification, document-storage connection monitoring, evidence-based external retry, or formal System Test #694. The full #419 list/detail and recovery acceptance remains open.
 
 ## Environment isolation
 

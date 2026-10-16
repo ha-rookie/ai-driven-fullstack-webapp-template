@@ -13,6 +13,13 @@ const DESTINATION_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/;
 const SENSITIVE_TERMS = ["authorization", "cookie", "credential", "password", "secret", "session", "token"] as const;
 const DEFAULT_RETRY_AFTER_MS = 30_000;
 const MAX_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
+// Never persist raw Provider diagnostic text (including credential-like strings).
+// Extend this versioned list only after auditing a new provider-neutral code.
+const SAFE_DELIVERY_FAILURE_CODES = new Set([
+  "event_missing", "delivery_exception", "retryable_failure", "permanent_failure",
+  "provider_unavailable", "destination_disabled", "delivery_outcome_unknown",
+  "provider_rejected", "temporary", "other",
+]);
 
 const assertIdentifier = (value: string, name: string): void => {
   if (!IDENTIFIER_PATTERN.test(value)) throw new TypeError(`${name} must be a bounded opaque identifier`);
@@ -117,15 +124,31 @@ export type RelayOutboxResult =
   | { readonly kind: "delivered" }
   | { readonly kind: "retryable_failure"; readonly failureCode: string; readonly retryAfterMs: number }
   | { readonly kind: "permanent_failure"; readonly failureCode: string }
+  | { readonly kind: "unknown"; readonly failureCode: "delivery_outcome_unknown" }
   | { readonly kind: "duplicate_terminal"; readonly status: "delivered" | "dead_letter" }
   | { readonly kind: "not_due"; readonly retryAfterMs: number }
   | { readonly kind: "conflict" }
   | { readonly kind: "missing" };
 
 const normalizeRetryAfter = (value: number | undefined): number =>
-  Number.isSafeInteger(value) && value !== undefined && value > 0
-    ? Math.min(value, MAX_RETRY_AFTER_MS)
-    : DEFAULT_RETRY_AFTER_MS;
+  value === undefined ? DEFAULT_RETRY_AFTER_MS : Math.min(value, MAX_RETRY_AFTER_MS);
+
+// A known discriminator with malformed fields is still an untrusted runtime
+// result. Do not interpret an invalid retry hint as a default safe re-send.
+const validDeliveryOutcomePayload = (value: Record<string, unknown>): boolean => {
+  if (value.kind === "delivered") return true;
+  if (value.failureCode !== undefined
+    && (typeof value.failureCode !== "string"
+      || !SAFE_DELIVERY_FAILURE_CODES.has(value.failureCode))) return false;
+  if (value.kind === "retryable_failure") {
+    return value.retryAfterMs === undefined || (
+      typeof value.retryAfterMs === "number"
+      && Number.isSafeInteger(value.retryAfterMs)
+      && value.retryAfterMs > 0
+    );
+  }
+  return value.kind === "permanent_failure";
+};
 
 export const relayOutboxOnce = async (input: {
   readonly environment: string;
@@ -166,14 +189,43 @@ export const relayOutboxOnce = async (input: {
     return { kind: "permanent_failure", failureCode: "event_missing" };
   }
 
-  let delivery;
+  // The adapter may have sent the request before an exception/timeout. Its
+  // outcome is UNKNOWN, not a safe automatic retry. Quarantine in the durable
+  // dead-letter lane pending independent provider reconciliation; do not infer
+  // that the provider rejected the message.
+  // Treat runtime-invalid adapter results as UNKNOWN as well. TypeScript
+  // declarations cannot guarantee a third-party Provider adapter's return
+  // value; an unrecognized kind must never fall through to retry_wait.
+  let delivery: Awaited<ReturnType<IntegrationDeliveryAdapter["deliver"]>> = { kind: "unknown" };
   try {
-    delivery = await input.adapter.deliver({ event, destinationKey: processing.destinationKey, attempt: processing.attemptCount });
+    const candidate: unknown = await input.adapter.deliver({
+      event, destinationKey: processing.destinationKey, attempt: processing.attemptCount,
+    });
+    if (
+      candidate !== null && typeof candidate === "object" && "kind" in candidate
+      && (candidate.kind === "delivered"
+        || candidate.kind === "retryable_failure"
+        || candidate.kind === "permanent_failure")
+      && validDeliveryOutcomePayload(candidate as Record<string, unknown>)
+    ) {
+      delivery = candidate as Awaited<ReturnType<IntegrationDeliveryAdapter["deliver"]>>;
+    }
   } catch {
-    delivery = { kind: "retryable_failure" as const, failureCode: "delivery_exception" };
+    delivery = { kind: "unknown" };
   }
 
   const completedAt = clock.now();
+  if (delivery.kind === "unknown") {
+    const unknown: OutboxRecord = {
+      ...processing, status: "dead_letter", deadLetteredAt: completedAt.toISOString(),
+      failureCode: "delivery_outcome_unknown", version: processing.version + 1,
+      updatedAt: completedAt.toISOString(),
+    };
+    if (!await input.store.compareAndSetOutbox({
+      record: unknown, expectedVersion: processing.version, expectedStatus: "processing",
+    })) return { kind: "conflict" };
+    return { kind: "unknown", failureCode: "delivery_outcome_unknown" };
+  }
   if (delivery.kind === "delivered") {
     const delivered: OutboxRecord = { ...processing, status: "delivered", deliveredAt: completedAt.toISOString(), failureCode: null, version: processing.version + 1, updatedAt: completedAt.toISOString() };
     if (!await input.store.compareAndSetOutbox({ record: delivered, expectedVersion: processing.version, expectedStatus: "processing" })) return { kind: "conflict" };
