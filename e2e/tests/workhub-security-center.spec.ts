@@ -630,12 +630,15 @@ test("#420 no confirmed CI control failure is never displayed as Finding zero", 
 
 test("#420 OSV runtime Finding button keeps unknown Gray when provider is unavailable", async ({ page }) => {
   await login(page, "kai");
+  const snapshot = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/security/center?scopeId=workhub-company");
+    if (!response.ok) throw new Error("Security Center fixture baseline unavailable");
+    return response.json();
+  });
   await page.route("**/api/admin/security/center?**", async route => {
     if (new URL(route.request().url()).searchParams.get("dependencyFindings") !== "runtime") {
       await route.continue(); return;
     }
-    const response = await route.fetch();
-    const snapshot = await response.json();
     await route.fulfill({ json: { ...snapshot, dependencyScope: {
       state: "unavailable", checkedPackages: null, checkedAt: null,
       advisoryCount: null, advisories: null,
