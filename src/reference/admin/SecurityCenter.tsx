@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { normalizeSecuritySourceCoverage, type SecuritySourceCoverage } from "../../shared/security/security-finding";
 import { scsTestSourceLinks } from "../../shared/security/scs-reference-links";
+import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 
 const SCOPE = "workhub-company";
 const SOURCES = ["secret_detection", "dependency_audit", "configuration_check", "scs_control_mapping"];
@@ -73,6 +74,9 @@ const isSource = (source: Coverage, observedAt: string): boolean => {
     || (ci.latestSuccessfulRun !== null && (!isRun(ci.latestSuccessfulRun, ci.fetchedAt)
       || ci.latestSuccessfulRun.checkStatus !== "completed" || ci.latestSuccessfulRun.checkConclusion !== "success"))) return false;
   if (ci.latest === null && ci.latestSuccessfulRun !== null) return false;
+  if (ci.latest?.checkStatus === "completed" && ci.latest.checkConclusion === "success"
+    && (ci.latestSuccessfulRun?.runId !== ci.latest.runId
+      || ci.latestSuccessfulRun?.targetSha !== ci.latest.targetSha)) return false;
   if (ci.latest && ci.latestSuccessfulRun && ci.latestSuccessfulRun.updatedAt > ci.latest.updatedAt) return false;
   const failed = ci.latest?.checkStatus === "completed" && ci.latest.checkConclusion !== "success" && ci.latest.checkConclusion !== "skipped";
   return !failed || (source.coverageState === "unavailable" && source.sourceHealth === "unavailable");
@@ -119,6 +123,19 @@ const ScsTestReferences = ({ reference }: { readonly reference: string | null })
   </div>;
 };
 
+/** Status of CI only; never the verified Finding health or SCS status. */
+const CiExecutionStatus = ({ source }: { readonly source: Coverage }) => {
+  const triage = classifySecurityCi(source.ci);
+  return <div><strong>{triage.label}</strong>
+    <small>{triage.history}</small>
+    {source.ci.state === "available" && source.ci.latest && <>
+      <span>{source.ci.latest.checkStatus} / {source.ci.latest.checkConclusion ?? "未完了"}</span>
+      <RunReference run={source.ci.latest} />
+    </>}
+    {source.ci.state === "available" && !source.ci.latest && <span>実行記録なし（not-run）</span>}
+  </div>;
+};
+
 const RunReference = ({ run }: { readonly run: CiRun }) => <>
   <a href={`https://github.com/${REPOSITORY}/actions/runs/${run.runId}`} target="_blank" rel="noopener noreferrer">Run #{run.runId}</a>
   <small title={run.targetSha}>SHA {run.targetSha.slice(0, 12)} / {run.event}</small>
@@ -131,6 +148,7 @@ export default function SecurityCenter() {
     | { readonly kind: "ready"; readonly data: Snapshot }
   >({ kind: "loading" });
   const [filter, setFilter] = useState("");
+  const [ciAttentionOnly, setCiAttentionOnly] = useState(false);
   const load = async () => {
     setState({ kind: "loading" });
     try {
@@ -147,6 +165,9 @@ export default function SecurityCenter() {
   };
   useEffect(() => { void load(); }, []);
   const ready = state.kind === "ready" ? state.data : null;
+  const ciAttentionCount = ready?.sources.filter((source) => classifySecurityCi(source.ci).needsAttention).length ?? 0;
+  const visibleCiSources = ready?.sources.filter((source) => !ciAttentionOnly
+    || classifySecurityCi(source.ci).needsAttention) ?? [];
   const requirements = ready?.scs.requirements.filter((r) =>
     `${r.id} ${r.name} ${r.responsibility}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) ?? [];
   return <section className="admin-audit-panel" id="admin-security-center" aria-labelledby="admin-security-center-title">
@@ -169,14 +190,15 @@ export default function SecurityCenter() {
         CI成功はFinding 0件や証跡の鮮度を証明せず、現在のmain・稼働アプリと同一コードである保証もありません。</p>
       <p>CI成功Runの日時は、取得した5件内で成功したRunの更新日時です。全履歴の最終成功・検査完了時刻・Finding最終検証日時とは区別します。
         キャッシュは最大5分。Local/Testでは外部CIを取得しません。</p>
+      <label><input type="checkbox" checked={ciAttentionOnly}
+        onChange={(event) => setCiAttentionOnly(event.target.checked)} /> CI要確認のソースのみ表示</label>
+      <p role="status">CI要確認 {ciAttentionCount} / {ready.sources.length} ソース。CI成功もFinding評価・SCS適合を意味しません。</p>
       <div className="admin-audit-table-wrap"><table className="admin-audit-table">
         <thead><tr><th>検査ソース</th><th>CI実行状態・対象SHA</th><th>CI成功Run（直近5件内）</th><th>取得日時</th>
           <th>Finding評価状態</th><th>Finding Health</th><th>Finding最終検証</th><th>Evidence freshness</th><th>Finding件数</th></tr></thead>
-        <tbody>{ready.sources.map((source) => <tr key={source.sourceId} data-testid={`security-source-${source.sourceId}`}>
+        <tbody>{visibleCiSources.map((source) => <tr key={source.sourceId} data-testid={`security-source-${source.sourceId}`}>
           <td>{source.sourceId}</td>
-          <td>{source.ci.state === "not-connected" ? "未接続" : source.ci.state === "unavailable" ? "取得不能（unavailable）"
-            : source.ci.latest ? <><strong>{source.ci.latest.checkStatus} / {source.ci.latest.checkConclusion ?? "未完了"}</strong>
-              <RunReference run={source.ci.latest} /></> : "実行記録なし（not-run）"}</td>
+          <td><CiExecutionStatus source={source} /></td>
           <td>{source.ci.latestSuccessfulRun ? <RunReference run={source.ci.latestSuccessfulRun} />
             : source.ci.state === "available" ? "取得範囲に成功Runなし" : "未取得"}</td>
           <td>{source.ci.fetchedAt ?? "未取得"}</td><td>{coverageDisplay(source).label}</td>
