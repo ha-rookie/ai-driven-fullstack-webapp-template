@@ -29,3 +29,12 @@ Issue #420's **original 11 acceptance items remain unchanged**. Incremental PR r
 ## Operations and approval
 
 This PR must not be merged without an explicit approval of its exact latest HEAD, base/main SHA, passing required CI and review status. No further focus change, Preview/Production deployment, Remote D1/Migration, Secrets or Cloudflare resource mutation is included.
+
+
+## #420 incremental UI readiness: explicit coverage/unavailable/stale (2026-10-16)
+
+This code-only follow-on slice consumes the previously reviewed **#724 SecuritySourceCoverage contract** in the existing browser panel. It adds bounded client-side shape/chronology checks for four existing source identities: only checked records with a successful timestamp and nonnegative verified source-bound count may show a numeric finding count. A skipped/not-checked source displays `未検査（Gray）` and an **unknown** count; an unavailable source displays `利用不可（Gray）` and an **unknown** count; stale checked evidence displays `証跡期限切れ（Gray）` with any count explicitly marked as a **historical source-only value**. A currently valid checked zero is clearly limited to **that one source** and never changes the whole-System `not-assessed` posture to Green/safe. Incoherent or unsupported responses fail closed to an unavailable panel. Client-side expiry is reevaluated at render time to avoid representing elapsed evidence as current.
+
+Browser tests explicitly inject **synthetic post-authorization responses** to exercise the otherwise unconnected states (unavailable, stale zero, current source-only zero, malformed). These fixtures are not a live Provider, CI evidence resolver, genuine verified Finding result, or actual SCS check. The Worker continues to return the original four unmonitored sources, zero **not asserted**, and `findings.verifiedCount=null`. Real source evidence ingestion/authentication, Finding list/filter/detail, last-success collection, remediation/Audit correlation, and requirement-specific #488 freshness remain incomplete. Thus Issue #420 stays Open with the same previously accepted **2/11** checklist; this preparatory PR itself does not promote another acceptance checkbox or run formal System Test #694.
+
+No new route, API write, secret, scanner, D1, workflow, Cloudflare resource, or Preview/Production deployment is part of this slice. PR merge remains a separate exact HEAD and required-CI Human Gate.
