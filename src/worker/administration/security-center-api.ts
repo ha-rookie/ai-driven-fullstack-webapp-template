@@ -93,7 +93,11 @@ export const projectObservedCiControlFindings = async (
 export const projectRuntimeOsvFindings = (result: RuntimeOsvResult, asOf: string) => {
   const base = projectSecurityCenter(asOf);
   if (result.state !== "verified" || result.checkedPackages !== 12
-    || result.checkedAt !== asOf || result.advisoryCount !== result.advisories.length
+    || !Number.isFinite(Date.parse(result.checkedAt))
+    || new Date(result.checkedAt).toISOString() !== result.checkedAt
+    || Date.parse(result.checkedAt) > Date.parse(asOf)
+    || Date.parse(asOf) - Date.parse(result.checkedAt) >= 300_000
+    || result.advisoryCount !== result.advisories.length
     || result.advisories.some(a => !/^pkg_[0-9]{2}$/u.test(a.packageRef)
       || !/^(?:GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}|CVE-[0-9]{4}-[0-9]{4,}|OSV-[0-9]{4}-[0-9]+)$/u.test(a.advisoryId))) {
     return { ...base, dependencyScope: { state: "unavailable" as const, checkedPackages: null,
@@ -103,18 +107,19 @@ export const projectRuntimeOsvFindings = (result: RuntimeOsvResult, asOf: string
   // advisory ID remains in dependencyScope. Avoid collisions for multiple IDs per package.
   const items = result.advisories.map((advisory, index) => normalizeSecurityFinding({
     ruleId: "osv_advisory_" + index, category: "dependency", severity: "info", status: "open",
-    resourceRef: advisory.packageRef, detectedAt: asOf, lastObservedAt: asOf,
+    resourceRef: advisory.packageRef, detectedAt: result.checkedAt, lastObservedAt: result.checkedAt,
     evidence: [{ kind: "dependency", code: "dependency_alert" }],
     remediationCode: "update_dependency",
   }, "dependency_audit", asOf));
   return { ...base, dependencyScope: { state: "verified" as const,
-    checkedPackages: 12, checkedAt: asOf, advisoryCount: items.length,
+    checkedPackages: 12, checkedAt: result.checkedAt, advisoryCount: items.length,
     advisories: result.advisories }, findings: {
       state: "verified" as const, items, verifiedCount: items.length,
     }, sources: base.sources.map(source => source.sourceId === "dependency_audit"
       ? { ...normalizeSecuritySourceCoverage({
         sourceId: source.sourceId, coverageState: "checked", sourceHealth: "ready",
-        lastSuccessfulCheckAt: asOf, evidenceValidUntil: new Date(Date.parse(asOf) + 300_000).toISOString(),
+        lastSuccessfulCheckAt: result.checkedAt,
+        evidenceValidUntil: new Date(Date.parse(result.checkedAt) + 300_000).toISOString(),
         checkedFindingCount: items.length,
       }, asOf), ci: source.ci } : source) };
 };
