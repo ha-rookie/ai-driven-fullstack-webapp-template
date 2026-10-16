@@ -363,11 +363,25 @@ test("#420 OSV real advisory projects a bounded dependency Finding, preserving u
   assert.equal(result.posture, "not-assessed");
   assert.equal(result.findings.state, "verified");
   assert.equal(result.findings.verifiedCount, 1);
-  assert.equal(result.findings.items?.[0]?.ruleId, "osv_advisory");
+  assert.equal(result.findings.items?.[0]?.ruleId, "osv_advisory_0");
   assert.equal(result.findings.items?.[0]?.severity, "info");
   assert.equal(result.findings.items?.[0]?.evidence[0]?.code, "dependency_alert");
   assert.equal(result.sources.find(x => x.sourceId === "dependency_audit")?.checkedFindingCount, 1);
 });
+test("#420 two real OSV advisories on one package have distinct Finding identities", () => {
+  const now = "2026-10-17T00:00:00.000Z";
+  const projected = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
+    source: "OSV", state: "verified", checkedAt: now, checkedPackages: 12,
+    advisoryCount: 2, advisories: [
+      { packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" },
+      { packageRef: "pkg_01", advisoryId: "CVE-2026-12345" },
+    ] }, now);
+  assert.equal(projected.findings.verifiedCount, 2);
+  assert.deepEqual(projected.findings.items?.map(x => x.ruleId),
+    ["osv_advisory_0", "osv_advisory_1"]);
+  assert.equal(projected.sources.find(x => x.sourceId === "dependency_audit")?.checkedFindingCount, 2);
+});
+
 test("#420 OSV unknown stays disconnected and source-scoped verified zero stays zero", () => {
   const now = "2026-10-17T00:00:00.000Z";
   const unavailable = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
