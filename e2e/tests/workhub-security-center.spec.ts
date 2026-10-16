@@ -72,3 +72,44 @@ test("#420 unauthenticated caller receives no Security Center metadata", async (
   const wrongMethod = await request.post(endpoint);
   expect(wrongMethod.status()).toBe(405);
 });
+
+
+test("#420 UI keeps unavailable and stale verified source evidence Gray (synthetic response only)", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json() as { sources: Array<Record<string, unknown>> };
+    body.sources[0] = { ...body.sources[0], coverageState: "unavailable",
+      sourceHealth: "unavailable", checkedFindingCount: null, freshness: "unknown" };
+    body.sources[1] = { ...body.sources[1], coverageState: "checked", sourceHealth: "ready",
+      lastSuccessfulCheckAt: "2026-10-15T00:00:00.000Z",
+      evidenceValidUntil: "2026-10-15T12:00:00.000Z", checkedFindingCount: 0, freshness: "stale" };
+    body.sources[2] = { ...body.sources[2], coverageState: "checked", sourceHealth: "ready",
+      lastSuccessfulCheckAt: "2026-10-15T00:00:00.000Z",
+      evidenceValidUntil: "2099-10-17T00:00:00.000Z", checkedFindingCount: 0, freshness: "current" };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  const rows = panel.locator(".admin-audit-table").first().locator("tbody tr");
+  await expect(rows.nth(0)).toContainText("利用不可（Gray）");
+  await expect(rows.nth(0)).toContainText("不明");
+  await expect(rows.nth(1)).toContainText("証跡期限切れ（Gray）");
+  await expect(rows.nth(1)).toContainText("0件（過去の検査値）");
+  await expect(rows.nth(2)).toContainText("0件（当該ソースのみ）");
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
+
+test("#420 malformed coverage contract fails closed instead of displaying a security verdict", async ({ page }) => {
+  await login(page, "kai");
+  await page.route("**/api/admin/security/center?**", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json() as { sources: Array<Record<string, unknown>> };
+    body.sources[0] = { ...body.sources[0], coverageState: "safe", checkedFindingCount: 0 };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await expect(panel.getByRole("alert")).toContainText("状態を取得できませんでした");
+  await expect(panel.getByTestId("security-center-posture")).toHaveCount(0);
+});
