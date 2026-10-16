@@ -46,30 +46,44 @@ const plainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     && Object.getPrototypeOf(value) === Object.prototype;
 
+type VerifiedObservation = {
+  readonly outcome: "delivered" | "not_delivered";
+  readonly checkedAt: string;
+};
+
 const matchingEvidence = (
   value: unknown,
   outbox: OutboxRecord,
   nowMs: number,
-): value is Record<string, unknown> => {
-  if (!plainRecord(value)) return false;
-  if (Object.keys(value).some(key => !ALLOWED_KEYS.has(key))
-      || Object.keys(value).length !== ALLOWED_KEYS.size) return false;
-  if (value.environment !== outbox.environment
-      || value.outboxId !== outbox.id
-      || value.integrationEventId !== outbox.integrationEventId
-      || value.destinationKey !== outbox.destinationKey
-      || value.outboxVersion !== outbox.version) return false;
-  const validOutcome = value.outcome === "delivered"
-    && value.proofBasis === "authoritative_acceptance_receipt"
-    || value.outcome === "not_delivered"
-    && value.proofBasis === "authoritative_terminal_non_delivery";
-  if (!validOutcome || typeof value.checkedAt !== "string") return false;
-  const verifiedTime = Date.parse(value.checkedAt);
-  // Reject lax date parsing, future receipts, and stale/invalid timestamps.
-  return Number.isFinite(verifiedTime)
-    && new Date(verifiedTime).toISOString() === value.checkedAt
-    && Number.isFinite(nowMs) && verifiedTime <= nowMs
-    && nowMs - verifiedTime <= MAX_AGE_MS;
+): VerifiedObservation | null => {
+  try {
+    if (!plainRecord(value)) return null;
+    if (Object.keys(value).some(key => !ALLOWED_KEYS.has(key))
+        || Object.keys(value).length !== ALLOWED_KEYS.size) return null;
+    if (value.environment !== outbox.environment
+        || value.outboxId !== outbox.id
+        || value.integrationEventId !== outbox.integrationEventId
+        || value.destinationKey !== outbox.destinationKey
+        || value.outboxVersion !== outbox.version) return null;
+    // Snapshot untrusted adapter properties once. Re-reading accessors after
+    // validation could change a verified non-delivery into a delivery result.
+    const outcome = value.outcome;
+    const proofBasis = value.proofBasis;
+    const checkedAt = value.checkedAt;
+    if (outcome !== "delivered" && outcome !== "not_delivered") return null;
+    if (outcome === "delivered" && proofBasis !== "authoritative_acceptance_receipt"
+        || outcome === "not_delivered" && proofBasis !== "authoritative_terminal_non_delivery"
+        || typeof checkedAt !== "string") return null;
+    const verifiedTime = Date.parse(checkedAt);
+    if (!Number.isFinite(verifiedTime)
+        || new Date(verifiedTime).toISOString() !== checkedAt
+        || !Number.isFinite(nowMs) || verifiedTime > nowMs
+        || nowMs - verifiedTime > MAX_AGE_MS) return null;
+    return { outcome, checkedAt };
+  } catch {
+    // Untrusted JS/provider adapters may return throwing getters or proxies.
+    return null;
+  }
 };
 
 /**
@@ -119,12 +133,11 @@ export const assessOutboxProviderReceipt = async (input: {
     return { kind: "stale_outbox", manualRetryAllowed: false };
   }
   const nowMs = (input.clock ?? systemClock).now().getTime();
-  if (!matchingEvidence(observation, before, nowMs)) {
-    return unverified("provider_evidence_unavailable");
-  }
+  const verified = matchingEvidence(observation, before, nowMs);
+  if (!verified) return unverified("provider_evidence_unavailable");
   return {
-    kind: observation.outcome === "delivered" ? "verified_delivery" : "verified_non_delivery",
-    checkedAt: observation.checkedAt as string,
+    kind: verified.outcome === "delivered" ? "verified_delivery" : "verified_non_delivery",
+    checkedAt: verified.checkedAt,
     manualRetryAllowed: false,
   };
 };
