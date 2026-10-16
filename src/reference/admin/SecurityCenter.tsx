@@ -136,6 +136,64 @@ const CiExecutionStatus = ({ source }: { readonly source: Coverage }) => {
   </div>;
 };
 
+/** Step codes are tied to fixed server-owned Workflow policies, not arbitrary response text. */
+const STEP_CODES: Record<string, string> = {
+  secret_detection: "secret_scan",
+  dependency_audit: "dependency_production_audit",
+  configuration_check: "configuration_validation_self_test",
+  scs_control_mapping: "scs_mapping_validation",
+};
+type StepEvidence = {
+  readonly schemaVersion: 1; readonly sourceId: string; readonly stepCode: string;
+  readonly runId: number | null; readonly targetSha: string | null;
+  readonly state: "observed" | "unavailable" | "not-run";
+  readonly conclusion: CiRun["checkConclusion"] | null;
+};
+const matchesStep = (input: unknown, source: Coverage): input is StepEvidence => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const v = input as Partial<StepEvidence>;
+  const latest = source.ci.latest;
+  const outcomes = ["success", "failure", "cancelled", "skipped", "timed-out", "neutral", "action-required"];
+  return v.schemaVersion === 1 && v.sourceId === source.sourceId
+    && v.stepCode === STEP_CODES[source.sourceId]
+    && (v.runId === latest?.runId) && (v.targetSha === latest?.targetSha)
+    && (v.state === "observed" ? outcomes.includes(v.conclusion ?? "")
+      : (v.state === "unavailable" || v.state === "not-run") && v.conclusion === null);
+};
+const CiStepEvidence = ({ source }: { readonly source: Coverage }) => {
+  const [result, setResult] = useState<
+    { readonly kind: "idle" | "loading" | "unavailable" }
+    | { readonly kind: "ready"; readonly data: StepEvidence }
+  >({ kind: "idle" });
+  const latest = source.ci.latest;
+  if (source.ci.state !== "available" || !latest || latest.checkStatus !== "completed") {
+    return <span>検査ステップは未照合（最新の完了Runなし）</span>;
+  }
+  const load = async () => {
+    setResult({ kind: "loading" });
+    try {
+      const response = await fetch(
+        `/api/admin/security/center?scopeId=${encodeURIComponent(SCOPE)}&sourceId=${encodeURIComponent(source.sourceId)}`,
+        { headers: { accept: "application/json" }, cache: "no-store" },
+      );
+      if (!response.ok) { setResult({ kind: "unavailable" }); return; }
+      const value: unknown = await response.json();
+      setResult(matchesStep(value, source) ? { kind: "ready", data: value } : { kind: "unavailable" });
+    } catch { setResult({ kind: "unavailable" }); }
+  };
+  return <div>
+    <button type="button" onClick={() => { void load(); }}
+      disabled={result.kind === "loading"}>検査ステップを確認</button>
+    {result.kind === "loading" && <small role="status">検査ステップ照会中…</small>}
+    {result.kind === "unavailable" && <small role="alert">検査ステップの照合に失敗。Run/SHA変更または取得不能。未確認扱いです。</small>}
+    {result.kind === "ready" && <small data-testid={`security-step-${source.sourceId}`}>
+      {result.data.state === "observed"
+        ? `GitHub CIステップ: ${result.data.conclusion}（Run #${result.data.runId}・SHA ${result.data.targetSha?.slice(0,12)}、Finding結果ではありません）`
+        : "検査ステップを確認できません（未検証）"}
+    </small>}
+  </div>;
+};
+
 const RunReference = ({ run }: { readonly run: CiRun }) => <>
   <a href={`https://github.com/${REPOSITORY}/actions/runs/${run.runId}`} target="_blank" rel="noopener noreferrer">Run #{run.runId}</a>
   <small title={run.targetSha}>SHA {run.targetSha.slice(0, 12)} / {run.event}</small>
@@ -189,16 +247,16 @@ export default function SecurityCenter() {
       <p>CIは公開Repositoryの各Workflowから最大5 Runを取得します。対象SHA・起点・取得日時を確認してください。
         CI成功はFinding 0件や証跡の鮮度を証明せず、現在のmain・稼働アプリと同一コードである保証もありません。</p>
       <p>CI成功Runの日時は、取得した5件内で成功したRunの更新日時です。全履歴の最終成功・検査完了時刻・Finding最終検証日時とは区別します。
-        キャッシュは最大5分。Local/Testでは外部CIを取得しません。</p>
+        キャッシュは最大5分。Local/Testでは外部CIを取得しません。検査ステップ照会は選択した最新Runのみ、ボタン操作で取得します。成功してもFindingゼロやSCS適合を意味しません。</p>
       <label><input type="checkbox" checked={ciAttentionOnly}
         onChange={(event) => setCiAttentionOnly(event.target.checked)} /> CI要確認のソースのみ表示</label>
       <p role="status">CI要確認 {ciAttentionCount} / {ready.sources.length} ソース。CI成功もFinding評価・SCS適合を意味しません。</p>
       <div className="admin-audit-table-wrap"><table className="admin-audit-table">
-        <thead><tr><th>検査ソース</th><th>CI実行状態・対象SHA</th><th>CI成功Run（直近5件内）</th><th>取得日時</th>
+        <thead><tr><th>検査ソース</th><th>CI実行状態・対象SHA</th><th>検査ステップの実確認（オンデマンド）</th><th>CI成功Run（直近5件内）</th><th>取得日時</th>
           <th>Finding評価状態</th><th>Finding Health</th><th>Finding最終検証</th><th>Evidence freshness</th><th>Finding件数</th></tr></thead>
         <tbody>{visibleCiSources.map((source) => <tr key={source.sourceId} data-testid={`security-source-${source.sourceId}`}>
           <td>{source.sourceId}</td>
-          <td><CiExecutionStatus source={source} /></td>
+          <td><CiExecutionStatus source={source} /></td><td><CiStepEvidence source={source} /></td>
           <td>{source.ci.latestSuccessfulRun ? <RunReference run={source.ci.latestSuccessfulRun} />
             : source.ci.state === "available" ? "取得範囲に成功Runなし" : "未取得"}</td>
           <td>{source.ci.fetchedAt ?? "未取得"}</td><td>{coverageDisplay(source).label}</td>
