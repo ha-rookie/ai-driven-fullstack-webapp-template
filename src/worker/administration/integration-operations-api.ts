@@ -220,6 +220,10 @@ interface OutboxDetailRow {
   readonly failure_code: string | null;
   readonly version: number;
   readonly updated_at: string;
+  /** Local source event, not a Provider acceptance receipt or an Audit Event. */
+  readonly source_event_id: string | null;
+  readonly correlation_id: string | null;
+  readonly causation_id: string | null;
 }
 
 const nextAction = (status: OutboxStatus): "reconcile_external_first" | "await_scheduled_retry"
@@ -242,7 +246,14 @@ const validDetailRow = (row: OutboxDetailRow): boolean =>
   && typeof row.updated_at === "string"
   && [row.last_attempt_at, row.delivered_at, row.dead_lettered_at].every(
     (value) => value === null || typeof value === "string",
+  )
+  && [row.source_event_id, row.correlation_id, row.causation_id].every(
+    (value) => value === null || typeof value === "string",
   );
+
+/** Only bounded opaque IDs are safe in an admin response; never echo free text. */
+const safeTraceId = (value: string | null): string | null =>
+  value !== null && OUTBOX_ID_PATTERN.test(value) ? value : null;
 
 export const handleIntegrationOperationsApi = async (
   request: Request,
@@ -518,10 +529,13 @@ export const handleIntegrationOperationsApi = async (
     }
     if (outboxId !== null) {
       const detail = await env.DB.prepare(`
-        SELECT id, status, attempt_count, available_at, last_attempt_at,
-          delivered_at, dead_lettered_at, failure_code, version, updated_at
-        FROM integration_outbox
-        WHERE environment = ? AND id = ?
+        SELECT o.id, o.status, o.attempt_count, o.available_at, o.last_attempt_at,
+          o.delivered_at, o.dead_lettered_at, o.failure_code, o.version, o.updated_at,
+          e.id AS source_event_id, e.correlation_id, e.causation_id
+        FROM integration_outbox AS o
+        LEFT JOIN integration_events AS e
+          ON e.id = o.integration_event_id AND e.environment = o.environment
+        WHERE o.environment = ? AND o.id = ?
         LIMIT 1
       `).bind(environment, outboxId).first<OutboxDetailRow>();
       if (!detail) {
@@ -543,6 +557,14 @@ export const handleIntegrationOperationsApi = async (
           updatedAt: detail.updated_at,
           version: detail.version,
           failureCode: safeFailureCode(detail.failure_code),
+        },
+        // Local chain of custody only. A missing source or unsafe free-form
+        // correlation ID is not evidence that the Provider accepted delivery.
+        trace: {
+          sourceEventStatus: detail.source_event_id === null ? "missing" : "recorded",
+          sourceEventId: safeTraceId(detail.source_event_id),
+          correlationId: detail.source_event_id === null ? null : safeTraceId(detail.correlation_id),
+          causationId: detail.source_event_id === null ? null : safeTraceId(detail.causation_id),
         },
         // This is guidance from local Outbox state, NOT an external provider check.
         decision: {
