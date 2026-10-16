@@ -139,12 +139,14 @@ const isOsvFindingSnapshot = (value: Snapshot): value is OsvSnapshot => {
   if (scope.state === "unavailable") return value.findings.state === "not-connected";
   if (scope.state !== "verified" || scope.checkedPackages !== 12 || scope.checkedAt !== value.observedAt
     || !Array.isArray(scope.advisories) || scope.advisories.length !== scope.advisoryCount
-    || value.findings.state !== "verified" || value.findings.items.length !== scope.advisories.length) return false;
+    || value.findings.state !== "verified") return false;
+  const items = value.findings.items;
+  if (items.length !== scope.advisories.length) return false;
   return scope.advisories.every((a, i) => {
-    const finding = value.findings.items[i];
+    const finding = items[i];
     return /^pkg_[0-9]{2}$/u.test(a.packageRef)
       && /^(?:GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}|CVE-[0-9]{4}-[0-9]{4,}|OSV-[0-9]{4}-[0-9]+)$/u.test(a.advisoryId)
-      && finding.ruleId === "osv_advisory" && finding.sourceId === "dependency_audit"
+      && finding.ruleId === "osv_advisory_" + i && finding.sourceId === "dependency_audit"
       && finding.resourceRef === a.packageRef && finding.category === "dependency"
       && finding.severity === "info" && finding.status === "open"
       && finding.detectedAt === value.observedAt && finding.lastObservedAt === value.observedAt
