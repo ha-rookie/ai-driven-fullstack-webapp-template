@@ -114,6 +114,16 @@ The read-only unified queue is also checked through an **actual authenticated lo
 
 The local seed may contain **zero failed records**. A green test with no rows proves only the local endpoint's safe empty/read-only behavior; it does not prove populated cross-source ordering, Provider receipt reconciliation, external document storage connection health, or a Production System Test. The broader #419 list/detail and end-to-end integration acceptance remain open until suitable evidence exists.
 
+## #419 local Outbox-to-Event trace context for failure investigation
+
+The authorized `GET /api/admin/integrations/outbox/:id?scopeId=workhub-company` detail provides bounded **local provenance**, separate from both a Provider delivery receipt and a persisted Audit Event. The existing Outbox's `integration_event_id` joins an Integration Event **only within the same runtime environment**. The detail returns a `trace` projection:
+
+- `sourceEventStatus: "recorded" | "missing"` distinguishes an available joined source from a missing source; a missing source is not reported as a healthy delivery.
+- `sourceEventId`, `correlationId`, `causationId` are available only for a recorded source and only if they match the existing bounded opaque integration identifier format. Null means missing or unsafe to display, not that the business activity did not occur.
+- Event `payload_json`, business aggregate identifiers, Provider destination, free-form source or Provider diagnostics, tokens and secrets are **not selected or returned**. The browser displays only allowlisted opaque values, not a raw event object.
+- The UI labels this as **local trace only**. It must not imply Provider acceptance, Audit verification, delivery authorization or an available retry. Existing #429 `DELIVERY_RETRY`/`INTEGRATION_RECONCILE` DENY continues unchanged.
+- Existing real local SQLite/D1 + authenticated Worker/Browser test exercises valid and untrusted identifiers, non-leakage, scope refusal and preserved action denial. This does not supply external Provider or formal ST acceptance (#335/#430/#694).
+
 ## #419 receipt evidence status on existing authorized Outbox detail (read-only)
 
 The existing admin Outbox detail view now exposes an **operator-invoked read-only status check** for quarantined `dead_letter + delivery_outcome_unknown` records. This is not a retry or reconciliation executor:
