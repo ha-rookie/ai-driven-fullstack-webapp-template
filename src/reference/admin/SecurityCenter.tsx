@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { normalizeSecuritySourceCoverage, type SecuritySourceCoverage } from "../../shared/security/security-finding";
+import { scsTestSourceLinks } from "../../shared/security/scs-reference-links";
 
 const SCOPE = "workhub-company";
 const SOURCES = ["secret_detection", "dependency_audit", "configuration_check", "scs_control_mapping"];
@@ -108,6 +109,16 @@ const coverageDisplay = (source: Coverage) => {
   return { label: "当該ソース確認済（全体の安全判定ではない）", count: `${source.checkedFindingCount}件（当該ソースのみ）` };
 };
 
+/** Registered file paths are navigation hints, not successful tests or evidence. */
+const ScsTestReferences = ({ reference }: { readonly reference: string | null }) => {
+  const links = scsTestSourceLinks(reference);
+  return <div className="scs-test-references">
+    {links.length > 0 ? links.map((link) => <a key={link.path} href={link.href}
+      target="_blank" rel="noopener noreferrer">{link.path}</a>)
+      : reference ? "参照形式未対応（リンクなし）" : "未登録"}
+  </div>;
+};
+
 const RunReference = ({ run }: { readonly run: CiRun }) => <>
   <a href={`https://github.com/${REPOSITORY}/actions/runs/${run.runId}`} target="_blank" rel="noopener noreferrer">Run #{run.runId}</a>
   <small title={run.targetSha}>SHA {run.targetSha.slice(0, 12)} / {run.event}</small>
@@ -175,13 +186,15 @@ export default function SecurityCenter() {
       </table></div>
       <h3>SCS要件別の責任・Control・証跡</h3>
       <p>既存要件対応表の参照元確認日：{ready.scs.sourceVerifiedAt}。これは各要件の監査・証跡の最終確認日ではありません。検査実行やSCS認証取得を示しません。</p>
+      <p>テストファイルのリンクは登録済みソースへの案内です。リンク先は閲覧時点のGitHub mainで、稼働アプリ・CI実行対象SHAとは限りません。テスト成功や証跡の存在・鮮度を確認したものではありません。</p>
       <label>要件・責任を検索 <input value={filter} onChange={(event) => setFilter(event.target.value)}
         placeholder="例：3-1-1、Project Responsibility" /></label>
       <div className="admin-audit-table-wrap"><table className="admin-audit-table">
-        <thead><tr><th>Requirement</th><th>Responsibility</th><th>Control</th><th>Test / Evidence（参照のみ）</th><th>Freshness</th><th>Finding / Remediation</th></tr></thead>
+        <thead><tr><th>Requirement</th><th>Responsibility</th><th>Control</th><th>Test source / Evidence（参照のみ・未検証）</th><th>Freshness</th><th>Finding / Remediation</th></tr></thead>
         <tbody>{requirements.map((r) => <tr key={r.id}>
           <td><strong>{r.id}</strong><small>{r.name}</small></td><td>{r.responsibility}</td>
-          <td>{r.control}</td><td>{r.testReference ?? "未登録"} / {r.evidenceReference ?? "未登録"}</td>
+          <td>{r.control}</td><td><ScsTestReferences reference={r.testReference} />
+            <div>証跡名：{r.evidenceReference ?? "未登録"}（未検証）</div></td>
           <td>未検証（{r.evidenceFreshness}）</td><td>未接続 / 未接続</td>
         </tr>)}</tbody>
       </table></div>
