@@ -68,6 +68,15 @@ const category = (value: string | null): AuditSearchQuery["category"] => {
   throw new TypeError("Invalid category");
 };
 
+const auditRequestId = (value: string | null): string | undefined => {
+  if (value === null) return undefined;
+  if (!/^[A-Za-z0-9._:-]{1,128}$/u.test(value)
+    || /^(?:sk_live|sk_test|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|bearer_)/iu.test(value)) {
+    throw new TypeError("Invalid Audit correlation ID");
+  }
+  return value;
+};
+
 const outcome = (value: string | null): AuditSearchQuery["outcome"] => {
   if (value === null) return undefined;
   if (value === "success" || value === "failure") return value;
@@ -151,6 +160,7 @@ export const handleAuditLogViewerApi = async (
       category: category(url.searchParams.get("category")),
       outcome: outcome(url.searchParams.get("outcome")),
       action: bounded(url.searchParams.get("action")),
+      requestId: auditRequestId(url.searchParams.get("requestId")),
       actorId: bounded(url.searchParams.get("actorId")),
       scopeId,
       resourceType: bounded(url.searchParams.get("resourceType")),
