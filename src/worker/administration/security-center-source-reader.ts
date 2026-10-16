@@ -1,4 +1,4 @@
-import { normalizeSecuritySourceCoverage, type SecuritySourceCoverage } from "../../shared/security/security-finding";
+import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, type SecurityFinding, type SecuritySourceCoverage } from "../../shared/security/security-finding";
 import { normalizeSecuritySourceSnapshot, type SecurityCheckStatus, type SecurityCheckConclusion } from "../../shared/security/security-source-snapshot";
 import type { RuntimeEnvironment } from "../../shared/runtime";
 
@@ -183,6 +183,8 @@ export interface SecurityControlStepEvidence {
   readonly targetSha: string | null;
   readonly state: "observed" | "unavailable" | "not-run";
   readonly conclusion: SecurityCheckConclusion | null;
+  /** A real failed CI control, NOT a parsed vulnerability or zero-Findings assertion. */
+  readonly controlFinding?: SecurityFinding;
 }
 export type SecurityCenterStepReader = (
   source: SecurityCenterSource, asOf: string,
@@ -255,6 +257,24 @@ export const createSecurityCenterStepReader = (fetcher: typeof fetch = fetch): S
               "user-agent": "workhub-security-center", "x-github-api-version": "2026-03-10" } },
         );
         const conclusion = projectStepOutcome(await readJson(response), policy, latest);
+        // A failed *specific security check step* plus a failed matching Workflow
+        // is evidence of CI control failure only. It says nothing about how many
+        // vulnerabilities the scanner detected; success must NEVER mean zero.
+        if (conclusion === "failure" && latest.checkConclusion === "failure") {
+          const category = policy.sourceId === "dependency_audit" ? "dependency"
+            : policy.sourceId === "secret_detection" ? "data" : "configuration";
+          const severity = policy.sourceId === "secret_detection" || policy.sourceId === "dependency_audit"
+            ? "high" : "medium";
+          const controlFinding = normalizeSecurityFinding({
+            ruleId: "ci_step_failure", category, severity, status: "open",
+            resourceRef: "commit_" + latest.targetSha.slice(0, 12),
+            detectedAt: latest.updatedAt, lastObservedAt: latest.updatedAt,
+            evidence: [{ kind: "ci", code: "control_check_failed",
+              referenceId: "run_" + latest.runId }],
+            remediationCode: "review_control",
+          }, policy.sourceId, asOf);
+          return { ...base, state: "observed", conclusion, controlFinding };
+        }
         return { ...base, state: "observed", conclusion };
       } catch {
         return { ...base, state: "unavailable", conclusion: null };
