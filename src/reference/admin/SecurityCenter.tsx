@@ -45,7 +45,8 @@ const validCoverage = (value: unknown, observedAt: string): value is Coverage =>
   }
   if (!["ready", "degraded"].includes(s.sourceHealth ?? "") || !validTime(s.lastSuccessfulCheckAt)
     || Date.parse(s.lastSuccessfulCheckAt) > Date.parse(observedAt)
-    || !Number.isSafeInteger(s.checkedFindingCount) || (s.checkedFindingCount ?? -1) < 0) return false;
+    || typeof s.checkedFindingCount !== "number" || !Number.isSafeInteger(s.checkedFindingCount)
+    || s.checkedFindingCount < 0) return false;
   if (s.freshness === "unknown") return s.evidenceValidUntil === undefined;
   return validTime(s.evidenceValidUntil) && (s.freshness === "current"
     ? Date.parse(s.evidenceValidUntil) >= Date.parse(observedAt)
