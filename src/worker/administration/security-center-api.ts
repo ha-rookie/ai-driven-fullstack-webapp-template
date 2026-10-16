@@ -1,5 +1,6 @@
 import { requireAuthenticatedUser, requireScopedAuthorization } from "../authorization";
 import { apiErrorResponse } from "../http";
+import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import { normalizeSecuritySourceCoverage } from "../../shared/security/security-finding";
 import scsMapping from "../../../config/scs-control-mapping.json";
 
@@ -12,7 +13,7 @@ const ACTION = "administration:manage";
 const POLICY = { [ACTION]: ["system_admin"] };
 const SOURCE_IDS = ["secret_detection", "dependency_audit", "configuration_check", "scs_control_mapping"] as const;
 
-interface Env { readonly DB: D1Database }
+interface Env { readonly DB: D1Database; readonly RUNTIME_ENVIRONMENT?: string }
 const reject = (requestId: string, status: number, code: string): Response =>
   apiErrorResponse({ status, code, message: status === 401 ? "Authentication required"
     : status === 403 ? "Access denied" : status === 405 ? "Method not allowed"
@@ -47,6 +48,12 @@ export const handleSecurityCenterApi = async (
   if (url.searchParams.size !== 1 || url.searchParams.getAll("scopeId").length !== 1
     || url.searchParams.get("scopeId") !== SCOPE) {
     return reject(requestId, 400, "invalid_security_center_query");
+  }
+  // Fail closed when a real runtime context is absent; never substitute a synthetic scan.
+  try {
+    resolveWorkhubRuntimeEnvironment(request, env.RUNTIME_ENVIRONMENT);
+  } catch {
+    return reject(requestId, 503, "runtime_environment_required");
   }
   let actorId: string;
   try {
