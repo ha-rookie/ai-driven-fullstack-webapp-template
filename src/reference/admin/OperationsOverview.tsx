@@ -543,7 +543,7 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
           </p>
           {detail.data.decision.nextAction === "reconcile_external_first" && (
             <section data-testid="outbox-reconcile-checklist" aria-label="照合手順">
-              <h5>再送前の照合・運用引継ぎ（人間の判断で対応）</h5>
+              <h5>再送前の照合手順と運用引継ぎ（人間の判断で対応）</h5>
               <ol>
                 <li>外部Providerの配送履歴を、対象の配送ID・日時・宛先の管理された情報と突き合わせる。秘密情報はここへ入力しない。</li>
                 <li>外部側で受領・処理済みか、未処理か、不明かを確認する。タイムアウトやUNKNOWNを未配送と決めつけない。</li>
