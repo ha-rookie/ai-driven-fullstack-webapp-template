@@ -32,7 +32,10 @@ const seedLocalFailures = () => {
     const event = PREFIX + "event-" + String(index).padStart(2, "0");
     const eventFields = [
       event, "local", "workhub.reference.failure", 1, null, null,
-      TIMESTAMP, null, null, "{}", TIMESTAMP,
+      TIMESTAMP,
+      index === 2 ? PREFIX + "corr-02" : index === 4 ? "raw-provider-secret / token" : null,
+      index === 2 ? PREFIX + "cause-02" : index === 4 ? "raw-secret / diagnostic" : null,
+      "{}", TIMESTAMP,
     ];
     statements.push("INSERT INTO integration_events (id, environment, event_type, schema_version, "
       + "aggregate_type, aggregate_id, occurred_at, correlation_id, causation_id, payload_json, created_at) "
@@ -88,6 +91,8 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
       const detailBase = "/api/admin/integrations/";
       const outgoing = await fetch(detailBase + "outbox/e2e419-out-00?scopeId=workhub-company");
       const incoming = await fetch(detailBase + "inbound/e2e419-in-00?scopeId=workhub-company");
+      const traceKnown = await fetch(detailBase + "outbox/e2e419-out-02?scopeId=workhub-company");
+      const traceMasked = await fetch(detailBase + "outbox/e2e419-out-04?scopeId=workhub-company");
       // The new receipt route is a guarded, read-only projection of #719.
       // Reference WORKHUB intentionally registers no actual Provider verifier.
       const receiptUrl = "/api/admin/integrations/outbox/e2e419-out-02/_receipt?scopeId=workhub-company";
@@ -112,6 +117,10 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
         first, secondStatus: secondResponse?.status ?? null, second,
         outgoingStatus: outgoing.status, incomingStatus: incoming.status,
         outgoing: await outgoing.json() as unknown, incoming: await incoming.json() as unknown,
+        traceKnownStatus: traceKnown.status,
+        traceKnown: await traceKnown.json() as unknown,
+        traceMaskedStatus: traceMasked.status,
+        traceMasked: await traceMasked.json() as unknown,
         postStatus: post.status, otherScopeStatus: otherScope.status,
         receiptStatus: receiptResponse.status, receipt,
         nonUnknownStatus: nonUnknownReceipt.status, nonUnknownBody,
@@ -139,6 +148,21 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
     expect(JSON.stringify(observed)).not.toMatch(/destinationKey|providerSecret|rawProviderResponse/iu);
     expect(observed.outgoingStatus).toBe(200);
     expect(observed.incomingStatus).toBe(200);
+    expect(observed.traceKnownStatus).toBe(200);
+    expect(observed.traceMaskedStatus).toBe(200);
+    expect((observed.traceKnown as { trace: unknown }).trace).toEqual({
+      sourceEventStatus: "recorded",
+      sourceEventId: "e2e419-event-02",
+      correlationId: "e2e419-corr-02",
+      causationId: "e2e419-cause-02",
+    });
+    expect((observed.traceMasked as { trace: unknown }).trace).toEqual({
+      sourceEventStatus: "recorded",
+      sourceEventId: "e2e419-event-04",
+      correlationId: null, causationId: null,
+    });
+    expect(JSON.stringify(observed)).not.toContain("raw-provider-secret / token");
+    expect(JSON.stringify(observed)).not.toContain("raw-secret / diagnostic");
     expect(observed.receiptStatus).toBe(200);
     expect(observed.receipt.assessment).toEqual({
       kind: "unverified", reason: "provider_not_registered", manualRetryAllowed: false,
@@ -172,6 +196,10 @@ test("#419 populated local D1 failures survive real Worker pagination, masking a
     await lookup.getByRole("button", { name: "指定IDの詳細を確認" }).click();
     const detail = page.getByTestId("unified-failure-detail");
     await expect(detail.getByTestId("delivery-outcome-unknown")).toBeVisible();
+    await expect(detail.getByTestId("outbox-trace-context")).toContainText("e2e419-event-02");
+    await expect(detail.getByTestId("outbox-trace-context")).toContainText("e2e419-corr-02");
+    await expect(detail.getByTestId("outbox-trace-context")).toContainText("e2e419-cause-02");
+    await expect(detail.getByTestId("outbox-trace-context")).toContainText("再送も許可しません");
     await detail.getByRole("button", { name: "受領証跡の状態を確認（参照のみ）" }).click();
     await expect(detail.getByTestId("outbox-receipt-assessment")).toContainText(
       "Provider照合Adapter未登録。外部受領は未確認、再送不可");

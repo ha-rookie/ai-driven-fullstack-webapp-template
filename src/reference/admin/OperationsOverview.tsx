@@ -70,6 +70,13 @@ interface OutboxDetail {
     readonly version: number;
     readonly failureCode: string;
   };
+  /** Missing on older deployment/mocked responses: fail closed for trace only. */
+  readonly trace?: {
+    readonly sourceEventStatus: "recorded" | "missing";
+    readonly sourceEventId: string | null;
+    readonly correlationId: string | null;
+    readonly causationId: string | null;
+  };
   readonly decision: {
     readonly nextAction: "reconcile_external_first" | "await_scheduled_retry" | "observe_in_progress" | "queued" | "none";
     readonly providerOutcome: "unverified";
@@ -230,6 +237,14 @@ const hasOutboxDetail = (value: unknown): value is OutboxDetail =>
   && typeof value.outbox.failureCode === "string"
   && [value.outbox.lastAttemptAt, value.outbox.deliveredAt, value.outbox.deadLetteredAt]
     .every((date) => date === null || typeof date === "string")
+  && (value.trace === undefined || (isRecord(value.trace)
+    && (value.trace.sourceEventStatus === "recorded" || value.trace.sourceEventStatus === "missing")
+    && [value.trace.sourceEventId, value.trace.correlationId, value.trace.causationId]
+      .every((id) => id === null || (typeof id === "string"
+        && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/u.test(id)))
+    && (value.trace.sourceEventStatus === "recorded"
+      || (value.trace.sourceEventId === null && value.trace.correlationId === null
+        && value.trace.causationId === null))))
   && isRecord(value.decision)
   && ["reconcile_external_first", "await_scheduled_retry", "observe_in_progress", "queued", "none"]
     .includes(String(value.decision.nextAction))
@@ -455,6 +470,20 @@ const OutboxDetailPanel = ({ outboxId, environment }: { readonly outboxId: strin
           <p>再試行可能になる予定時刻：{detail.data.outbox.availableAt}
             {" / 最終試行：" + (detail.data.outbox.lastAttemptAt ?? "記録なし")}</p>
           <p>更新：{detail.data.outbox.updatedAt} / 診断コード：{detail.data.outbox.failureCode}</p>
+          <section data-testid="outbox-trace-context" aria-label="ローカルイベント追跡">
+            <h5>元イベント・相関情報（ローカル記録のみ）</h5>
+            {detail.data.trace === undefined
+              ? <p>このAPI応答には追跡情報がありません。元イベントの有無は未確認です。</p>
+              : detail.data.trace.sourceEventStatus === "missing"
+                ? <p>元イベント記録が取得できません。追跡情報は未確認です。</p>
+              : <>
+                <p>元イベントID：<code>{detail.data.trace.sourceEventId ?? "非表示・識別不可"}</code></p>
+                <p>相関ID：<code>{detail.data.trace.correlationId ?? "未記録・非表示"}</code>
+                  {" / 原因イベントID："}<code>{detail.data.trace.causationId ?? "未記録・非表示"}</code></p>
+              </>}
+            <p>この情報はローカル配送と元イベントを調べるための手掛かりです。
+              外部Providerの受領や監査完了を証明せず、再送も許可しません。</p>
+          </section>
           {detail.data.outbox.failureCode === "delivery_outcome_unknown" && (
             <p data-testid="delivery-outcome-unknown"><strong>配送結果不明・自動再送停止：</strong>
               タイムアウト等の後に外部Providerが受領済みの可能性があります。
