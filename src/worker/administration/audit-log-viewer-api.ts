@@ -153,7 +153,9 @@ export const handleAuditLogViewerApi = async (
   let query: AuditSearchQuery;
   try {
     scopeId = bounded(url.searchParams.get("scopeId")) ?? "";
-    if (!scopeId) throw new TypeError("scopeId required");
+    if (!scopeId || url.searchParams.getAll("requestId").length > 1) {
+      throw new TypeError("Invalid Audit request query");
+    }
     query = {
       startAt: bounded(url.searchParams.get("startAt")),
       endAt: bounded(url.searchParams.get("endAt")),
