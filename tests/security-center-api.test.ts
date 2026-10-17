@@ -409,3 +409,52 @@ test("#420 OSV unknown stays disconnected and source-scoped verified zero stays 
   assert.equal(zero.findings.verifiedCount, 0);
   assert.equal(zero.posture, "not-assessed");
 });
+
+test("#420 real OSV Finding mode denies unauthorized users and rejects query injection before provider reads", async () => {
+  const root = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  let reads = 0, sourceReads = 0;
+  const osvReader = async (_environment: unknown, at: string) => {
+    reads++;
+    return { schemaVersion: 1 as const, scope: "runtime-lock-only" as const,
+      source: "OSV" as const, state: "verified" as const,
+      checkedAt: at, checkedPackages: 12, advisoryCount: 1,
+      advisories: [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }] };
+  };
+  const sourceReader: SecurityCenterSourceReader = async (_environment, at) => {
+    sourceReads++; return unconnectedSecuritySources(at);
+  };
+  const request = (suffix: string, cookie = true) => new Request(root + suffix, {
+    headers: cookie ? { cookie: "app_session=synthetic-session-only" } : {},
+  });
+  const preview = "preview";
+  const suffix = "&dependencyFindings=runtime";
+  const anonymous = await handleSecurityCenterApi(request(suffix, false),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: preview }, "anonymous-osv",
+    sourceReader, undefined, osvReader);
+  assert.equal(anonymous?.status, 401);
+  const employee = await handleSecurityCenterApi(request(suffix),
+    { DB: sessionDb("employee"), RUNTIME_ENVIRONMENT: preview }, "denied-osv",
+    sourceReader, undefined, osvReader);
+  assert.equal(employee?.status, 403);
+  for (const invalid of ["&dependencyFindings=all",
+    "&dependencyFindings=runtime&dependencyFindings=runtime",
+    "&dependencyFindings=runtime&sourceId=dependency_audit",
+    "&dependencyFindings=runtime&url=https://other.example"]) {
+    const response = await handleSecurityCenterApi(request(invalid),
+      { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: preview }, "bad-osv",
+      sourceReader, undefined, osvReader);
+    assert.equal(response?.status, 400, invalid);
+  }
+  assert.equal(reads, 0);
+  assert.equal(sourceReads, 0);
+  const allowed = await handleSecurityCenterApi(request(suffix),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: preview }, "allowed-osv",
+    sourceReader, undefined, osvReader);
+  assert.equal(allowed?.status, 200);
+  assert.equal(allowed?.headers.get("cache-control"), "no-store");
+  const projection = await allowed!.json() as {findings:{state:string;verifiedCount:number}};
+  assert.equal(projection.findings.state, "verified");
+  assert.equal(projection.findings.verifiedCount, 1);
+  assert.equal(reads, 1);
+  assert.equal(sourceReads, 0);
+});
