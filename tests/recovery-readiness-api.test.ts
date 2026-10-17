@@ -30,7 +30,9 @@ test("#431 only fixed-scope GET reaches authenticated/scoped Recovery projection
   assert.equal(post?.status, 405);
   for (const query of ["", "?scopeId=other", "?scopeId=workhub-company&scopeId=workhub-company",
     "?scopeId=workhub-company&provider=cloudflare",
-    "?scopeId=workhub-company&restore=1", "?scopeId=workhub-company&sha=abc"]) {
+    "?scopeId=workhub-company&restore=1", "?scopeId=workhub-company&sha=abc",
+    "?scopeId=workhub-company&incidentId=spoofed",
+    "?scopeId=workhub-company&checkpoint=PASSED"]) {
     const response = await handleRecoveryReadinessApi(new Request(root + query), env, "bad-query");
     assert.equal(response?.status, 400, query);
   }
@@ -65,6 +67,10 @@ test("#431 authorized admin sees honest UNKNOWN baseline; no provider/restore co
   assert.equal(body.recovery.sourceState, "not-connected");
   assert.equal(body.recovery.protection, "UNKNOWN");
   assert.equal(body.recovery.readiness, "UNKNOWN");
+  assert.equal(body.recoveryPlan.steps.length, 11);
+  assert.equal(body.recoveryPlan.evidenceSource, "not-connected");
+  assert.equal(body.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(body.recoveryPlan.resumeExecutionAllowed, false);
   assert.equal(body.actionRequired, null);
   assert.equal(body.finding, null);
   assert.deepEqual(body.restoreGate, {
@@ -82,6 +88,8 @@ test("#430 adapter failure is unknown, not zero/readiness healthy and never leak
   assert.match(body, /"sourceState":"unavailable"/u);
   assert.match(body, /"readiness":"UNKNOWN"/u);
   assert.doesNotMatch(body, /fixture-provider-secret-token|access_token|providerUrl/u);
+  assert.match(body, /"resumeDecision":"BLOCKED"/u);
+  assert.match(body, /"evidenceSource":"not-connected"/u);
 });
 
 test("#429/#430 confirmed RPO breach creates separate Finding and ActionRequired without execution", () => {
@@ -113,5 +121,8 @@ test("#430 forbidden Production restore is never offered in local, preview, test
     assert.equal(result.restoreGate.risk, "HUMAN_GATE");
     assert.equal(result.restoreGate.policyDecision, "HUMAN_GATE");
     assert.equal(result.restoreGate.executionAllowed, false);
+    assert.equal(result.recoveryPlan.steps.length, 11);
+    assert.equal(result.recoveryPlan.resumeExecutionAllowed, false);
+    assert.equal(result.recoveryPlan.resumeDecision, "BLOCKED");
   }
 });
