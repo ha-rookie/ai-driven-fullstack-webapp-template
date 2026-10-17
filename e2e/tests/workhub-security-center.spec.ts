@@ -650,3 +650,45 @@ test("#420 OSV runtime Finding button keeps unknown Gray when provider is unavai
   await expect(panel.getByTestId("osv-finding-unknown")).toBeVisible();
   await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
 });
+
+test("#420 real OSV advisory fixture appears as scoped Finding with evidence and three filters", async ({ page }) => {
+  await login(page, "kai");
+  const baseline = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/security/center?scopeId=workhub-company");
+    if (!response.ok) throw new Error("Missing authorized baseline");
+    return response.json();
+  });
+  const at: string = baseline.observedAt;
+  baseline.sources[1] = { ...baseline.sources[1], coverageState: "checked",
+    sourceHealth: "ready", checkedFindingCount: 1, lastSuccessfulCheckAt: at,
+    evidenceValidUntil: new Date(Date.parse(at) + 300000).toISOString(), freshness: "current" };
+  baseline.findings = { state: "verified", verifiedCount: 1, items: [{
+    sourceId: "dependency_audit", ruleId: "osv_advisory_0", category: "dependency",
+    severity: "info", status: "open", resourceRef: "pkg_01", detectedAt: at,
+    lastObservedAt: at, assessedAt: at, riskDisposition: "none",
+    evidence: [{ kind: "dependency", code: "dependency_alert" }],
+    remediationCode: "update_dependency",
+  }] };
+  baseline.dependencyScope = { state: "verified", checkedPackages: 12, checkedAt: at,
+    advisoryCount: 1, advisories: [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }] };
+  await page.route("**/api/admin/security/center?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("dependencyFindings") === "runtime") {
+      await route.fulfill({ json: baseline }); return;
+    }
+    await route.continue();
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await panel.getByRole("button", { name: "OSV実アドバイザリFindingを照合" }).click();
+  await expect(panel.getByTestId("osv-finding-verified")).toContainText("GHSA-aaaa-bbbb-cccc");
+  const table = panel.getByTestId("security-findings-table");
+  await expect(table).toContainText("osv_advisory_0");
+  await expect(table).toContainText("dependency_alert");
+  await panel.getByLabel("Finding分類").selectOption("identity");
+  await expect(table.locator("tbody tr")).toHaveCount(0);
+  await panel.getByLabel("Finding分類").selectOption("dependency");
+  await panel.getByLabel("Finding重大度").selectOption("info");
+  await panel.getByLabel("Finding状態").selectOption("open");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
