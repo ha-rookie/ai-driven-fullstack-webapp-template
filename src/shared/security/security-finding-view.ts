@@ -201,6 +201,62 @@ export const assessFindingSourceLineage = (
   return unverified;
 };
 
+
+/** A read-only remediation next action, never an approved or completed fix. */
+export interface FindingTriageRoute {
+  readonly state: "ci-run" | "osv-advisory" | "incident-playbook" | "manual-review" | "not-recorded";
+  readonly action: string;
+  readonly href: string | null;
+  readonly auditCorrelation: "lookup-required" | "not-recorded";
+  readonly remediationVerified: false;
+}
+interface OsvFindingAdvisory {
+  readonly packageRef: string;
+  readonly advisoryId: string;
+}
+const TRIAGE_GITHUB = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template";
+const TRIAGE_ADVISORY =
+  /^(?:GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}|CVE-[0-9]{4}-[0-9]{4,}|OSV-[0-9]{4}-[0-9]+)$/u;
+
+/** Bind a URL only to an existing matched CI/OSV observation or fixed playbook. */
+export const getFindingTriageRoute = (
+  finding: SecurityFinding,
+  sources: readonly LineageSource[],
+  now: string,
+  verifiedOsvAdvisories: readonly OsvFindingAdvisory[] = [],
+): FindingTriageRoute => {
+  const auditCorrelation = finding.auditRequestId ? "lookup-required" : "not-recorded";
+  const route = (state: FindingTriageRoute["state"], action: string, href: string | null): FindingTriageRoute =>
+    ({ state, action, href, auditCorrelation, remediationVerified: false });
+  if (!finding.remediationCode) return route("not-recorded", "対応コード未登録。担当者が事象を確認", null);
+  const lineage = assessFindingSourceLineage(finding, sources, now);
+  if (finding.remediationCode === "review_control" && lineage.relation === "ci-run-matched") {
+    const source = sources.find(item => item.sourceId === finding.sourceId);
+    const run = source?.ci?.latest;
+    if (run && Number.isSafeInteger(run.runId) && run.runId > 0) {
+      return route("ci-run", "失敗したCI Runの検査Stepと差分を確認",
+        TRIAGE_GITHUB + "/actions/runs/" + run.runId);
+    }
+  }
+  if (finding.remediationCode === "update_dependency" && lineage.relation === "osv-observation-matched"
+    && verifiedOsvAdvisories.length <= 64) {
+    const match = /^osv_advisory_(0|[1-9]\d*)$/u.exec(finding.ruleId);
+    const index = match ? Number(match[1]) : -1;
+    const advisory = verifiedOsvAdvisories[index];
+    if (Number.isSafeInteger(index) && index >= 0 && advisory
+      && advisory.packageRef === finding.resourceRef
+      && TRIAGE_ADVISORY.test(advisory.advisoryId)) {
+      return route("osv-advisory", "OSV原票で対象依存・影響範囲・修正版を調査",
+        "https://osv.dev/vulnerability/" + encodeURIComponent(advisory.advisoryId));
+    }
+  }
+  if (finding.remediationCode === "investigate_incident") {
+    return route("incident-playbook", "既存インシデント対応手順に従い初動を整理",
+      TRIAGE_GITHUB + "/blob/main/docs/security/SECURITY_INCIDENT_RESPONSE.md");
+  }
+  return route("manual-review", "ソースと対応方法を担当者が再確認（証跡不十分）", null);
+};
+
 /** A verified, bounded request-ID match in the existing integrity-checked D1 Audit viewer.
  * This proves a persisted Audit event *with this request ID*, not remediation or
  * causal linkage between the event and the Security Finding itself.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage } from "../src/shared/security/security-finding";
-import { assessFindingEvidence, assessFindingSourceLineage, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings } from "../src/shared/security/security-finding-view";
+import { assessFindingEvidence, assessFindingSourceLineage, getFindingTriageRoute, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings } from "../src/shared/security/security-finding-view";
 
 const AS_OF = "2026-10-16T12:00:00.000Z";
 const source = (sourceId: string, count: number) =>
@@ -310,4 +310,80 @@ test("#420 / #488 scoped OSV origin requires same reviewed source observation, n
   assert.equal(assessFindingSourceLineage(osvFinding, [
     { ...checked, freshness: "unknown" },
   ], sourceTime).relation, "unverified");
+});
+
+
+test("#420 remediation route binds only matched CI Run/SHA and refuses altered evidence", () => {
+  const now = "2026-10-17T00:00:00.000Z", seen = "2026-10-16T23:59:00.000Z", sha = "a".repeat(40);
+  const coverage = normalizeSecuritySourceCoverage({
+    sourceId: "secret_detection", coverageState: "checked", sourceHealth: "degraded",
+    checkedFindingCount: 1, lastSuccessfulCheckAt: now,
+    evidenceValidUntil: "2026-10-17T00:05:00.000Z",
+  }, now);
+  const source = { ...coverage, ci: { state: "available", fetchedAt: now,
+    latest: { runId: 8071, targetSha: sha, updatedAt: seen,
+      checkStatus: "completed", checkConclusion: "failure" } } };
+  const finding = normalizeSecurityFinding({
+    ruleId: "ci_step_failure", category: "data", severity: "high", status: "open",
+    resourceRef: "commit_" + sha.slice(0, 12), detectedAt: seen, lastObservedAt: seen,
+    evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_8071" }],
+    remediationCode: "review_control",
+  }, "secret_detection", now);
+  const route = getFindingTriageRoute(finding, [source], now);
+  assert.equal(route.state, "ci-run");
+  assert.equal(route.href, "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/actions/runs/8071");
+  assert.equal(route.remediationVerified, false);
+  assert.equal(route.auditCorrelation, "not-recorded");
+  assert.equal(getFindingTriageRoute(finding, [source], "2026-10-17T00:06:00.000Z").state, "ci-run");
+  assert.equal(getFindingTriageRoute({ ...finding, resourceRef: "commit_" + "b".repeat(12) }, [source], now).href, null);
+  assert.equal(getFindingTriageRoute({ ...finding, evidence: [{ kind: "ci", code: "control_check_failed",
+    referenceId: "run_9090" }] }, [source], now).href, null);
+  assert.equal(getFindingTriageRoute(finding, [{ ...source, ci: { ...source.ci,
+    latest: { ...source.ci.latest, targetSha: "b".repeat(40) } } }], now).href, null);
+  assert.equal(getFindingTriageRoute(finding, [], now).href, null);
+});
+
+test("#420 OSV remediation original link rejects cross-package, unsafe IDs and missing snapshot", () => {
+  const at = "2026-10-17T00:00:00.000Z";
+  const coverage = normalizeSecuritySourceCoverage({
+    sourceId: "dependency_audit", coverageState: "checked", sourceHealth: "ready",
+    checkedFindingCount: 1, lastSuccessfulCheckAt: at,
+    evidenceValidUntil: "2026-10-17T00:05:00.000Z",
+  }, at);
+  const finding = normalizeSecurityFinding({
+    ruleId: "osv_advisory_0", category: "dependency", severity: "info", status: "open",
+    resourceRef: "pkg_01", detectedAt: at, lastObservedAt: at,
+    evidence: [{ kind: "dependency", code: "dependency_alert" }],
+    remediationCode: "update_dependency",
+  }, "dependency_audit", at);
+  const data = [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }];
+  const route = getFindingTriageRoute(finding, [coverage], at, data);
+  assert.equal(route.state, "osv-advisory");
+  assert.equal(route.href, "https://osv.dev/vulnerability/GHSA-aaaa-bbbb-cccc");
+  assert.equal(route.remediationVerified, false);
+  for (const bad of [
+    [], [{ packageRef: "pkg_02", advisoryId: "GHSA-aaaa-bbbb-cccc" }],
+    [{ packageRef: "pkg_01", advisoryId: "https://evil.invalid" }],
+    [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc?x=1" }],
+    Array.from({ length: 65 }, () => data[0]),
+  ]) assert.equal(getFindingTriageRoute(finding, [coverage], at, bad).href, null);
+  assert.equal(getFindingTriageRoute({ ...finding, lastObservedAt: "2026-10-16T23:59:00.000Z" },
+    [coverage], at, data).href, null);
+  assert.equal(getFindingTriageRoute(finding, [], at, data).href, null);
+});
+
+test("#420 existing incident playbook and Audit request hint are not remediation proof", () => {
+  const now = "2026-10-17T00:00:00.000Z";
+  const finding = normalizeSecurityFinding({
+    ruleId: "incident_1", category: "identity", severity: "high", status: "open",
+    detectedAt: now, lastObservedAt: now, auditRequestId: "request_100",
+    evidence: [{ kind: "runtime", code: "policy_violation" }],
+    remediationCode: "investigate_incident",
+  }, "secret_detection", now);
+  const triage = getFindingTriageRoute(finding, [], now);
+  assert.equal(triage.state, "incident-playbook");
+  assert.equal(triage.auditCorrelation, "lookup-required");
+  assert.equal(triage.remediationVerified, false);
+  assert.equal(triage.href, "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/docs/security/SECURITY_INCIDENT_RESPONSE.md");
+  assert.equal(getFindingTriageRoute({ ...finding, remediationCode: undefined }, [], now).href, null);
 });
