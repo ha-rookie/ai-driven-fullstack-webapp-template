@@ -112,6 +112,18 @@ test("#431 absent backup is UNPROTECTED only from complete source observation", 
   assert.equal(assessRecoveryReadiness({ ...b, observationComplete: false }, NOW).protection, "UNKNOWN");
 });
 
+test("#431 latest backup creation and latest verification times may be ordered either way", () => {
+  const b = complete();
+  for (const verifiedAt of ["2026-10-18T05:15:00.000Z", "2026-10-18T05:40:00.000Z"]) {
+    const result = assessRecoveryReadiness({
+      ...b, backup: { lastSuccessfulAt: point, lastVerifiedAt: verifiedAt },
+    }, NOW);
+    assert.equal(result.sourceState, "available");
+    assert.equal(result.lastVerifiedBackupAt, verifiedAt);
+    assert.equal(result.lastSuccessfulBackupAt, point);
+  }
+});
+
 test("#430 malformed/provider failure/future evidence fails closed without leaky raw fields", () => {
   const b = complete();
   const bad = [
