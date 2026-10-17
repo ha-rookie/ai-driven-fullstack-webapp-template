@@ -552,10 +552,12 @@ export default function SecurityCenter() {
     }) : [];
   const requirements = ready?.scs.requirements.filter((r) =>
     `${r.id} ${r.name} ${r.responsibility}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) ?? [];
+  // Use render-time now, not the earlier mount-time clock, for newly fetched OSV observations.
+  const scsObservationNow = new Date().toISOString();
   const evidencePaths = ready?.scs.requirements.map(r => {
     const technical = osvTraceSnapshot ? scsOsvTechnicalEvidenceTrace(
       r, osvTraceSnapshot.sources.find(source => source.sourceId === "dependency_audit"),
-      osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, evidenceNow) : null;
+      osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, scsObservationNow) : null;
     return scsRequirementEvidencePath(r, technical);
   }) ?? [];
   const observedPaths = evidencePaths.filter(path => path.state === "technical-observation").length;
@@ -690,7 +692,7 @@ export default function SecurityCenter() {
           const osvTrace = osvTraceSnapshot
             ? scsOsvTechnicalEvidenceTrace(
               r, osvTraceSnapshot.sources.find(source => source.sourceId === "dependency_audit"),
-              osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, new Date().toISOString())
+              osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, scsObservationNow)
             : null;
           const path = scsRequirementEvidencePath(r, osvTrace);
           return <tr key={r.id} data-testid={`scs-requirement-${r.id}`}>
