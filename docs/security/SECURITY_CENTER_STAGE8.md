@@ -1,5 +1,15 @@
 # Stage8 #420 — Security Center, read-only vertical slices
 
+## Slice O: all 43 mapped requirements expose an honest Evidence *reachability* status
+
+**Acceptance target:** #420 "Requirement → Evidence traceを表示可能にする" is blocked by the lack of full source-level provenance, not by an absent table. A reviewer must see, for *every* one of the 43 mapped SCS requirements, whether there is (a) verified, bounded technical OSV observation, (b) only a registered test source (not proof of execution), or (c) no valid registered test source. Missing and partial coverage are explicit, including Organization/Project responsibility. The UI provides total, source-reference-only, technically observed and missing counts independent of filtering; the existing Requirement → Control → Test source → limited Evidence drilldown is preserved.
+
+Only \`scsOsvTechnicalEvidenceTrace\` can admit a real limited observation, and only for requirements 4-4-4 and 3-2-1; the evidence source must match the mapped Dependency vulnerability scan reference and the registered allowlisted workflow. Invalid/unsafe test links fail closed. A displayed technical observation can expire and never proves the organization's SCS requirement is satisfied, a CI step ran on deployed code, or remediation/audit correlation exists. All 43 SCS evaluation/freshness values remain unknown; the overall posture stays Gray.
+
+**Delivery gate:** This is an explicit coverage-matrix improvement toward one remaining #420 criterion, not proof that all 43 have actual Evidence. Issue #420 remains Open 8/11 until independent post-merge acceptance evaluation; #488 official criteria/reviewed commits, real Production SHA and SCS evidence-kind TTL remain outstanding. No deployment, D1, Migration, Secret, Cloudflare, scanner, new Worker API, authorization, storage or workflow changes.
+
+**Five planned paths:** this document, \`src/shared/security/scs-reference-links.ts\`, \`tests/scs-reference-links.test.ts\`, \`src/reference/admin/SecurityCenter.tsx\`, \`e2e/tests/workhub-security-center.spec.ts\`. Risk Low: presentation/provenance states; Unit covers 43/14/29 and actual 2/12/29, unsafe links and mismatched mapping; Browser reuses an existing synthetic authorized OSV scenario. CI and exact-HEAD Human Merge Gate remain mandatory.
+
 ## Slice N: real persisted Audit request-ID lookup without invented remediation proof
 
 The existing `GET /api/admin/audit?scopeId=workhub-company&requestId=...&limit=1` already enforces independent authentication, `audit:view` scoped authorization, a fixed runtime environment, exact request-ID matching, and SHA-256 verification of the stored D1 record. This slice reuses it **only when a system administrator explicitly presses the button next to a normalized Finding `auditRequestId`**. It does not add a new endpoint, new database migration, writes, an Audit event, or a background scan.
