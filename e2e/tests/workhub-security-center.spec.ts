@@ -699,6 +699,14 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
   const table = panel.getByTestId("security-findings-table");
   await expect(table).toContainText("osv_advisory_0");
   await expect(table).toContainText("dependency_alert");
+  const provenance = panel.getByTestId("finding-evidence-status-osv_advisory_0");
+  await expect(provenance).toContainText("技術証跡：期限内（ソース限定）");
+  await expect(provenance).toContainText("Health：ready");
+  await expect(provenance).toContainText("最終成功：" + at);
+  await expect(provenance).toContainText("証跡期限：" + new Date(Date.parse(at) + 300000).toISOString());
+  await expect(table).toContainText("調査・修正の候補（実施・完了は未確認）");
+  await expect(table).toContainText("監査相関ID未登録（ログとの関連は未確認）");
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
   await panel.getByLabel("Finding分類").selectOption("identity");
   await expect(table.locator("tbody tr")).toHaveCount(0);
   await panel.getByLabel("Finding分類").selectOption("dependency");
