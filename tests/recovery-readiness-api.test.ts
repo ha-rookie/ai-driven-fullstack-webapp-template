@@ -16,7 +16,8 @@ const sessionDb = (role: string | null): D1Database => ({
     return { bind() { return { first: async () => sql.includes("JOIN users") ? {
       id: "recovery-admin", displayName: "Fixture", lastSeenAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    } : role === null ? null : { userId: "recovery-admin", scopeId: "workhub-company", role } }; } };
+    } : role === null ? null : { userId: "recovery-admin", scopeId: "workhub-company", role },
+      all: async () => ({ results: [] }) }; } };
   },
 }) as unknown as D1Database;
 const req = () => new Request(root + "?scopeId=workhub-company",
@@ -71,6 +72,11 @@ test("#431 authorized admin sees honest UNKNOWN baseline; no provider/restore co
   assert.equal(body.recoveryPlan.evidenceSource, "not-connected");
   assert.equal(body.recoveryPlan.resumeDecision, "BLOCKED");
   assert.equal(body.recoveryPlan.resumeExecutionAllowed, false);
+  assert.deepEqual(body.auditEvidence, {
+    source: "durable-d1-audit", status: "NONE",
+    recordsChecked: 0, latestAuditAt: null, hasMore: false,
+    provesRecoverability: false,
+  });
   assert.equal(body.actionRequired, null);
   assert.equal(body.finding, null);
   assert.deepEqual(body.restoreGate, {
@@ -90,6 +96,7 @@ test("#430 adapter failure is unknown, not zero/readiness healthy and never leak
   assert.doesNotMatch(body, /fixture-provider-secret-token|access_token|providerUrl/u);
   assert.match(body, /"resumeDecision":"BLOCKED"/u);
   assert.match(body, /"evidenceSource":"not-connected"/u);
+  assert.match(body, /"provesRecoverability":false/u);
 });
 
 test("#429/#430 confirmed RPO breach creates separate Finding and ActionRequired without execution", () => {
@@ -124,5 +131,6 @@ test("#430 forbidden Production restore is never offered in local, preview, test
     assert.equal(result.recoveryPlan.steps.length, 11);
     assert.equal(result.recoveryPlan.resumeExecutionAllowed, false);
     assert.equal(result.recoveryPlan.resumeDecision, "BLOCKED");
+    assert.equal(result.auditEvidence.provesRecoverability, false);
   }
 });
