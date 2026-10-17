@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
-import { assessFindingEvidence, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
+import { assessFindingEvidence, assessFindingSourceLineage, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
 import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
@@ -180,6 +180,7 @@ const FindingEvidenceStatus = ({
   finding, sources, now,
 }: { readonly finding: SecurityFinding; readonly sources: readonly Coverage[]; readonly now: string }) => {
   const status = assessFindingEvidence(finding, sources, now);
+  const lineage = assessFindingSourceLineage(finding, sources, now);
   const freshnessLabel = status.state === "current" ? "期限内（ソース限定）"
     : status.state === "stale" ? "期限切れ（Gray／再照会要）"
       : status.state === "unavailable" ? "取得不能（Gray）" : "未確認（Gray）";
@@ -188,6 +189,16 @@ const FindingEvidenceStatus = ({
     <div>発行元：{finding.sourceId} / Health：{status.health}</div>
     <div>最終成功：{status.lastSuccessfulCheckAt ?? "未確認"}</div>
     <div>証跡期限：{status.evidenceValidUntil ?? "未確認"}</div>
+    <div data-testid={`finding-source-lineage-${finding.ruleId}`}>
+      <strong>発生源照合：{lineage.relation === "ci-run-matched"
+        ? "CI実行Runに一致（技術記録のみ）"
+        : lineage.relation === "osv-observation-matched"
+          ? "OSVソース観測に一致（技術記録のみ）"
+          : "Finding固有の実行証跡は未確認（Gray）"}</strong>
+      <div>Finding観測時刻：{lineage.findingObservedAt ?? "同一検査との照合未完了"}</div>
+      <div>CI対象SHA：{lineage.ciTargetSha ?? "未確認／非該当"} ・実稼働SHA：未確認</div>
+      <small>ソースの期限内判定とFindingの発生源照合は別軸です。SCS公式評価Evidence・Remediation完了はunknown。</small>
+    </div>
     <small>当該ソースの技術観測のみ。SCS証跡・実稼働環境の安全性は未検証。</small>
   </div>;
 };

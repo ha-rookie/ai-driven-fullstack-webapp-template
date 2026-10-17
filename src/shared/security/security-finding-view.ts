@@ -118,6 +118,89 @@ export const assessFindingEvidence = (
     || Date.parse(now) >= Date.parse(source.evidenceValidUntil) ? "stale" : "current" };
 };
 
+
+/**
+ * #420 / #488: Source TTL and a particular Finding's origin are independent
+ * checks. A source may be current yet a Finding cannot be tied to that run.
+ *
+ * Only two existing, strictly projected feeds have a reviewed association:
+ * fixed GitHub CI control-step failures and the scoped runtime-lock OSV feed.
+ * No generic scanner Finding, deployment SHA or SCS Evidence is inferred.
+ */
+export interface FindingSourceLineage {
+  readonly relation: "ci-run-matched" | "osv-observation-matched" | "unverified";
+  readonly sourceFreshness: FindingEvidenceAssessment["state"];
+  /** A matched Finding observation timestamp, NOT an SCS evidence file timestamp. */
+  readonly findingObservedAt: string | null;
+  /** Target SHA of the matching CI run only; not a deployed version. */
+  readonly ciTargetSha: string | null;
+  readonly deployedCommitSha: null;
+  readonly scsEvidenceState: "unknown";
+}
+
+interface LineageCiRun {
+  readonly runId: number;
+  readonly targetSha: string;
+  readonly updatedAt: string;
+  readonly checkStatus: string;
+  readonly checkConclusion?: string;
+}
+interface LineageSource extends SecuritySourceCoverage {
+  readonly ci?: {
+    readonly state: string;
+    readonly fetchedAt: string | null;
+    readonly latest: LineageCiRun | null;
+  };
+}
+export const assessFindingSourceLineage = (
+  finding: SecurityFinding,
+  sources: readonly LineageSource[],
+  now: string,
+): FindingSourceLineage => {
+  const source = sources.find(item => item.sourceId === finding.sourceId);
+  const sourceFreshness = assessFindingEvidence(finding, sources, now).state;
+  const unverified: FindingSourceLineage = {
+    relation: "unverified", sourceFreshness, findingObservedAt: null,
+    ciTargetSha: null, deployedCommitSha: null, scsEvidenceState: "unknown",
+  };
+  if (!source || source.coverageState !== "checked"
+    || (source.sourceHealth !== "ready" && source.sourceHealth !== "degraded")
+    || sourceFreshness === "unknown" || sourceFreshness === "unavailable"
+    || !canonicalUtc(finding.lastObservedAt) || !canonicalUtc(now)
+    || Date.parse(finding.lastObservedAt) > Date.parse(now)) return unverified;
+
+  const ev = finding.evidence.length === 1 ? finding.evidence[0] : undefined;
+  const run = source.ci?.latest;
+  if (finding.ruleId === "ci_step_failure"
+    && ev?.kind === "ci" && ev.code === "control_check_failed"
+    && source.sourceHealth === "degraded"
+    && source.ci?.state === "available"
+    && canonicalUtc(source.ci.fetchedAt) && Date.parse(source.ci.fetchedAt) <= Date.parse(now)
+    && run && Number.isSafeInteger(run.runId) && run.runId > 0
+    && /^[a-f0-9]{40}$/u.test(run.targetSha)
+    && canonicalUtc(run.updatedAt) && run.checkStatus === "completed"
+    && run.checkConclusion === "failure"
+    && finding.lastObservedAt === run.updatedAt
+    && ev.referenceId === "run_" + run.runId
+    && finding.resourceRef === "commit_" + run.targetSha.slice(0, 12)) {
+    return { relation: "ci-run-matched", sourceFreshness,
+      findingObservedAt: run.updatedAt, ciTargetSha: run.targetSha,
+      deployedCommitSha: null, scsEvidenceState: "unknown" };
+  }
+  if (finding.sourceId === "dependency_audit"
+    && /^osv_advisory_(?:0|[1-9]\d*)$/u.test(finding.ruleId)
+    && ev?.kind === "dependency" && ev.code === "dependency_alert"
+    && ev.referenceId === undefined
+    && source.sourceHealth === "ready"
+    && /^pkg_(?:0[1-9]|1[0-2])$/u.test(finding.resourceRef ?? "")
+    && source.lastSuccessfulCheckAt === finding.lastObservedAt) {
+    return { relation: "osv-observation-matched", sourceFreshness,
+      findingObservedAt: finding.lastObservedAt, ciTargetSha: null,
+      deployedCommitSha: null, scsEvidenceState: "unknown" };
+  }
+  return unverified;
+};
+
 /** A verified, bounded request-ID match in the existing integrity-checked D1 Audit viewer.
  * This proves a persisted Audit event *with this request ID*, not remediation or
  * causal linkage between the event and the Security Finding itself.

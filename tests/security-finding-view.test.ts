@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage } from "../src/shared/security/security-finding";
-import { assessFindingEvidence, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings } from "../src/shared/security/security-finding-view";
+import { assessFindingEvidence, assessFindingSourceLineage, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings } from "../src/shared/security/security-finding-view";
 
 const AS_OF = "2026-10-16T12:00:00.000Z";
 const source = (sourceId: string, count: number) =>
@@ -226,4 +226,88 @@ test("#488 source declared unknown freshness does not become current solely beca
   assert.equal(assessFindingEvidence(first, [declaredUnknown], now).state, "unknown");
   assert.equal(assessFindingEvidence(first, [known], now).state, "current");
   assert.equal(assessFindingEvidence(first, [{ ...known, freshness: "stale" as const }], now).state, "stale");
+});
+
+
+test("#420 / #488 only a matching actual CI run and full SHA establishes per-Finding lineage", () => {
+  const observedAt = "2026-10-16T11:59:00.000Z";
+  const sha = "a".repeat(40);
+  const checked = normalizeSecuritySourceCoverage({
+    sourceId: "secret_detection", coverageState: "checked",
+    sourceHealth: "degraded", checkedFindingCount: 1,
+    lastSuccessfulCheckAt: AS_OF,
+    evidenceValidUntil: "2026-10-16T12:05:00.000Z",
+  }, AS_OF);
+  const ciSource = { ...checked, ci: { state: "available" as const, fetchedAt: AS_OF,
+    latest: { runId: 1084, targetSha: sha, updatedAt: observedAt,
+      checkStatus: "completed", checkConclusion: "failure" } } };
+  const ciFinding = normalizeSecurityFinding({
+    ruleId: "ci_step_failure", category: "data", severity: "high", status: "open",
+    resourceRef: "commit_" + sha.slice(0, 12),
+    detectedAt: observedAt, lastObservedAt: observedAt,
+    evidence: [{ kind: "ci", code: "control_check_failed", referenceId: "run_1084" }],
+  }, "secret_detection", AS_OF);
+  const current = assessFindingSourceLineage(ciFinding, [ciSource], AS_OF);
+  assert.equal(current.relation, "ci-run-matched");
+  assert.equal(current.sourceFreshness, "current");
+  assert.equal(current.findingObservedAt, observedAt);
+  assert.equal(current.ciTargetSha, sha);
+  assert.equal(current.deployedCommitSha, null);
+  assert.equal(current.scsEvidenceState, "unknown");
+  const stale = assessFindingSourceLineage(ciFinding, [ciSource], "2026-10-16T12:05:00.000Z");
+  assert.equal(stale.relation, "ci-run-matched");
+  assert.equal(stale.sourceFreshness, "stale");
+  for (const altered of [
+    { ...ciFinding, resourceRef: "commit_" + "b".repeat(12) },
+    { ...ciFinding, lastObservedAt: "2026-10-16T11:58:00.000Z" },
+    { ...ciFinding, evidence: [{ kind: "ci" as const, code: "control_check_failed" as const, referenceId: "run_1085" }] },
+  ]) {
+    assert.equal(assessFindingSourceLineage(altered, [ciSource], AS_OF).relation, "unverified");
+  }
+  for (const changed of [
+    { ...ciSource, ci: { ...ciSource.ci, latest: { ...ciSource.ci.latest, targetSha: "b".repeat(40) } } },
+    { ...ciSource, ci: { ...ciSource.ci, latest: { ...ciSource.ci.latest, checkConclusion: "success" } } },
+    { ...ciSource, ci: { ...ciSource.ci, latest: { ...ciSource.ci.latest, runId: 0 } } },
+    { ...ciSource, ci: { ...ciSource.ci, latest: { ...ciSource.ci.latest, updatedAt: AS_OF } } },
+    { ...ciSource, ci: { ...ciSource.ci, state: "unavailable" } },
+  ]) assert.equal(assessFindingSourceLineage(ciFinding, [changed], AS_OF).relation, "unverified");
+  assert.equal(assessFindingSourceLineage(ciFinding, [], AS_OF).relation, "unverified");
+  assert.equal(assessFindingSourceLineage(ciFinding, [ciSource], "garbage").relation, "unverified");
+});
+
+test("#420 / #488 scoped OSV origin requires same reviewed source observation, not just source TTL", () => {
+  const sourceTime = "2026-10-16T12:00:00.000Z";
+  const checked = normalizeSecuritySourceCoverage({
+    sourceId: "dependency_audit", coverageState: "checked", sourceHealth: "ready",
+    lastSuccessfulCheckAt: sourceTime, evidenceValidUntil: "2026-10-16T12:05:00.000Z",
+    checkedFindingCount: 1,
+  }, sourceTime);
+  const osvFinding = normalizeSecurityFinding({
+    ruleId: "osv_advisory_0", category: "dependency", severity: "info", status: "open",
+    resourceRef: "pkg_01", detectedAt: sourceTime, lastObservedAt: sourceTime,
+    evidence: [{ kind: "dependency", code: "dependency_alert" }],
+  }, "dependency_audit", sourceTime);
+  const verified = assessFindingSourceLineage(osvFinding, [checked], "2026-10-16T12:04:59.999Z");
+  assert.equal(verified.relation, "osv-observation-matched");
+  assert.equal(verified.sourceFreshness, "current");
+  assert.equal(verified.findingObservedAt, sourceTime);
+  assert.equal(verified.ciTargetSha, null);
+  assert.equal(verified.deployedCommitSha, null);
+  assert.equal(assessFindingSourceLineage(osvFinding, [checked], "2026-10-16T12:05:00.000Z").sourceFreshness, "stale");
+  const otherTime = "2026-10-16T11:59:00.000Z";
+  assert.equal(assessFindingSourceLineage({
+    ...osvFinding, detectedAt: otherTime, lastObservedAt: otherTime,
+  }, [checked], sourceTime).relation, "unverified");
+  assert.equal(assessFindingSourceLineage({
+    ...osvFinding, evidence: [{ kind: "ci", code: "control_check_failed" }],
+  }, [checked], sourceTime).relation, "unverified");
+  assert.equal(assessFindingSourceLineage({
+    ...osvFinding, resourceRef: "pkg_99",
+  }, [checked], sourceTime).relation, "unverified");
+  assert.equal(assessFindingSourceLineage(osvFinding, [
+    { ...checked, sourceHealth: "unavailable" },
+  ], sourceTime).relation, "unverified");
+  assert.equal(assessFindingSourceLineage(osvFinding, [
+    { ...checked, freshness: "unknown" },
+  ], sourceTime).relation, "unverified");
 });

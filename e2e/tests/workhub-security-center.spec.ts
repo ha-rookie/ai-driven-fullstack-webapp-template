@@ -604,6 +604,12 @@ test("#420 admin manually projects an observed CI control failure through the re
   await expect(table).toContainText("ci_step_failure");
   await expect(table).toContainText("control_check_failed");
   await expect(table).toContainText("run_1042");
+  await expect(panel.getByTestId("finding-source-lineage-ci_step_failure"))
+    .toContainText("CI実行Runに一致（技術記録のみ）");
+  await expect(panel.getByTestId("finding-source-lineage-ci_step_failure"))
+    .toContainText("CI対象SHA：" + run.targetSha);
+  await expect(panel.getByTestId("finding-source-lineage-ci_step_failure"))
+    .toContainText("実稼働SHA：未確認");
   await panel.getByLabel("Finding重大度").selectOption("low");
   await expect(table.locator("tbody tr")).toHaveCount(0);
   await panel.getByLabel("Finding重大度").selectOption("high");
@@ -776,6 +782,10 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
   const provenance = panel.getByTestId("finding-evidence-status-osv_advisory_0");
   await expect(provenance).toContainText("技術証跡：期限内（ソース限定）");
   await expect(provenance).toContainText("Health：ready");
+  await expect(panel.getByTestId("finding-source-lineage-osv_advisory_0"))
+    .toContainText("OSVソース観測に一致（技術記録のみ）");
+  await expect(panel.getByTestId("finding-source-lineage-osv_advisory_0"))
+    .toContainText("実稼働SHA：未確認");
   await expect(provenance).toContainText("最終成功：" + at);
   await expect(provenance).toContainText("証跡期限：" + new Date(Date.parse(at) + 300000).toISOString());
   await expect(table).toContainText("調査・修正の候補（実施・完了は未確認）");
