@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage } from "../src/shared/security/security-finding";
-import { assessFindingEvidence, assessFindingSourceLineage, getFindingTriageRoute, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings } from "../src/shared/security/security-finding-view";
+import { assessFindingEvidence, assessFindingSourceLineage, getFindingTriageRoute, isSecurityFindingFeed, readVerifiedAuditRequestMatch, correlateFindingAuditResource, selectSecurityFindings } from "../src/shared/security/security-finding-view";
 
 const AS_OF = "2026-10-16T12:00:00.000Z";
 const source = (sourceId: string, count: number) =>
@@ -386,4 +386,45 @@ test("#420 existing incident playbook and Audit request hint are not remediation
   assert.equal(triage.remediationVerified, false);
   assert.equal(triage.href, "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/docs/security/SECURITY_INCIDENT_RESPONSE.md");
   assert.equal(getFindingTriageRoute({ ...finding, remediationCode: undefined }, [], now).href, null);
+});
+
+
+test("#420 persisted scoped Audit matches the same resource mutation, not just request ID", () => {
+  const now = "2026-10-17T01:00:00.000Z";
+  const requestId = "req-420-resource";
+  const finding = normalizeSecurityFinding({
+    ruleId: "resource_review", category: "identity", severity: "high", status: "open",
+    resourceRef: "account-007",
+    detectedAt: "2026-10-17T00:10:00.000Z",
+    lastObservedAt: "2026-10-17T00:11:00.000Z",
+    evidence: [{ kind: "runtime", code: "policy_violation" }],
+    remediationCode: "review_access", auditRequestId: requestId,
+  }, "secret_detection", now);
+  const event = {
+    id: "event-420", environment: "test", timestamp: "2026-10-17T00:15:00.000Z",
+    requestId, category: "mutation", action: "membership.update", outcome: "success",
+    actorId: "fixture-admin", scopeId: "workhub-company",
+    resourceType: "user", resourceId: "account-007", reason: null,
+  };
+  const proof = readVerifiedAuditRequestMatch(
+    { items: [event], nextCursor: null }, requestId, "workhub-company", now);
+  assert.equal(proof.state, "request-id-found");
+  assert.equal(correlateFindingAuditResource(finding, proof, now), "same-resource-successful-mutation");
+  assert.equal(correlateFindingAuditResource({ ...finding, resourceRef: "other-account" }, proof, now), "request-id-only");
+  assert.equal(correlateFindingAuditResource({ ...finding, auditRequestId: "another-request" }, proof, now), "request-id-only");
+  assert.equal(correlateFindingAuditResource({ ...finding, remediationCode: undefined }, proof, now), "request-id-only");
+  assert.equal(correlateFindingAuditResource({ ...finding, auditRequestId: undefined }, proof, now), "not-recorded");
+  assert.equal(correlateFindingAuditResource(finding, { state: "no-record" }, now), "request-id-only");
+  assert.equal(correlateFindingAuditResource(finding, proof, "invalid"), "request-id-only");
+  assert.equal(correlateFindingAuditResource(finding, proof, "2026-10-17T00:12:00.000Z"), "request-id-only");
+  for (const changed of [
+    { category: "system" }, { outcome: "failure" },
+    { resourceId: "another-account" }, { resourceType: null },
+    { timestamp: "2026-10-17T00:05:00.000Z" },
+  ]) {
+    const badProof = readVerifiedAuditRequestMatch(
+      { items: [{ ...event, ...changed }], nextCursor: null },
+      requestId, "workhub-company", now);
+    assert.equal(correlateFindingAuditResource(finding, badProof, now), "request-id-only");
+  }
 });

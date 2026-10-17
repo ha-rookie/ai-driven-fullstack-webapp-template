@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
-import { assessFindingEvidence, assessFindingSourceLineage, getFindingTriageRoute, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
+import { assessFindingEvidence, assessFindingSourceLineage, getFindingTriageRoute, isSecurityFindingFeed, readVerifiedAuditRequestMatch, correlateFindingAuditResource, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
 import { assessScsEvidenceCandidateFreshness, scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
@@ -208,7 +208,9 @@ const FindingEvidenceStatus = ({
  * scoped and integrity-checked durable Audit endpoint. A matching request ID
  * is not remediation proof or causation between this record and the Finding.
  */
-const AuditRequestProofLookup = ({ requestId }: { readonly requestId: string }) => {
+const AuditRequestProofLookup = ({ requestId, finding }: {
+  readonly requestId: string; readonly finding: SecurityFinding;
+}) => {
   const abortRef = useRef<AbortController | null>(null);
   const [result, setResult] = useState<
     { readonly kind: "idle" | "loading" | "unavailable" }
@@ -249,7 +251,11 @@ const AuditRequestProofLookup = ({ requestId }: { readonly requestId: string }) 
           <time dateTime={result.evidence.record.timestamp}>{result.evidence.record.timestamp}</time> /
           {result.evidence.record.category} / {result.evidence.record.action} /
           {result.evidence.record.outcome}</div>
-        <small>Request ID一致のみ。Findingとの因果関係・修正作業・Remediation完了・SCS適合は未確認。</small>
+        {correlateFindingAuditResource(finding, result.evidence, new Date().toISOString())
+          === "same-resource-successful-mutation"
+          ? <strong data-testid="finding-audit-resource-match">同一リソースへの変更監査記録あり（是正完了は未証明）</strong>
+          : <small>Request ID一致のみ。Resource/変更実績との相関は未確認。</small>}
+        <small>Findingとの因果関係・修正作業・Remediation完了・SCS適合は未確認。</small>
       </div>
       : result.evidence.state === "no-record"
         ? <small role="status">一致する保存済み監査記録なし（当該環境・Scopeのみ／是正完了未確認）</small>
@@ -696,7 +702,7 @@ export default function SecurityCenter() {
                 : "監査相関ID未登録（ログとの関連は未確認）"}
                 {item.auditRequestId && <>
                   <small>相関IDは照合用ヒント。実在する監査イベントとの一致は別途確認が必要。</small>
-                  <AuditRequestProofLookup key={item.auditRequestId} requestId={item.auditRequestId} />
+                  <AuditRequestProofLookup key={item.auditRequestId} requestId={item.auditRequestId} finding={item} />
                 </>}</div>
             </td>
           </tr>)}</tbody>
