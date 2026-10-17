@@ -726,9 +726,13 @@ test("#420 admin manually verifies persisted Audit Request ID without treating i
   });
   const now: string = baseline.observedAt;
   const requestId = "CF-123.NRT";
+  // Synthetic authorized presentation fixture: CI metadata remains explicitly
+  // not connected, so no remote check is inferred from this browser test.
   baseline.sources[0] = { ...baseline.sources[0], coverageState: "checked",
     sourceHealth: "ready", checkedFindingCount: 1, lastSuccessfulCheckAt: now,
-    evidenceValidUntil: new Date(Date.parse(now) + 3600000).toISOString(), freshness: "current" };
+    evidenceValidUntil: new Date(Date.parse(now) + 3600000).toISOString(),
+    freshness: "current",
+    ci: { state: "not-connected", fetchedAt: null, latest: null, latestSuccessfulRun: null } };
   baseline.findings = { state: "verified", verifiedCount: 1, items: [{
     sourceId: "secret_detection", ruleId: "audit_looked_up", category: "identity",
     severity: "medium", status: "open", detectedAt: now, lastObservedAt: now,
