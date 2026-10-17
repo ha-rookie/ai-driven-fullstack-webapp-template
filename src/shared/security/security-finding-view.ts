@@ -95,8 +95,9 @@ export const assessFindingEvidence = (
   now: string,
 ): FindingEvidenceAssessment => {
   const source = sources.find(item => item.sourceId === finding.sourceId);
+  const health: FindingEvidenceAssessment["health"] = source?.sourceHealth ?? "not-connected";
   const base = {
-    health: source?.sourceHealth ?? "not-connected",
+    health,
     lastSuccessfulCheckAt: source?.lastSuccessfulCheckAt ?? null,
     evidenceValidUntil: source?.evidenceValidUntil ?? null,
     auditCorrelation: finding.auditRequestId ? "lookup-required" as const : "not-recorded" as const,
