@@ -1,3 +1,9 @@
+## Slice T: persisted Audit evidence joined to the same Finding resource (read-only)
+
+This incremental #420 slice strengthens the existing authenticated, scoped Audit request-ID lookup. A Request-ID match by itself does **not** prove the Finding was changed or remediated. The UI separately correlates the independently verified stored record to the **same bounded resource reference**, requiring a recorded resource type, exact resource ID match, mutation category, successful outcome, and an event timestamp no earlier than the Finding detection. Other cases remain request-ID-only/unknown. A successful change to the same resource is **not** proof that the security Finding was fixed, that it was caused by this Finding, or that an SCS control passed.
+
+Only existing data is read: no new Audit writes, Remediation Case, database/migration, remote deployment, workflow or scanner. Scoped authorization and integrity checking stay in the existing Audit endpoint. This is a direct step toward the remaining remediation/Audit acceptance without closing it prematurely. Four files only: this document, security-finding-view helper and unit tests, and the existing Security Center UI. Formal System Test #694 is deferred to the agreed final testing phase.
+
 # Stage8 #420 — Security Center, read-only vertical slices
 
 ## Slice S: reviewed kind-specific candidate Evidence freshness and missing input disclosure (#488)
