@@ -1,5 +1,11 @@
 # Stage8 #420 — Security Center, read-only vertical slices
 
+## Slice K: real OSV runtime advisory IDs into scoped Finding list
+
+The admin-only, manually triggered `dependencyFindings=runtime` mode reuses the existing reviewed twelve-entry production runtime lockfile OSV querybatch reader. A verified advisory is represented as an actual source-bound `osv_advisory` SecurityFinding with dependency category, informational/unknown severity (not a derived CVSS), and controlled dependency_alert Evidence plus update_dependency remediation hint. The separately validated OSV advisory ID is shown beside its opaque packageRef. The status open is a triage placeholder, not a verified remediation status. Verified zero is limited to the twelve lock entries; unavailable or partial OSV response remains Gray/unknown, not zero. No full dependency inventory coverage, production runtime verification, SCS certification or global vulnerability assurance is claimed. Existing scoped admin auth and no-store are reused. No new external endpoints, Secrets, D1, Cloudflare resources or deployments.
+
+This slice touches only the existing Worker Security Center API, SecurityCenter React UI, API tests, browser tests and this document. Original #420 acceptance remains Open 4/11 until independently verified after merging; this PR does not authorize merging or deployment.
+
 ## Slice J: manually verified CI-control failures into existing SecurityFinding list (incremental)
 
 Business purpose: close the gap between individual real GitHub Actions control-step failure evidence (Slice H) and the existing filtered SecurityFinding list, without pretending that CI run metadata equals vulnerability scanner alerts. This is a limited source-connected slice for #420; it does NOT complete the broad Finding provider, SCS evidence freshness, or all original acceptance conditions.

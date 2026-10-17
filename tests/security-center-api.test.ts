@@ -1,3 +1,4 @@
+import { projectRuntimeOsvFindings } from "../src/worker/administration/security-center-api";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { handleSecurityCenterApi, projectSecurityCenter } from "../src/worker/administration/security-center-api";
@@ -351,4 +352,109 @@ test("#420 on-demand CI Finding refuses forged/mismatched step, ambiguous succes
   const snapshot = await unavailable!.json() as {findings:{state:string;items:null;verifiedCount:null}};
   assert.deepEqual(snapshot.findings, { state: "not-connected", items: null, verifiedCount: null });
   assert.equal(reads, 1);
+});
+
+test("#420 OSV real advisory projects a bounded dependency Finding, preserving unknown severity", () => {
+  const now = "2026-10-17T00:00:00.000Z";
+  const advisory = { packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" };
+  const result = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
+    source: "OSV", state: "verified", checkedAt: now, checkedPackages: 12,
+    advisoryCount: 1, advisories: [advisory] }, now);
+  assert.equal(result.posture, "not-assessed");
+  assert.equal(result.findings.state, "verified");
+  assert.equal(result.findings.verifiedCount, 1);
+  assert.equal(result.findings.items?.[0]?.ruleId, "osv_advisory_0");
+  assert.equal(result.findings.items?.[0]?.severity, "info");
+  assert.equal(result.findings.items?.[0]?.evidence[0]?.code, "dependency_alert");
+  assert.equal(result.sources.find(x => x.sourceId === "dependency_audit")?.checkedFindingCount, 1);
+});
+test("#420 two real OSV advisories on one package have distinct Finding identities", () => {
+  const now = "2026-10-17T00:00:00.000Z";
+  const projected = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
+    source: "OSV", state: "verified", checkedAt: now, checkedPackages: 12,
+    advisoryCount: 2, advisories: [
+      { packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" },
+      { packageRef: "pkg_01", advisoryId: "CVE-2026-12345" },
+    ] }, now);
+  assert.equal(projected.findings.verifiedCount, 2);
+  assert.deepEqual(projected.findings.items?.map(x => x.ruleId),
+    ["osv_advisory_0", "osv_advisory_1"]);
+  assert.equal(projected.sources.find(x => x.sourceId === "dependency_audit")?.checkedFindingCount, 2);
+});
+
+test("#420 cached OSV result preserves actual check time without inventing fresh scan", () => {
+  const time = "2026-10-17T00:04:59.000Z";
+  const checkedAt = "2026-10-17T00:00:00.000Z";
+  const result = { schemaVersion: 1 as const, scope: "runtime-lock-only" as const,
+    source: "OSV" as const, state: "verified" as const, checkedAt, checkedPackages: 12,
+    advisoryCount: 1, advisories: [{ packageRef: "pkg_01", advisoryId: "CVE-2026-12345" }] };
+  const valid = projectRuntimeOsvFindings(result, time);
+  assert.equal(valid.findings.state, "verified");
+  assert.equal(valid.findings.items?.[0]?.detectedAt, checkedAt);
+  assert.equal(valid.findings.items?.[0]?.assessedAt, time);
+  assert.equal(valid.sources.find(s => s.sourceId === "dependency_audit")?.lastSuccessfulCheckAt, checkedAt);
+  const expired = projectRuntimeOsvFindings(result, "2026-10-17T00:05:00.000Z");
+  assert.equal(expired.findings.state, "not-connected");
+});
+
+test("#420 OSV unknown stays disconnected and source-scoped verified zero stays zero", () => {
+  const now = "2026-10-17T00:00:00.000Z";
+  const unavailable = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
+    source: "OSV", state: "unavailable", checkedAt: null, checkedPackages: null,
+    advisoryCount: null, advisories: null }, now);
+  assert.equal(unavailable.findings.state, "not-connected");
+  const zero = projectRuntimeOsvFindings({ schemaVersion: 1, scope: "runtime-lock-only",
+    source: "OSV", state: "verified", checkedAt: now, checkedPackages: 12,
+    advisoryCount: 0, advisories: [] }, now);
+  assert.equal(zero.findings.verifiedCount, 0);
+  assert.equal(zero.posture, "not-assessed");
+});
+
+test("#420 real OSV Finding mode denies unauthorized users and rejects query injection before provider reads", async () => {
+  const root = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  let reads = 0, sourceReads = 0;
+  const osvReader = async (_environment: unknown, at: string) => {
+    reads++;
+    return { schemaVersion: 1 as const, scope: "runtime-lock-only" as const,
+      source: "OSV" as const, state: "verified" as const,
+      checkedAt: at, checkedPackages: 12, advisoryCount: 1,
+      advisories: [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }] };
+  };
+  const sourceReader: SecurityCenterSourceReader = async (_environment, at) => {
+    sourceReads++; return unconnectedSecuritySources(at);
+  };
+  const request = (suffix: string, cookie = true) => new Request(root + suffix, {
+    headers: cookie ? { cookie: "app_session=synthetic-session-only" } : {},
+  });
+  const preview = "preview";
+  const suffix = "&dependencyFindings=runtime";
+  const anonymous = await handleSecurityCenterApi(request(suffix, false),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: preview }, "anonymous-osv",
+    sourceReader, undefined, osvReader);
+  assert.equal(anonymous?.status, 401);
+  const employee = await handleSecurityCenterApi(request(suffix),
+    { DB: sessionDb("employee"), RUNTIME_ENVIRONMENT: preview }, "denied-osv",
+    sourceReader, undefined, osvReader);
+  assert.equal(employee?.status, 403);
+  for (const invalid of ["&dependencyFindings=all",
+    "&dependencyFindings=runtime&dependencyFindings=runtime",
+    "&dependencyFindings=runtime&sourceId=dependency_audit",
+    "&dependencyFindings=runtime&url=https://other.example"]) {
+    const response = await handleSecurityCenterApi(request(invalid),
+      { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: preview }, "bad-osv",
+      sourceReader, undefined, osvReader);
+    assert.equal(response?.status, 400, invalid);
+  }
+  assert.equal(reads, 0);
+  assert.equal(sourceReads, 0);
+  const allowed = await handleSecurityCenterApi(request(suffix),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: preview }, "allowed-osv",
+    sourceReader, undefined, osvReader);
+  assert.equal(allowed?.status, 200);
+  assert.equal(allowed?.headers.get("cache-control"), "no-store");
+  const projection = await allowed!.json() as {findings:{state:string;verifiedCount:number}};
+  assert.equal(projection.findings.state, "verified");
+  assert.equal(projection.findings.verifiedCount, 1);
+  assert.equal(reads, 1);
+  assert.equal(sourceReads, 0);
 });

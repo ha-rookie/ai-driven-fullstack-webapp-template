@@ -327,9 +327,15 @@ test("#420 injected stale or wrong-source CI step evidence fails closed", async 
 
 test("#420 source-verified Finding contracts show independent severity/category/status and safe evidence codes", async ({ page }) => {
   await login(page, "kai");
+  // Capture the authorized baseline before installing interception; a route.fetch()
+  // under concurrent navigation can be disposed when the context changes.
+  const baseline = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/security/center?scopeId=workhub-company");
+    if (!response.ok) throw new Error("Security Center fixture baseline unavailable");
+    return response.json();
+  });
   await page.route("**/api/admin/security/center?**", async route => {
-    const response = await route.fetch();
-    const body = await response.json();
+    const body = structuredClone(baseline);
     // Synthetic post-auth UI fixture only. Production endpoint remains NOT CONNECTED.
     const asOf: string = body.observedAt;
     const earlier = (minutes: number) => new Date(Date.parse(asOf) - minutes * 60_000).toISOString();
@@ -352,7 +358,7 @@ test("#420 source-verified Finding contracts show independent severity/category/
       exception: { reasonCode: "mitigation_documented", approvalRef: "approval_one", expiresAt: earlier(5) },
       riskDisposition: "accepted-expired" };
     body.findings = { state: "verified", items: [first, second], verifiedCount: 2 };
-    await route.fulfill({ response, json: body });
+    await route.fulfill({ json: body });
   });
   await page.goto("/admin");
   const panel = page.locator("#admin-security-center");
@@ -620,4 +626,69 @@ test("#420 no confirmed CI control failure is never displayed as Finding zero", 
   await panel.getByRole("button", { name: "実CI制御異常Findingを照合" }).click();
   await expect(panel.getByTestId("security-control-lookup")).toContainText("未検査・成功Runを脆弱性0件とは扱いません");
   await expect(panel.getByTestId("security-finding-unconnected")).toBeVisible();
+});
+
+test("#420 OSV runtime Finding button keeps unknown Gray when provider is unavailable", async ({ page }) => {
+  await login(page, "kai");
+  const snapshot = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/security/center?scopeId=workhub-company");
+    if (!response.ok) throw new Error("Security Center fixture baseline unavailable");
+    return response.json();
+  });
+  await page.route("**/api/admin/security/center?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("dependencyFindings") !== "runtime") {
+      await route.continue(); return;
+    }
+    await route.fulfill({ json: { ...snapshot, dependencyScope: {
+      state: "unavailable", checkedPackages: null, checkedAt: null,
+      advisoryCount: null, advisories: null,
+    } } });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await panel.getByRole("button", { name: "OSV実アドバイザリFindingを照合" }).click();
+  await expect(panel.getByTestId("osv-finding-unknown")).toBeVisible();
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
+
+test("#420 real OSV advisory fixture appears as scoped Finding with evidence and three filters", async ({ page }) => {
+  await login(page, "kai");
+  const baseline = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/security/center?scopeId=workhub-company");
+    if (!response.ok) throw new Error("Missing authorized baseline");
+    return response.json();
+  });
+  const at: string = baseline.observedAt;
+  baseline.sources[1] = { ...baseline.sources[1], coverageState: "checked",
+    sourceHealth: "ready", checkedFindingCount: 1, lastSuccessfulCheckAt: at,
+    evidenceValidUntil: new Date(Date.parse(at) + 300000).toISOString(), freshness: "current" };
+  baseline.findings = { state: "verified", verifiedCount: 1, items: [{
+    sourceId: "dependency_audit", ruleId: "osv_advisory_0", category: "dependency",
+    severity: "info", status: "open", resourceRef: "pkg_01", detectedAt: at,
+    lastObservedAt: at, assessedAt: at, riskDisposition: "none",
+    evidence: [{ kind: "dependency", code: "dependency_alert" }],
+    remediationCode: "update_dependency",
+  }] };
+  baseline.dependencyScope = { state: "verified", checkedPackages: 12, checkedAt: at,
+    advisoryCount: 1, advisories: [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }] };
+  await page.route("**/api/admin/security/center?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("dependencyFindings") === "runtime") {
+      await route.fulfill({ json: baseline }); return;
+    }
+    await route.continue();
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await panel.getByRole("button", { name: "OSV実アドバイザリFindingを照合" }).click();
+  await expect(panel.getByTestId("osv-finding-verified")).toContainText("GHSA-aaaa-bbbb-cccc");
+  const table = panel.getByTestId("security-findings-table");
+  await expect(table).toContainText("osv_advisory_0");
+  await expect(table).toContainText("dependency_alert");
+  await panel.getByLabel("Finding分類").selectOption("identity");
+  await expect(table.locator("tbody tr")).toHaveCount(0);
+  await panel.getByLabel("Finding分類").selectOption("dependency");
+  await panel.getByLabel("Finding重大度").selectOption("info");
+  await panel.getByLabel("Finding状態").selectOption("open");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
 });

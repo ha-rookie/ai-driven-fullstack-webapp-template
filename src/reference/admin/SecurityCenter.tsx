@@ -128,6 +128,37 @@ const isObservedControlSnapshot = (value: unknown): value is Snapshot => {
     });
 };
 
+
+type OsvSnapshot = Snapshot & { dependencyScope: {
+  state: "verified"; checkedPackages: number; checkedAt: string;
+  advisoryCount: number; advisories: readonly {packageRef:string;advisoryId:string}[];
+} | { state: "unavailable"; checkedPackages:null; checkedAt:null; advisoryCount:null; advisories:null } };
+const isOsvFindingSnapshot = (value: Snapshot): value is OsvSnapshot => {
+  const scope = (value as Snapshot & {dependencyScope?: OsvSnapshot["dependencyScope"]}).dependencyScope;
+  if (!scope) return false;
+  if (scope.state === "unavailable") return value.findings.state === "not-connected";
+  if (scope.state !== "verified" || scope.checkedPackages !== 12
+    || !isTime(scope.checkedAt) || scope.checkedAt > value.observedAt
+    || Date.parse(value.observedAt) - Date.parse(scope.checkedAt) >= 300_000
+    || !Array.isArray(scope.advisories) || scope.advisories.length !== scope.advisoryCount
+    || value.findings.state !== "verified") return false;
+  const items = value.findings.items;
+  if (items.length !== scope.advisories.length) return false;
+  return scope.advisories.every((a, i) => {
+    const finding = items[i];
+    return /^pkg_[0-9]{2}$/u.test(a.packageRef)
+      && /^(?:GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}|CVE-[0-9]{4}-[0-9]{4,}|OSV-[0-9]{4}-[0-9]+)$/u.test(a.advisoryId)
+      && finding.ruleId === "osv_advisory_" + i && finding.sourceId === "dependency_audit"
+      && finding.resourceRef === a.packageRef && finding.category === "dependency"
+      && finding.severity === "info" && finding.status === "open"
+      && finding.detectedAt === scope.checkedAt && finding.lastObservedAt === scope.checkedAt
+      && finding.assessedAt === value.observedAt
+      && finding.evidence.length === 1 && finding.evidence[0].kind === "dependency"
+      && finding.evidence[0].code === "dependency_alert"
+      && finding.remediationCode === "update_dependency";
+  });
+};
+
 /** A verified source-bound zero is not a whole-system security verdict. */
 const coverageDisplay = (source: Coverage) => {
   if (source.coverageState === "unavailable") return { label: "利用不可（Gray）", count: "不明" };
@@ -363,6 +394,8 @@ export default function SecurityCenter() {
   const [findingSeverity, setFindingSeverity] = useState<SecuritySeverity | "all">("all");
   const [findingCategory, setFindingCategory] = useState<SecurityCategory | "all">("all");
   const [findingStatus, setFindingStatus] = useState<SecurityFindingStatus | "all">("all");
+  const [osvFindingLookup, setOsvFindingLookup] = useState<"idle" | "loading" | "verified" | "unknown">("idle");
+  const [osvAdvisories, setOsvAdvisories] = useState<readonly {packageRef:string;advisoryId:string}[]>([]);
   const [controlLookup, setControlLookup] = useState<"idle" | "loading" | "verified" | "unknown" | "unavailable">("idle");
   const load = async () => {
     setState({ kind: "loading" });
@@ -399,6 +432,29 @@ export default function SecurityCenter() {
       setState({ kind: "ready", data: payload });
       setControlLookup(payload.findings.state === "verified" ? "verified" : "unknown");
     } catch { setState({ kind: "unavailable" }); setControlLookup("unavailable"); }
+  };
+
+  const loadOsvFindings = async () => {
+    setOsvFindingLookup("loading");
+    setOsvAdvisories([]);
+    try {
+      const response = await fetch("/api/admin/security/center?scopeId=workhub-company&dependencyFindings=runtime", {
+        headers: { accept: "application/json" }, cache: "no-store",
+      });
+      if (response.status === 401 || response.status === 403) {
+        setState({ kind: "denied" }); setOsvFindingLookup("unknown"); return;
+      }
+      if (!response.ok) { setState({ kind: "unavailable" }); setOsvFindingLookup("unknown"); return; }
+      const payload: unknown = await response.json();
+      if (!isSnapshot(payload) || !isOsvFindingSnapshot(payload)) {
+        setState({ kind: "unavailable" }); setOsvFindingLookup("unknown"); return;
+      }
+      setState({ kind: "ready", data: payload });
+      if (payload.dependencyScope.state === "verified") {
+        setOsvAdvisories(payload.dependencyScope.advisories);
+        setOsvFindingLookup("verified");
+      } else setOsvFindingLookup("unknown");
+    } catch { setState({ kind: "unavailable" }); setOsvFindingLookup("unknown"); }
   };
   useEffect(() => { void load(); }, []);
   const ready = state.kind === "ready" ? state.data : null;
@@ -451,6 +507,13 @@ export default function SecurityCenter() {
       </table></div>
       <OsvRuntimeAdvisories />
       <h3>Security Finding（検査済みソース限定）</h3>
+      <p>OSVの実アドバイザリIDを、レビュー済み本番依存12ロックエントリに限定して照合します。重大度infoは未評価の仮置き、状態openは照会時点の要対応表示で、修復済みかどうかの確認結果ではありません。</p>
+      <button type="button" disabled={osvFindingLookup === "loading"} onClick={() => { void loadOsvFindings(); }}>OSV実アドバイザリFindingを照合</button>
+      {osvFindingLookup === "loading" && <p role="status">OSVの限定照会中…</p>}
+      {osvFindingLookup === "unknown" && <p role="alert" data-testid="osv-finding-unknown">OSV照会結果を確認できません（Gray／件数不明）。</p>}
+      {osvFindingLookup === "verified" && <div data-testid="osv-finding-verified"><p>OSV照会範囲：本番依存12ロックエントリ。アドバイザリ {osvAdvisories.length} 件。全体の脆弱性0件やSCS適合は意味しません。</p>
+        {osvAdvisories.map((a, i) => <p key={a.packageRef + a.advisoryId + i}>{a.packageRef}：{a.advisoryId}（OSV ID、個別Severity未検証）</p>)}
+      </div>}
       <p>既存のGitHub CIに対して、最後のRunで失敗した既知の検査ステップのみを実際に照合し、
         CI制御異常Findingとして一覧に接続します。脆弱性そのものの検出、CI成功時のFinding 0件、
         現在の本番環境の安全性は保証しません。過去のSHAでの失敗もあり得ます。</p>
