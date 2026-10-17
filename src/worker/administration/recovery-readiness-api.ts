@@ -6,6 +6,8 @@ import type { ActionRequired, Finding, OperationDefinition } from "../operations
 import type { RuntimeEnvironment } from "../../shared/runtime";
 import { assessRecoveryReadiness, type RecoveryReadinessProjection } from "../../shared/recovery/readiness";
 import { projectRecoveryPlan, type RecoveryPlanProjection } from "../../shared/recovery/recovery-plan";
+import { readRecoveryAuditEvidence, unavailableRecoveryAudit,
+  type RecoveryAuditEvidence } from "./recovery-audit-evidence";
 
 /**
  * #431: read-only, fixed-scope Recovery Readiness projection. A future,
@@ -41,6 +43,7 @@ export interface RecoveryCenterResponse {
   readonly observedAt: string;
   readonly recovery: RecoveryReadinessProjection;
   readonly recoveryPlan: RecoveryPlanProjection;
+  readonly auditEvidence: RecoveryAuditEvidence;
   readonly finding: Finding | null;
   readonly actionRequired: ActionRequired | null;
   readonly restoreGate: {
@@ -57,6 +60,7 @@ export const projectRecoveryCenter = (
   environment: RuntimeEnvironment, asOf: string, rawEvidence: unknown,
   /** Unregistered until an approved durable Audit recovery adapter exists. */
   recoveryAuditEvidence: unknown = null,
+  auditEvidence: RecoveryAuditEvidence = unavailableRecoveryAudit(),
 ): RecoveryCenterResponse => {
   const recovery = assessRecoveryReadiness(rawEvidence, asOf);
   const recoveryPlan = projectRecoveryPlan(recovery, environment, asOf, recoveryAuditEvidence);
@@ -82,7 +86,7 @@ export const projectRecoveryCenter = (
   } : null;
   return {
     schemaVersion: 1, scopeId: SCOPE, environment, observedAt: asOf,
-    recovery, recoveryPlan, finding, actionRequired,
+    recovery, recoveryPlan, auditEvidence, finding, actionRequired,
     restoreGate: {
       operationId: "recovery.restore", policyVersion: OPERATIONS_POLICY_VERSION,
       risk: "HUMAN_GATE", policyDecision: "HUMAN_GATE", executionAllowed: false,
@@ -123,8 +127,11 @@ export const handleRecoveryReadinessApi = async (
   let evidence: unknown;
   try { evidence = await reader(environment, asOf); }
   catch { evidence = undefined; } // UNKNOWN, not healthy or verified.
+  // Real read of existing durable D1 Audit rows. Never turns backup readiness
+  // green and never consumes untrusted HTTP-provided Audit evidence.
+  const auditEvidence = await readRecoveryAuditEvidence(env.DB, environment, asOf);
   try {
-    return Response.json(projectRecoveryCenter(environment, asOf, evidence), {
+    return Response.json(projectRecoveryCenter(environment, asOf, evidence, null, auditEvidence), {
       headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
     });
   } catch { return reject(requestId, 503, "recovery_projection_unavailable"); }

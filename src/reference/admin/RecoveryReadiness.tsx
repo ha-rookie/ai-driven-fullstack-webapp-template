@@ -11,6 +11,14 @@ interface ResponseView {
   readonly observedAt: string;
   readonly recovery: RecoveryReadinessProjection;
   readonly recoveryPlan: RecoveryPlanProjection;
+  readonly auditEvidence: {
+    readonly source: "durable-d1-audit";
+    readonly status: "RECORDED" | "NONE" | "UNAVAILABLE";
+    readonly recordsChecked: number | null;
+    readonly latestAuditAt: string | null;
+    readonly hasMore: boolean | null;
+    readonly provesRecoverability: false;
+  };
   readonly finding: { readonly id: string; readonly summary: string } | null;
   readonly actionRequired: { readonly findingId: string; readonly reason: string } | null;
   readonly restoreGate: {
@@ -30,8 +38,19 @@ const isRecoveryResponse = (value: unknown): value is ResponseView => {
     || !oneOf(value.environment, ["local", "test", "preview", "production"])
     || typeof value.observedAt !== "string"
     || !record(value.recovery) || !record(value.restoreGate)
-    || !record(value.recoveryPlan)) return false;
+    || !record(value.recoveryPlan) || !record(value.auditEvidence)) return false;
   const r = value.recovery, gate = value.restoreGate, plan = value.recoveryPlan;
+  const audit = value.auditEvidence;
+  const auditSafe = audit.source === "durable-d1-audit"
+    && oneOf(audit.status, ["RECORDED", "NONE", "UNAVAILABLE"])
+    && audit.provesRecoverability === false
+    && (audit.status === "UNAVAILABLE"
+      ? audit.recordsChecked === null && audit.latestAuditAt === null && audit.hasMore === null
+      : typeof audit.recordsChecked === "number"
+        && Number.isSafeInteger(audit.recordsChecked)
+        && audit.recordsChecked >= 0 && audit.recordsChecked <= 20
+        && (audit.latestAuditAt === null || typeof audit.latestAuditAt === "string")
+        && typeof audit.hasMore === "boolean");
   const planSafe = oneOf(plan.evidenceSource, ["not-connected", "unavailable", "verified-audit"])
     && oneOf(plan.resumeDecision, ["BLOCKED", "HUMAN_REVIEW_REQUIRED"])
     && plan.resumeExecutionAllowed === false
@@ -42,7 +61,7 @@ const isRecoveryResponse = (value: unknown): value is ResponseView => {
       && item.executionAllowed === false
       && oneOf(item.state, ["VERIFIED", "FAILED", "PENDING", "UNKNOWN"]))
     && Array.isArray(plan.blockers) && plan.blockers.every((x: unknown) => typeof x === "string");
-  return planSafe && oneOf(r.sourceState, ["available", "not-connected", "unavailable"])
+  return auditSafe && planSafe && oneOf(r.sourceState, ["available", "not-connected", "unavailable"])
     && oneOf(r.protection, ["PROTECTED", "DEGRADED", "UNPROTECTED", "UNKNOWN"])
     && oneOf(r.readiness, ["READY", "NOT_READY", "UNKNOWN"])
     && record(r.rpo) && record(r.rto)
@@ -131,6 +150,15 @@ export default function RecoveryReadiness() {
       {view.actionRequired && <div className="admin-audit-state is-error" role="alert">
         RPO違反：対応要確認（{view.actionRequired.reason}）。復旧は自動実行しません。
       </div>}
+      <div className="admin-audit-state" data-testid="recovery-audit-coverage">
+        <h3>監査証跡（既存D1監査ログ・読み取り専用）</h3>
+        <p>取得状態: <strong>{view.auditEvidence.status}</strong> ／
+          照合レコード数: {view.auditEvidence.recordsChecked ?? "未確認"}
+          {view.auditEvidence.hasMore === true ? "（次ページあり）" : ""} ／
+          最新記録: {fmt(view.auditEvidence.latestAuditAt)}</p>
+        <p>対象環境・業務スコープの監査レコードを既存D1から照合します。
+          記録があっても、バックアップ検証やシステム復旧の成功を示すものではありません。</p>
+      </div>
       <div className="admin-audit-state" data-testid="recovery-plan" aria-label="復旧手順（読み取り専用）">
         <h3>復旧手順：11ステップ（実行不可）</h3>
         <p>復旧事故ごとの監査済み記録: {view.recoveryPlan.evidenceSource}。
