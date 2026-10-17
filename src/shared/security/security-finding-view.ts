@@ -266,6 +266,7 @@ export type AuditRequestLookupEvidence =
       readonly id: string; readonly timestamp: string; readonly environment: "local" | "test" | "preview" | "production";
       readonly category: "authentication" | "authorization" | "mutation" | "system";
       readonly action: string; readonly outcome: "success" | "failure";
+      readonly requestId: string; readonly resourceType: string | null; readonly resourceId: string | null;
     } }
   | { readonly state: "no-record" }
   | { readonly state: "invalid" };
@@ -316,7 +317,32 @@ export const readVerifiedAuditRequestMatch = (
     category: item.category as "authentication" | "authorization" | "mutation" | "system",
     action: item.action,
     outcome: item.outcome as "success" | "failure",
+    requestId, resourceType: item.resourceType as string | null,
+    resourceId: item.resourceId as string | null,
   } };
+};
+
+/** A stored audit event can be associated with the same resource, but cannot certify remediation. */
+export type FindingAuditResourceCorrelation =
+  | "not-recorded" | "request-id-only" | "same-resource-successful-mutation";
+
+export const correlateFindingAuditResource = (
+  finding: SecurityFinding,
+  proof: AuditRequestLookupEvidence,
+  now: string,
+): FindingAuditResourceCorrelation => {
+  if (!finding.auditRequestId) return "not-recorded";
+  if (proof.state !== "request-id-found") return "request-id-only";
+  const event = proof.record;
+  if (!canonicalUtc(now) || !canonicalUtc(finding.detectedAt)
+    || !canonicalUtc(event.timestamp) || event.timestamp > now
+    || event.timestamp < finding.detectedAt || !finding.remediationCode
+    || event.requestId !== finding.auditRequestId
+    || event.category !== "mutation" || event.outcome !== "success"
+    || typeof finding.resourceRef !== "string" || !AUDIT_REQUEST_ID.test(finding.resourceRef)
+    || !event.resourceType || event.resourceType.length > 64
+    || event.resourceId !== finding.resourceRef) return "request-id-only";
+  return "same-resource-successful-mutation";
 };
 
 export interface FindingViewFilters {
