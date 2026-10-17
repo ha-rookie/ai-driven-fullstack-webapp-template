@@ -681,6 +681,21 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
   const panel = page.locator("#admin-security-center");
   await panel.getByRole("button", { name: "OSV実アドバイザリFindingを照合" }).click();
   await expect(panel.getByTestId("osv-finding-verified")).toContainText("GHSA-aaaa-bbbb-cccc");
+  // The authorized, source-verified OSV response links only the two reviewed
+  // partial SCS requirements, without upgrading actual SCS evidence or Audit.
+  for (const id of ["4-4-4", "3-2-1"]) {
+    const requirement = panel.getByTestId(`scs-requirement-${id}`);
+    await expect(requirement.getByTestId(`scs-osv-trace-${id}`)).toContainText("GHSA-aaaa-bbbb-cccc");
+    await expect(requirement.getByTestId(`scs-osv-trace-${id}`)).toContainText("runtime lock 12件のみ");
+    await expect(requirement.getByTestId(`scs-osv-freshness-${id}`))
+      .toContainText("SCSは未検証");
+    await expect(requirement).toContainText("Audit correlation: 未確認");
+    await expect(requirement).toContainText("Remediation: update_dependency");
+    await expect(requirement).toContainText("未検証（SCS証跡 unknown）");
+    await expect(requirement.getByRole("link", { name: "GHSA-aaaa-bbbb-cccc" }))
+      .toHaveAttribute("href", "https://osv.dev/vulnerability/GHSA-aaaa-bbbb-cccc");
+  }
+  await expect(panel.getByTestId("scs-requirement-4-1-1")).not.toContainText("OSV実観測");
   const table = panel.getByTestId("security-findings-table");
   await expect(table).toContainText("osv_advisory_0");
   await expect(table).toContainText("dependency_alert");
