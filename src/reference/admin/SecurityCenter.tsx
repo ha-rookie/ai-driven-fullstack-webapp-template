@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
 import { assessFindingEvidence, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
-import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace } from "../../shared/security/scs-reference-links";
+import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
 
@@ -552,6 +552,17 @@ export default function SecurityCenter() {
     }) : [];
   const requirements = ready?.scs.requirements.filter((r) =>
     `${r.id} ${r.name} ${r.responsibility}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) ?? [];
+  // Use render-time now, not the earlier mount-time clock, for newly fetched OSV observations.
+  const scsObservationNow = new Date().toISOString();
+  const evidencePaths = ready?.scs.requirements.map(r => {
+    const technical = osvTraceSnapshot ? scsOsvTechnicalEvidenceTrace(
+      r, osvTraceSnapshot.sources.find(source => source.sourceId === "dependency_audit"),
+      osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, scsObservationNow) : null;
+    return scsRequirementEvidencePath(r, technical);
+  }) ?? [];
+  const observedPaths = evidencePaths.filter(path => path.state === "technical-observation").length;
+  const registeredPaths = evidencePaths.filter(path => path.state === "registered-reference-only").length;
+  const missingPaths = evidencePaths.filter(path => path.state === "no-valid-test-reference").length;
   return <section className="admin-audit-panel" id="admin-security-center" aria-labelledby="admin-security-center-title">
     <div className="admin-audit-heading"><div>
       <p className="admin-eyebrow">SECURITY / SELF-AUDIT CENTER</p>
@@ -668,6 +679,9 @@ export default function SecurityCenter() {
         </table></div>
       </>}
       <h3>SCS要件別の責任・Control・証跡</h3>
+      <p data-testid="scs-evidence-summary">Requirement → Evidence到達状況（全{evidencePaths.length}要件）：
+        実観測に到達（技術のみ）{observedPaths}件 ／ 登録済みテスト参照のみ{registeredPaths}件 ／ 有効テスト参照未登録{missingPaths}件。
+        SCS公式評価Evidence・実行SHA・継続的適合は全件未検証（Gray）。</p>
       <p>既存要件対応表の参照元確認日：{ready.scs.sourceVerifiedAt}。これは各要件の監査・証跡の最終確認日ではありません。検査実行やSCS認証取得を示しません。</p>
       <p>テストファイルのリンクは登録済みソースへの案内です。リンク先は閲覧時点のGitHub mainで、稼働アプリ・CI実行対象SHAとは限りません。テスト成功や証跡の存在・鮮度を確認したものではありません。</p>
       <label>要件・責任を検索 <input value={filter} onChange={(event) => setFilter(event.target.value)}
@@ -678,11 +692,18 @@ export default function SecurityCenter() {
           const osvTrace = osvTraceSnapshot
             ? scsOsvTechnicalEvidenceTrace(
               r, osvTraceSnapshot.sources.find(source => source.sourceId === "dependency_audit"),
-              osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, new Date().toISOString())
+              osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, scsObservationNow)
             : null;
+          const path = scsRequirementEvidencePath(r, osvTrace);
           return <tr key={r.id} data-testid={`scs-requirement-${r.id}`}>
             <td><strong>{r.id}</strong><small>{r.name}</small></td><td>{r.responsibility}</td>
-            <td>{r.control}</td><td><ScsTestReferences reference={r.testReference} />
+            <td>{r.control}</td><td><div data-testid={`scs-evidence-path-${r.id}`}>
+              <strong>{path.state === "technical-observation" ? "実観測に到達（技術のみ）"
+                : path.state === "registered-reference-only" ? "登録済みテスト参照のみ（実行未検証）"
+                  : "有効テスト参照未登録（証跡未確認）"}</strong>
+              <small>Requirement → Control → Test参照 → {path.state === "technical-observation"
+                ? "限定技術観測" : "Evidence未接続"}。SCS公式評価・Evidence鮮度はunknown。</small>
+            </div><ScsTestReferences reference={r.testReference} />
               <div>証跡名：{r.evidenceReference ?? "未登録"}（未検証）</div>
               {osvTrace && <div data-testid={`scs-osv-trace-${r.id}`}>
                 <strong>OSV実観測への技術トレース（SCS適合の証明ではありません）</strong>

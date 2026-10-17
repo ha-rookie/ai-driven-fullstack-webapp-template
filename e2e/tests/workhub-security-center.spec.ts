@@ -681,6 +681,20 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
   const panel = page.locator("#admin-security-center");
   await panel.getByRole("button", { name: "OSV実アドバイザリFindingを照合" }).click();
   await expect(panel.getByTestId("osv-finding-verified")).toContainText("GHSA-aaaa-bbbb-cccc");
+  await expect(panel.getByTestId("scs-evidence-summary"))
+    .toContainText("全43要件）： 実観測に到達（技術のみ）2件");
+  await expect(panel.getByTestId("scs-evidence-summary"))
+    .toContainText("登録済みテスト参照のみ12件");
+  await expect(panel.getByTestId("scs-evidence-summary"))
+    .toContainText("有効テスト参照未登録29件");
+  await expect(panel.getByTestId("scs-evidence-path-4-4-4"))
+    .toContainText("実観測に到達（技術のみ）");
+  await expect(panel.getByTestId("scs-evidence-path-4-1-1"))
+    .toContainText("登録済みテスト参照のみ（実行未検証）");
+  await expect(panel.getByTestId("scs-evidence-path-1-2-1"))
+    .toContainText("有効テスト参照未登録（証跡未確認）");
+  await expect(panel.getByTestId("scs-evidence-summary"))
+    .toContainText("SCS公式評価Evidence・実行SHA・継続的適合は全件未検証（Gray）");
   // The authorized, source-verified OSV response links only the two reviewed
   // partial SCS requirements, without upgrading actual SCS evidence or Audit.
   for (const id of ["4-4-4", "3-2-1"]) {

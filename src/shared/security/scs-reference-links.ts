@@ -31,6 +31,47 @@ export const scsTestSourceLinks = (reference: unknown): readonly ScsTestSourceLi
   return paths.map((path) => Object.freeze({ path, href: REPO_SOURCE_BASE + path }));
 };
 
+/** #420: The 43-row Requirement → Evidence path is a coverage/provenance
+ * status, not a claim that a registered test ran or that SCS evidence is valid.
+ * Only an already verified, bounded OSV technical trace can upgrade the
+ * observation column. SCS evidence is never promoted by this helper.
+ */
+export type ScsEvidencePathState =
+  | "technical-observation" | "registered-reference-only" | "no-valid-test-reference";
+export interface ScsRequirementEvidencePath {
+  readonly requirementId: string;
+  readonly state: ScsEvidencePathState;
+  readonly testLinks: readonly ScsTestSourceLink[];
+  readonly scsEvidenceState: "unknown";
+  readonly technicalObservation: ScsOsvTechnicalTrace | null;
+}
+export const scsRequirementEvidencePath = (
+  requirement: ScsOsvTraceRequirement & { readonly testReference: string | null },
+  technical: ScsOsvTechnicalTrace | null,
+): ScsRequirementEvidencePath => {
+  const testLinks = scsTestSourceLinks(requirement.testReference);
+  const associated = (requirement.id === "4-4-4" || requirement.id === "3-2-1")
+    && requirement.responsibility === "Partially Implemented"
+    && requirement.evidenceReference?.split(";").map(value => value.trim())
+      .includes("Dependency vulnerability scan");
+  // Never trust a caller's technical marker for unrelated or unmapped controls.
+  const actual = associated && technical?.kind === "scoped-osv-technical-observation"
+    && technical.sourceId === "dependency_audit"
+    && technical.scsEvidenceState === "unknown"
+    && technical.remediationVerified === false
+    && technical.auditCorrelationVerified === false
+    && testLinks.some(link => link.path === ".github/workflows/dependency-vulnerability.yml")
+      ? technical : null;
+  return {
+    requirementId: requirement.id,
+    state: actual ? "technical-observation"
+      : testLinks.length > 0 ? "registered-reference-only" : "no-valid-test-reference",
+    testLinks,
+    scsEvidenceState: "unknown",
+    technicalObservation: actual,
+  };
+};
+
 /** #420 Slice L: a checked OSV observation can be linked to two mapped
  * requirements, but it never upgrades the requirement's SCS Evidence status.
  * No external query, event creation or unverifiable issue/audit correlation.

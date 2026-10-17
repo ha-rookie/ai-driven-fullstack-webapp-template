@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace } from "../src/shared/security/scs-reference-links";
+import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath } from "../src/shared/security/scs-reference-links";
 
 const REPO = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/";
 
@@ -125,4 +125,66 @@ test("#420 OSV SCS linkage fails closed on unverified sources, unrelated mapping
   assert.equal(deny(req, source, observation, "2026-10-17T00:05:00.000Z"), null);
   assert.equal(scsOsvTechnicalEvidenceTrace(req, source, observation, snapshotAt,
     "2026-10-16T23:59:59.000Z"), null);
+});
+
+
+test("#420 every one of 43 SCS requirements has an explicit fail-closed Evidence path", async () => {
+  const mapping = (await import("../config/scs-control-mapping.json")).default;
+  const withoutObservation = mapping.requirements.map(r => scsRequirementEvidencePath({
+    id: r.id, responsibility: r.status, evidenceReference: r.evidence,
+    testReference: r.test,
+  }, null));
+  assert.equal(withoutObservation.length, 43);
+  assert.equal(new Set(withoutObservation.map(r => r.requirementId)).size, 43);
+  assert.equal(withoutObservation.filter(r => r.state === "technical-observation").length, 0);
+  assert.equal(withoutObservation.filter(r => r.state === "registered-reference-only").length, 14);
+  assert.equal(withoutObservation.filter(r => r.state === "no-valid-test-reference").length, 29);
+  assert.ok(withoutObservation.every(r => r.scsEvidenceState === "unknown"));
+  const source = { sourceId: "dependency_audit", coverageState: "checked",
+    sourceHealth: "ready", checkedFindingCount: 1,
+    lastSuccessfulCheckAt: "2026-10-17T00:00:00.000Z",
+    evidenceValidUntil: "2026-10-17T00:05:00.000Z" };
+  const observed = { state: "verified" as const, checkedAt: "2026-10-17T00:00:00.000Z",
+    checkedPackages: 12, advisoryCount: 1,
+    advisories: [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }] };
+  const traced = mapping.requirements.map(r => {
+    const requirement = { id: r.id, responsibility: r.status,
+      evidenceReference: r.evidence, testReference: r.test };
+    const scoped = scsOsvTechnicalEvidenceTrace(requirement, source, observed,
+      "2026-10-17T00:04:00.000Z", "2026-10-17T00:04:00.000Z");
+    return scsRequirementEvidencePath(requirement, scoped);
+  });
+  assert.deepEqual(traced.filter(r => r.state === "technical-observation")
+    .map(r => r.requirementId).sort(), ["3-2-1", "4-4-4"]);
+  assert.equal(traced.filter(r => r.state === "registered-reference-only").length, 12);
+  assert.equal(traced.filter(r => r.state === "no-valid-test-reference").length, 29);
+  assert.ok(traced.every(r => r.scsEvidenceState === "unknown"));
+  assert.ok(traced.filter(r => r.state === "technical-observation")
+    .every(r => r.technicalObservation?.scsEvidenceState === "unknown"));
+});
+
+test("#420 forged/unsafe technical paths never become SCS evidence", () => {
+  const technical = {
+    kind: "scoped-osv-technical-observation" as const,
+    sourceId: "dependency_audit" as const,
+    checkedPackages: 12 as const,
+    checkedAt: "2026-10-17T00:00:00.000Z",
+    validUntil: "2026-10-17T00:05:00.000Z",
+    freshness: "current" as const, advisoryCount: 0, advisories: [],
+    scsEvidenceState: "unknown" as const,
+    remediationVerified: false as const, auditCorrelationVerified: false as const,
+  };
+  const good = { id: "4-4-4", responsibility: "Partially Implemented",
+    evidenceReference: "Dependency vulnerability scan",
+    testReference: ".github/workflows/dependency-vulnerability.yml" };
+  assert.equal(scsRequirementEvidencePath(good, technical).state, "technical-observation");
+  assert.equal(scsRequirementEvidencePath({ ...good, id: "4-1-1" }, technical).state, "registered-reference-only");
+  assert.equal(scsRequirementEvidencePath({ ...good, responsibility: "Organization Responsibility" }, technical).state,
+    "registered-reference-only");
+  assert.equal(scsRequirementEvidencePath({ ...good,
+    testReference: "https://evil.example/scan.yml" }, technical).state, "no-valid-test-reference");
+  assert.equal(scsRequirementEvidencePath({ ...good, evidenceReference: "Unverified CI" }, technical).state,
+    "registered-reference-only");
+  assert.equal(scsRequirementEvidencePath(good, { ...technical, scsEvidenceState: "current" } as never).state,
+    "registered-reference-only");
 });
