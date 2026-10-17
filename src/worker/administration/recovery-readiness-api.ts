@@ -5,6 +5,7 @@ import { canExecuteOperation, decideOperationPolicy, OPERATIONS_POLICY_VERSION }
 import type { ActionRequired, Finding, OperationDefinition } from "../operations";
 import type { RuntimeEnvironment } from "../../shared/runtime";
 import { assessRecoveryReadiness, type RecoveryReadinessProjection } from "../../shared/recovery/readiness";
+import { projectRecoveryPlan, type RecoveryPlanProjection } from "../../shared/recovery/recovery-plan";
 
 /**
  * #431: read-only, fixed-scope Recovery Readiness projection. A future,
@@ -39,6 +40,7 @@ export interface RecoveryCenterResponse {
   readonly environment: RuntimeEnvironment;
   readonly observedAt: string;
   readonly recovery: RecoveryReadinessProjection;
+  readonly recoveryPlan: RecoveryPlanProjection;
   readonly finding: Finding | null;
   readonly actionRequired: ActionRequired | null;
   readonly restoreGate: {
@@ -53,8 +55,11 @@ export interface RecoveryCenterResponse {
 /** Explicit #429 Finding vs ActionRequired separation; never infer a breach from a missing source. */
 export const projectRecoveryCenter = (
   environment: RuntimeEnvironment, asOf: string, rawEvidence: unknown,
+  /** Unregistered until an approved durable Audit recovery adapter exists. */
+  recoveryAuditEvidence: unknown = null,
 ): RecoveryCenterResponse => {
   const recovery = assessRecoveryReadiness(rawEvidence, asOf);
+  const recoveryPlan = projectRecoveryPlan(recovery, environment, asOf, recoveryAuditEvidence);
   const preview = decideOperationPolicy({ allowed: true }, {
     definition: RESTORE_DEFINITION, actorKind: "HUMAN", environment,
     target: { resourceType: "recovery", resourceId: "workhub-recovery", scopeId: SCOPE },
@@ -77,7 +82,7 @@ export const projectRecoveryCenter = (
   } : null;
   return {
     schemaVersion: 1, scopeId: SCOPE, environment, observedAt: asOf,
-    recovery, finding, actionRequired,
+    recovery, recoveryPlan, finding, actionRequired,
     restoreGate: {
       operationId: "recovery.restore", policyVersion: OPERATIONS_POLICY_VERSION,
       risk: "HUMAN_GATE", policyDecision: "HUMAN_GATE", executionAllowed: false,
