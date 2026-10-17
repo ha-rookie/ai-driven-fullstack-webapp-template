@@ -65,6 +65,57 @@ export const isSecurityFindingFeed = (
     && checked.reduce((sum, source) => sum + (source.checkedFindingCount ?? 0), 0) === feed.verifiedCount;
 };
 
+/**
+ * #420 / #488: distinguish a validated source's *technical observation*
+ * from SCS compliance and from a real, separately verified Audit event.
+ * This reads only provenance already authorized and normalized in the snapshot.
+ */
+export interface FindingEvidenceAssessment {
+  readonly state: "current" | "stale" | "unknown" | "unavailable";
+  readonly health: SecuritySourceCoverage["sourceHealth"] | "not-connected";
+  readonly lastSuccessfulCheckAt: string | null;
+  readonly evidenceValidUntil: string | null;
+  readonly auditCorrelation: "lookup-required" | "not-recorded";
+  readonly remediation: "investigation-hint" | "not-recorded";
+}
+const canonicalUtc = (value: unknown): value is string =>
+  typeof value === "string"
+  && /^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z$/u.test(value)
+  && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+
+/**
+ * A verified Finding stays historically observable after its provider TTL
+ * expires, but it cannot be presented as a *currently verified* control.
+ * An auditRequestId is only a lookup hint until the existing Audit viewer
+ * independently returns a scoped, integrity-checked stored record.
+ */
+export const assessFindingEvidence = (
+  finding: SecurityFinding,
+  sources: readonly SecuritySourceCoverage[],
+  now: string,
+): FindingEvidenceAssessment => {
+  const source = sources.find(item => item.sourceId === finding.sourceId);
+  const base = {
+    health: source?.sourceHealth ?? "not-connected",
+    lastSuccessfulCheckAt: source?.lastSuccessfulCheckAt ?? null,
+    evidenceValidUntil: source?.evidenceValidUntil ?? null,
+    auditCorrelation: finding.auditRequestId ? "lookup-required" as const : "not-recorded" as const,
+    remediation: finding.remediationCode ? "investigation-hint" as const : "not-recorded" as const,
+  };
+  if (!source || source.coverageState === "unavailable" || source.sourceHealth === "unavailable") {
+    return { ...base, state: "unavailable" };
+  }
+  if (source.coverageState !== "checked" || source.checkedFindingCount === null
+    || !canonicalUtc(now)
+    || !canonicalUtc(source.lastSuccessfulCheckAt)
+    || Date.parse(source.lastSuccessfulCheckAt) > Date.parse(now)
+    || !canonicalUtc(source.evidenceValidUntil)) {
+    return { ...base, state: "unknown" };
+  }
+  return { ...base, state: source.freshness === "stale"
+    || Date.parse(now) >= Date.parse(source.evidenceValidUntil) ? "stale" : "current" };
+};
+
 export interface FindingViewFilters {
   readonly severity: SecuritySeverity | "all";
   readonly category: SecurityCategory | "all";
