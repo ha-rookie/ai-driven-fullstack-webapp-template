@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
 import { assessFindingEvidence, assessFindingSourceLineage, getFindingTriageRoute, isSecurityFindingFeed, readVerifiedAuditRequestMatch, correlateFindingAuditResource, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
-import { assessScsEvidenceCandidateFreshness, scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../../shared/security/scs-reference-links";
+import { assessScsEvidenceCandidateFreshness, scsFullCiEvidenceEligible, scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
 
@@ -260,6 +260,69 @@ const AuditRequestProofLookup = ({ requestId, finding }: {
       : result.evidence.state === "no-record"
         ? <small role="status">一致する保存済み監査記録なし（当該環境・Scopeのみ／是正完了未確認）</small>
         : <small role="alert">監査応答を検証できません（Gray・未確認）</small>)}
+  </div>;
+};
+
+/** On-demand real Full CI step evidence, never official SCS assessment. */
+type ScsFullCiTrace = {
+  readonly schemaVersion: 1;
+  readonly requirementId: string;
+  readonly state: "observed" | "not-connected" | "unavailable";
+  readonly runId: number | null;
+  readonly targetSha: string | null;
+  readonly checkedAt: string | null;
+  readonly stepConclusion: "success" | "failure" | null;
+  readonly scsEvidenceState: "unknown";
+};
+const isScsFullCiTrace = (value: unknown, requirementId: string): value is ScsFullCiTrace => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Partial<ScsFullCiTrace>;
+  if (Object.keys(v).sort().join(",") !==
+    "checkedAt,requirementId,runId,schemaVersion,scsEvidenceState,state,stepConclusion,targetSha") return false;
+  if (v.schemaVersion !== 1 || v.requirementId !== requirementId
+    || v.scsEvidenceState !== "unknown") return false;
+  if (v.state === "not-connected" || v.state === "unavailable") {
+    return v.runId === null && v.targetSha === null
+      && v.checkedAt === null && v.stepConclusion === null;
+  }
+  return v.state === "observed" && Number.isSafeInteger(v.runId) && (v.runId ?? 0) > 0
+    && typeof v.targetSha === "string" && /^[a-f0-9]{40}$/u.test(v.targetSha)
+    && isTime(v.checkedAt) && v.checkedAt <= new Date().toISOString()
+    && (v.stepConclusion === "success" || v.stepConclusion === "failure");
+};
+const ScsFullCiTraceLookup = ({ requirementId }: { readonly requirementId: string }) => {
+  const [result, setResult] = useState<
+    { readonly kind: "idle" | "loading" | "unavailable" }
+    | { readonly kind: "ready"; readonly data: ScsFullCiTrace }
+  >({ kind: "idle" });
+  const lookup = async () => {
+    setResult({ kind: "loading" });
+    try {
+      const response = await fetch(
+        "/api/admin/security/center?scopeId=workhub-company&scsRequirementId=" + encodeURIComponent(requirementId),
+        { method: "GET", headers: { accept: "application/json" }, cache: "no-store" },
+      );
+      if (!response.ok) { setResult({ kind: "unavailable" }); return; }
+      const raw: unknown = await response.json();
+      setResult(isScsFullCiTrace(raw, requirementId)
+        ? { kind: "ready", data: raw } : { kind: "unavailable" });
+    } catch { setResult({ kind: "unavailable" }); }
+  };
+  return <div data-testid={"scs-full-ci-trace-" + requirementId}>
+    <button type="button" disabled={result.kind === "loading"} onClick={() => { void lookup(); }}>
+      登録済みUnitの実CI証跡を照合
+    </button>
+    {result.kind === "idle" && <small>実行Runは未照合</small>}
+    {result.kind === "loading" && <small role="status">固定Full CIの実行結果を照合中…</small>}
+    {result.kind === "unavailable" && <small role="alert">CI証跡を検証できません（Gray）</small>}
+    {result.kind === "ready" && (result.data.state === "observed"
+      ? <div data-testid={"scs-full-ci-observed-" + requirementId}>
+        <strong>Full local validation core: {result.data.stepConclusion}</strong>
+        <div>技術実行証跡：<a href={"https://github.com/" + REPOSITORY + "/actions/runs/" + result.data.runId}
+          target="_blank" rel="noopener noreferrer">Run #{result.data.runId}</a>
+          {" / SHA "}{result.data.targetSha} / 更新 {result.data.checkedAt}</div>
+        <small>登録済みUnitが含まれるCIのステップ結果です。要件別テスト成功・現在のmain/Production反映・SCS公式Evidence・Remediationは別途未検証。</small>
+      </div> : <small role="status">現環境では証跡未接続／取得不能（Gray）</small>)}
   </div>;
 };
 
@@ -742,6 +805,7 @@ export default function SecurityCenter() {
                 ? "限定技術観測" : "Evidence未接続"}。SCS公式評価・Evidence鮮度はunknown。</small>
             </div><ScsTestReferences reference={r.testReference} />
               <div>証跡名：{r.evidenceReference ?? "未登録"}（未検証）</div>
+              {scsFullCiEvidenceEligible(r) && <ScsFullCiTraceLookup requirementId={r.id} />}
               {reviewedStepSourceId && reviewedCiSource && <div data-testid={`scs-ci-step-trace-${r.id}`}>
                 <strong>登録Workflowの実CI検査Step照合（要件適合証明ではない）</strong>
                 <div>固定Source: {reviewedStepSourceId}。実行Run・SHA・Step結果は明示照会が必要。</div>

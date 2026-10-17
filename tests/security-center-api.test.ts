@@ -458,3 +458,23 @@ test("#420 real OSV Finding mode denies unauthorized users and rejects query inj
   assert.equal(reads, 1);
   assert.equal(sourceReads, 0);
 });
+
+
+test("#420 Full CI evidence endpoint is fixed to reviewed requirement IDs and remains authenticated", async () => {
+  const base = "https://example.test/api/admin/security/center?scopeId=workhub-company";
+  const env = { DB: noSessionDb, RUNTIME_ENVIRONMENT: "test" };
+  for (const invalid of [
+    "&scsRequirementId=1-2-1", "&scsRequirementId=4-1-4",
+    "&scsRequirementId=4-1-1%3Frun%3D42",
+    "&scsRequirementId=4-1-1&scsRequirementId=4-1-1",
+    "&scsRequirementId=4-1-1&sourceId=dependency_audit",
+    "&scsRequirementId=4-1-1&sha=abc",
+  ]) {
+    const response = await handleSecurityCenterApi(new Request(base + invalid), env, "request-invalid-ci");
+    assert.equal(response?.status, 400, invalid);
+  }
+  const allowed = await handleSecurityCenterApi(new Request(base + "&scsRequirementId=4-1-1"),
+    env, "request-ci-anon");
+  assert.equal(allowed?.status, 401);
+  assert.doesNotMatch(await allowed!.text(), /ci\.yml|runId|Full local validation core/u);
+});

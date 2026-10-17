@@ -40,6 +40,22 @@ export const scsTestSourceLinks = (reference: unknown): readonly ScsTestSourceLi
  * the UI still independently validates the resulting run ID/SHA/stepCode.
  * It does not verify the SCS assessment or that a test passed on Production.
  */
+/** Reviewed CI technical trace candidates: real unit-test references only, not SCS certification. */
+export interface ScsFullCiEligibleRequirement {
+  readonly id: string;
+  readonly responsibility: string;
+  readonly testReference: string | null;
+  readonly evidenceReference: string | null;
+}
+export const scsFullCiEvidenceEligible = (row: ScsFullCiEligibleRequirement): boolean => {
+  if (!/^\d-\d-\d$/u.test(row.id)
+    || (row.responsibility !== "Implemented" && row.responsibility !== "Partially Implemented")
+    || typeof row.evidenceReference !== "string"
+    || !/^Full-stack template CI(?: \(|$)/u.test(row.evidenceReference)) return false;
+  const links = scsTestSourceLinks(row.testReference);
+  return links.some(link => /^tests\/(?:[a-z0-9_-]+\/)*[a-z0-9][a-z0-9._-]*\.test\.ts$/u.test(link.path));
+};
+
 export const scsReviewedCiStepSource = (
   requirement: ScsOsvTraceRequirement & { readonly testReference: string | null },
 ): "dependency_audit" | null => {

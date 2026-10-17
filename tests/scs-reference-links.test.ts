@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assessScsEvidenceCandidateFreshness, scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../src/shared/security/scs-reference-links";
+import { assessScsEvidenceCandidateFreshness, scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource, scsFullCiEvidenceEligible } from "../src/shared/security/scs-reference-links";
 
 const REPO = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/";
 
@@ -263,4 +263,26 @@ test("#420 #488 kind policy, exact expiry, reviewed and deployed SHA never imply
   assert.equal(read({ evidence: { ...evidence, kind: "runtime", deployedCommitSha: sha } }, "2026-10-17T08:30:00.000Z").state, "current");
   assert.equal(read({ evidence: { ...evidence, kind: "dependency" } }, "2026-10-17T13:59:00.000Z").state, "current");
   assert.equal(read({ evidence: { ...evidence, kind: "dependency" } }, "2026-10-17T14:00:00.000Z").state, "stale");
+});
+
+
+test("#420 Full CI evidence is eligible only for reviewed unit-tested mapping rows", () => {
+  const valid = {
+    id: "4-1-1", responsibility: "Implemented",
+    testReference: "tests/admin-api.test.ts", evidenceReference: "Full-stack template CI",
+  };
+  assert.equal(scsFullCiEvidenceEligible(valid), true);
+  assert.equal(scsFullCiEvidenceEligible({ ...valid, id: "4-1-2",
+    responsibility: "Partially Implemented",
+    testReference: "tests/admin-api.test.ts; scripts/validate-lockfile-integrity.mjs" }), true);
+  for (const v of [
+    { ...valid, responsibility: "Organization Responsibility" },
+    { ...valid, responsibility: "Project Responsibility" },
+    { ...valid, evidenceReference: "unreviewed scanner" },
+    { ...valid, testReference: "" },
+    { ...valid, testReference: "scripts/generate-sbom.mjs" },
+    { ...valid, testReference: "tests/admin-api.test.ts; https://evil.invalid/scanner" },
+    { ...valid, testReference: "../tests/admin-api.test.ts" },
+    { ...valid, id: "4-1-1?override=1" },
+  ]) assert.equal(scsFullCiEvidenceEligible(v), false);
 });
