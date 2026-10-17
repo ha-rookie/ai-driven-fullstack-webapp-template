@@ -102,9 +102,10 @@ const validObservation = (value: unknown, asOf: string): value is RecoveryObserv
         || (Number.isSafeInteger(value.restore.durationMinutes)
           && (value.restore.durationMinutes as number) >= 0
           && (value.restore.durationMinutes as number) <= 10_080))
-      || !object(value.restore.checks)
-      || !CHECKS.every(check => ["PASSED", "FAILED", "UNKNOWN"]
-        .includes(String((value.restore!.checks as Record<string, unknown>)[check])))) return false;
+      ) return false;
+    const checks = value.restore.checks;
+    if (!object(checks) || !CHECKS.every(check =>
+      ["PASSED", "FAILED", "UNKNOWN"].includes(String(checks[check])))) return false;
   }
   return true;
 };
