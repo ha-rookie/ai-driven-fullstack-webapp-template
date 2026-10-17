@@ -598,7 +598,7 @@ export default function SecurityCenter() {
           return <tr key={r.id} data-testid={`scs-requirement-${r.id}`}>
             <td><strong>{r.id}</strong><small>{r.name}</small></td><td>{r.responsibility}</td>
             <td>{r.control}</td><td><ScsTestReferences reference={r.testReference} />
-              <div>証跡名：{r.evidenceReference ?? "未登録"}（SCS証跡は未検証）</div>
+              <div>証跡名：{r.evidenceReference ?? "未登録"}（未検証）</div>
               {osvTrace && <div data-testid={`scs-osv-trace-${r.id}`}>
                 <strong>OSV実観測への技術トレース（SCS適合の証明ではありません）</strong>
                 <div>Source: {osvTrace.sourceId} / runtime lock {osvTrace.checkedPackages}件のみ</div>
