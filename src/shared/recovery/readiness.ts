@@ -82,8 +82,10 @@ const validObservation = (value: unknown, asOf: string): value is RecoveryObserv
   const b = value.backup;
   if ((b.lastSuccessfulAt !== null && !date(b.lastSuccessfulAt, value.observedAt))
     || (b.lastVerifiedAt !== null && !date(b.lastVerifiedAt, value.observedAt))
-    || (b.lastVerifiedAt !== null && (b.lastSuccessfulAt === null
-      || b.lastVerifiedAt > b.lastSuccessfulAt))) return false;
+    // Last created and last verified are separate historical records. The most
+    // recently verified backup can precede a newer created backup, or its
+    // verification can finish after its creation. Both timestamps must be valid.
+    || (b.lastVerifiedAt !== null && b.lastSuccessfulAt === null)) return false;
   if (value.recoveryPoint !== null) {
     if (!object(value.recoveryPoint) || !date(value.recoveryPoint.at, value.observedAt)
       || typeof value.recoveryPoint.verified !== "boolean") return false;
