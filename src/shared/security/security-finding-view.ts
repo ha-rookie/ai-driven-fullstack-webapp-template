@@ -80,7 +80,7 @@ export interface FindingEvidenceAssessment {
 }
 const canonicalUtc = (value: unknown): value is string =>
   typeof value === "string"
-  && /^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z$/u.test(value)
+  && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(value)
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 
 /**
