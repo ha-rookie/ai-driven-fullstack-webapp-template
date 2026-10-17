@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
 import { assessFindingEvidence, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
-import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath } from "../../shared/security/scs-reference-links";
+import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
 
@@ -695,6 +695,9 @@ export default function SecurityCenter() {
               osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, scsObservationNow)
             : null;
           const path = scsRequirementEvidencePath(r, osvTrace);
+          const reviewedStepSourceId = scsReviewedCiStepSource(r);
+          const reviewedCiSource = reviewedStepSourceId
+            ? ready.sources.find(source => source.sourceId === reviewedStepSourceId) : undefined;
           return <tr key={r.id} data-testid={`scs-requirement-${r.id}`}>
             <td><strong>{r.id}</strong><small>{r.name}</small></td><td>{r.responsibility}</td>
             <td>{r.control}</td><td><div data-testid={`scs-evidence-path-${r.id}`}>
@@ -705,6 +708,12 @@ export default function SecurityCenter() {
                 ? "限定技術観測" : "Evidence未接続"}。SCS公式評価・Evidence鮮度はunknown。</small>
             </div><ScsTestReferences reference={r.testReference} />
               <div>証跡名：{r.evidenceReference ?? "未登録"}（未検証）</div>
+              {reviewedStepSourceId && reviewedCiSource && <div data-testid={`scs-ci-step-trace-${r.id}`}>
+                <strong>登録Workflowの実CI検査Step照合（要件適合証明ではない）</strong>
+                <div>固定Source: {reviewedStepSourceId}。実行Run・SHA・Step結果は明示照会が必要。</div>
+                <CiStepEvidence source={reviewedCiSource} />
+                <small>検査Stepの成功でもSCS評価／当該要件の全Control検証／Production反映／Remediation完了は未確認。</small>
+              </div>}
               {osvTrace && <div data-testid={`scs-osv-trace-${r.id}`}>
                 <strong>OSV実観測への技術トレース（SCS適合の証明ではありません）</strong>
                 <div>Source: {osvTrace.sourceId} / runtime lock {osvTrace.checkedPackages}件のみ</div>

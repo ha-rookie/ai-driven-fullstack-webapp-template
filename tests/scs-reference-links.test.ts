@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath } from "../src/shared/security/scs-reference-links";
+import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../src/shared/security/scs-reference-links";
 
 const REPO = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/";
 
@@ -187,4 +187,41 @@ test("#420 forged/unsafe technical paths never become SCS evidence", () => {
     "registered-reference-only");
   assert.equal(scsRequirementEvidencePath(good, { ...technical, scsEvidenceState: "current" } as never).state,
     "registered-reference-only");
+});
+
+
+test("#420 CI Step trace is available only for the two reviewed dependency SCS requirements", async () => {
+  const mapping = (await import("../config/scs-control-mapping.json")).default;
+  const linked = mapping.requirements.filter(row =>
+    scsReviewedCiStepSource({ id: row.id, responsibility: row.status,
+      evidenceReference: row.evidence, testReference: row.test }) !== null);
+  assert.equal(mapping.requirements.length, 43);
+  assert.deepEqual(linked.map(r => r.id).sort(), ["3-2-1", "4-4-4"]);
+  assert.ok(linked.every(r => scsReviewedCiStepSource({
+    id: r.id, responsibility: r.status,
+    evidenceReference: r.evidence, testReference: r.test,
+  }) === "dependency_audit"));
+  assert.equal(scsReviewedCiStepSource({
+    id: "4-1-1", responsibility: "Implemented",
+    evidenceReference: "Full-stack template CI", testReference: "tests/admin-api.test.ts",
+  }), null);
+});
+
+test("#420 CI Step trace rejects changed workflow, unreviewed mapping, and injected URLs", () => {
+  const valid = { id: "4-4-4", responsibility: "Partially Implemented",
+    testReference: "scripts/validate-lockfile-integrity.mjs; .github/workflows/dependency-vulnerability.yml",
+    evidenceReference: "Lockfile integrity; Dependency vulnerability scan" };
+  assert.equal(scsReviewedCiStepSource(valid), "dependency_audit");
+  assert.equal(scsReviewedCiStepSource({ ...valid, id: "3-1-1" }), null);
+  assert.equal(scsReviewedCiStepSource({ ...valid, responsibility: "Organization Responsibility" }), null);
+  assert.equal(scsReviewedCiStepSource({ ...valid, evidenceReference: "Dependency audit (unreviewed)" }), null);
+  assert.equal(scsReviewedCiStepSource({
+    ...valid, testReference: "scripts/validate-lockfile-integrity.mjs",
+  }), null);
+  assert.equal(scsReviewedCiStepSource({
+    ...valid, testReference: ".github/workflows/dependency-vulnerability.yml; https://evil.example/ci.yml",
+  }), null);
+  assert.equal(scsReviewedCiStepSource({
+    ...valid, testReference: ".github/workflows/../dependency-vulnerability.yml",
+  }), null);
 });

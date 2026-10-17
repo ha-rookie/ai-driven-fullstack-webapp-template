@@ -31,6 +31,29 @@ export const scsTestSourceLinks = (reference: unknown): readonly ScsTestSourceLi
   return paths.map((path) => Object.freeze({ path, href: REPO_SOURCE_BASE + path }));
 };
 
+/**
+ * #420: The reviewed SCS mapping associates exactly two requirements with
+ * the existing dependency CI workflow. Other registered test files are NOT
+ * known to be executed by this workflow; never infer their run evidence.
+ *
+ * This association only allows an explicit, authorized lookup of a CI STEP;
+ * the UI still independently validates the resulting run ID/SHA/stepCode.
+ * It does not verify the SCS assessment or that a test passed on Production.
+ */
+export const scsReviewedCiStepSource = (
+  requirement: ScsOsvTraceRequirement & { readonly testReference: string | null },
+): "dependency_audit" | null => {
+  const registered = scsTestSourceLinks(requirement.testReference);
+  if ((requirement.id !== "4-4-4" && requirement.id !== "3-2-1")
+    || requirement.responsibility !== "Partially Implemented"
+    || !requirement.evidenceReference?.split(";").map(value => value.trim())
+      .includes("Dependency vulnerability scan")
+    || !registered.some(link => link.path === ".github/workflows/dependency-vulnerability.yml")) {
+    return null;
+  }
+  return "dependency_audit";
+};
+
 /** #420: The 43-row Requirement → Evidence path is a coverage/provenance
  * status, not a claim that a registered test ran or that SCS evidence is valid.
  * Only an already verified, bounded OSV technical trace can upgrade the
