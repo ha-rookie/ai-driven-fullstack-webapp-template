@@ -651,6 +651,66 @@ test("#420 OSV runtime Finding button keeps unknown Gray when provider is unavai
   await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
 });
 
+
+test("#420 reviewed SCS dependency controls verify a real step by fixed Run/SHA without SCS promotion", async ({ page }) => {
+  await login(page, "kai");
+  const baseline = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/security/center?scopeId=workhub-company");
+    if (!response.ok) throw new Error("Missing authorized Security Center baseline");
+    return response.json();
+  });
+  const at: string = baseline.observedAt;
+  const run = { runId: 7601, targetSha: "a".repeat(40), checkStatus: "completed",
+    checkConclusion: "success", event: "pull_request", updatedAt: at };
+  baseline.sources[1].ci = { state: "available", fetchedAt: at,
+    latest: run, latestSuccessfulRun: run };
+  let detailQueries = 0;
+  await page.route("**/api/admin/security/center?**", async route => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.has("sourceId")) {
+      detailQueries++;
+      expect(params.get("sourceId")).toBe("dependency_audit");
+      expect(params.has("runId")).toBe(false);
+      expect(params.has("targetSha")).toBe(false);
+      await route.fulfill({ json: {
+        schemaVersion: 1, sourceId: "dependency_audit",
+        stepCode: detailQueries === 1 ? "dependency_production_audit" : "secret_scan",
+        runId: run.runId, targetSha: run.targetSha,
+        state: "observed", conclusion: "success",
+      } });
+      return;
+    }
+    await route.fulfill({ json: baseline });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  await expect(panel.getByTestId("scs-evidence-summary")).toContainText("全43要件");
+  await expect(panel.getByTestId("scs-requirement-4-1-1")
+    .getByTestId("scs-ci-step-trace-4-1-1")).toHaveCount(0);
+  for (const id of ["4-4-4", "3-2-1"]) {
+    await expect(panel.getByTestId("scs-ci-step-trace-" + id))
+      .toContainText("固定Source: dependency_audit");
+  }
+  expect(detailQueries).toBe(0);
+  await panel.getByTestId("scs-ci-step-trace-4-4-4")
+    .getByRole("button", { name: "検査ステップを確認" }).click();
+  await expect(panel.getByTestId("scs-ci-step-trace-4-4-4")
+    .getByTestId("security-step-dependency_audit")).toContainText("GitHub CIステップ: success");
+  await expect(panel.getByTestId("scs-ci-step-trace-4-4-4")
+    .getByTestId("security-step-dependency_audit")).toContainText("Run #7601");
+  await expect(panel.getByTestId("scs-ci-step-trace-4-4-4"))
+    .toContainText("Production反映");
+  expect(detailQueries).toBe(1);
+  await panel.getByTestId("scs-ci-step-trace-3-2-1")
+    .getByRole("button", { name: "検査ステップを確認" }).click();
+  await expect(panel.getByTestId("scs-ci-step-trace-3-2-1")
+    .getByRole("alert")).toContainText("照合に失敗");
+  await expect(panel.getByTestId("scs-ci-step-trace-3-2-1")
+    .getByTestId("security-step-dependency_audit")).toHaveCount(0);
+  expect(detailQueries).toBe(2);
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
+
 test("#420 real OSV advisory fixture appears as scoped Finding with evidence and three filters", async ({ page }) => {
   await login(page, "kai");
   const baseline = await page.evaluate(async () => {
