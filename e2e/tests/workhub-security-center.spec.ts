@@ -764,6 +764,14 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
     .toContainText("登録済みテスト参照のみ（実行未検証）");
   await expect(panel.getByTestId("scs-evidence-path-1-2-1"))
     .toContainText("有効テスト参照未登録（証跡未確認）");
+  await expect(panel.getByTestId("scs-candidate-freshness-4-4-4"))
+    .toContainText("未接続（missing）");
+  await expect(panel.getByTestId("scs-candidate-freshness-4-4-4"))
+    .toContainText("Runtimeなら稼働SHA");
+  await expect(panel.getByTestId("scs-candidate-freshness-1-2-1"))
+    .toContainText("Organization Responsibility");
+  await expect(panel.getByTestId("scs-candidate-freshness-1-2-1"))
+    .toContainText("SCS公式評価はunknown（Gray）");
   await expect(panel.getByTestId("scs-evidence-summary"))
     .toContainText("SCS公式評価Evidence・実行SHA・継続的適合は全件未検証（Gray）");
   // The authorized, source-verified OSV response links only the two reviewed
