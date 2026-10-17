@@ -706,6 +706,7 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
   await expect(provenance).toContainText("証跡期限：" + new Date(Date.parse(at) + 300000).toISOString());
   await expect(table).toContainText("調査・修正の候補（実施・完了は未確認）");
   await expect(table).toContainText("監査相関ID未登録（ログとの関連は未確認）");
+  await expect(table.getByRole("button", { name: "保存済み監査レコードを照合" })).toHaveCount(0);
   await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
   await panel.getByLabel("Finding分類").selectOption("identity");
   await expect(table.locator("tbody tr")).toHaveCount(0);
@@ -714,4 +715,79 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
   await panel.getByLabel("Finding状態").selectOption("open");
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+});
+
+test("#420 admin manually verifies persisted Audit Request ID without treating it as remediation", async ({ page }) => {
+  await login(page, "kai");
+  const baseline = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/security/center?scopeId=workhub-company");
+    if (!response.ok) throw new Error("Missing authenticated Security Center base");
+    return response.json();
+  });
+  const now: string = baseline.observedAt;
+  const requestId = "CF-123.NRT";
+  // Synthetic authorized presentation fixture: CI metadata remains explicitly
+  // not connected, so no remote check is inferred from this browser test.
+  baseline.sources[0] = { ...baseline.sources[0], coverageState: "checked",
+    sourceHealth: "ready", checkedFindingCount: 1, lastSuccessfulCheckAt: now,
+    evidenceValidUntil: new Date(Date.parse(now) + 3600000).toISOString(),
+    freshness: "current",
+    ci: { state: "not-connected", fetchedAt: null, latest: null, latestSuccessfulRun: null } };
+  baseline.findings = { state: "verified", verifiedCount: 1, items: [{
+    sourceId: "secret_detection", ruleId: "audit_looked_up", category: "identity",
+    severity: "medium", status: "open", detectedAt: now, lastObservedAt: now,
+    assessedAt: now, riskDisposition: "none", auditRequestId: requestId,
+    evidence: [{ kind: "ci", code: "control_check_failed" }],
+    remediationCode: "investigate_incident",
+  }] };
+  await page.route("**/api/admin/security/center?**", route => route.fulfill({ json: baseline }));
+  let variant: "found" | "empty" | "unavailable" | "malformed" = "found";
+  let exactQueries = 0;
+  await page.route("**/api/admin/audit?**", async route => {
+    const u = new URL(route.request().url());
+    if (u.searchParams.get("requestId") !== requestId) { await route.continue(); return; }
+    exactQueries++;
+    expect(u.searchParams.get("scopeId")).toBe("workhub-company");
+    expect(u.searchParams.get("limit")).toBe("1");
+    expect(route.request().method()).toBe("GET");
+    if (variant === "unavailable") {
+      await route.fulfill({ status: 503, json: { error: { code: "audit_unavailable" } } });
+      return;
+    }
+    if (variant === "empty") {
+      await route.fulfill({ json: { items: [], nextCursor: null } });
+      return;
+    }
+    const item = {
+      id: "audit-event-001", environment: "test", timestamp: now,
+      requestId: variant === "malformed" ? "another-request" : requestId,
+      category: "system", action: "security.review", outcome: "success",
+      actorId: "fixture-admin", scopeId: "workhub-company",
+      resourceType: null, resourceId: null, reason: null,
+    };
+    await route.fulfill({ json: { items: [item], nextCursor: null } });
+  });
+  await page.goto("/admin");
+  const panel = page.locator("#admin-security-center");
+  const lookup = panel.getByTestId("finding-audit-request-proof");
+  await expect(lookup).toContainText("未照会（実在・同一原因・是正完了はいずれも未確認）");
+  expect(exactQueries).toBe(0);
+  const trigger = lookup.getByRole("button", { name: "保存済み監査レコードを照合" });
+  await trigger.click();
+  await expect(lookup.getByTestId("finding-audit-request-match")).toContainText(
+    "同一Request IDの保存済み監査記録あり");
+  await expect(lookup).toContainText("Findingとの因果関係・修正作業・Remediation完了・SCS適合は未確認");
+  expect(exactQueries).toBe(1);
+  variant = "empty";
+  await trigger.click();
+  await expect(lookup).toContainText("一致する保存済み監査記録なし");
+  variant = "unavailable";
+  await trigger.click();
+  await expect(lookup.getByRole("alert")).toContainText("監査ログ照合不可");
+  variant = "malformed";
+  await trigger.click();
+  await expect(lookup.getByRole("alert")).toContainText("監査応答を検証できません");
+  expect(exactQueries).toBe(4);
+  await expect(panel.getByTestId("security-center-posture")).toContainText("未評価（Gray）");
+  await expect(panel.getByTestId("security-findings-table")).toContainText("調査・修正の候補（実施・完了は未確認）");
 });

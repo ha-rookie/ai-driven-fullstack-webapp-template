@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage } from "../src/shared/security/security-finding";
-import { assessFindingEvidence, isSecurityFindingFeed, selectSecurityFindings } from "../src/shared/security/security-finding-view";
+import { assessFindingEvidence, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings } from "../src/shared/security/security-finding-view";
 
 const AS_OF = "2026-10-16T12:00:00.000Z";
 const source = (sourceId: string, count: number) =>
@@ -154,4 +154,76 @@ test("#420 remediation and Audit ID are investigation hints until persisted Audi
   assert.equal(noAction.remediation, "not-recorded");
   assert.equal(noAction.auditCorrelation, "not-recorded");
   assert.equal(noAction.state, "unavailable");
+});
+
+test("#420 genuine scoped D1 Audit lookup proves only persisted Request-ID existence, not remediation", () => {
+  const now = "2026-10-17T01:00:00.000Z";
+  const requestId = "CF-123.NRT";
+  const realApiShape = {
+    items: [{
+      id: "d1-immutable-event-001", environment: "test", timestamp: "2026-10-17T00:10:00.000Z",
+      requestId, category: "system", action: "security.review", outcome: "success",
+      actorId: "fixture-admin", scopeId: "workhub-company", resourceType: "example",
+      resourceId: "resource-1", reason: null,
+    }],
+    // Existing D1 viewer may return a cursor for the limit=1 first page.
+    nextCursor: "opaque_cursor-for-more-pages",
+  };
+  const result = readVerifiedAuditRequestMatch(realApiShape, requestId, "workhub-company", now);
+  assert.equal(result.state, "request-id-found");
+  if (result.state !== "request-id-found") throw new Error("stored Audit Request-ID not found");
+  assert.equal(result.record.environment, "test");
+  assert.equal(result.record.timestamp, "2026-10-17T00:10:00.000Z");
+  assert.equal(result.record.action, "security.review");
+  assert.equal(result.record.outcome, "success");
+  assert.equal("remediationVerified" in result.record, false);
+  assert.equal("findingMatched" in result.record, false);
+  const none = readVerifiedAuditRequestMatch(
+    { items: [], nextCursor: null }, requestId, "workhub-company", now);
+  assert.equal(none.state, "no-record");
+});
+
+test("#420 malformed, cross-scope, unsafe and future Audit responses fail closed", () => {
+  const now = "2026-10-17T01:00:00.000Z";
+  const requestId = "CF-123.NRT";
+  const item = {
+    id: "d1-event-001", environment: "test", timestamp: "2026-10-17T00:10:00.000Z",
+    requestId, category: "system", action: "security.review", outcome: "success",
+    actorId: "fixture-admin", scopeId: "workhub-company", resourceType: null,
+    resourceId: null, reason: null,
+  };
+  const response = { items: [item], nextCursor: null };
+  const read = (data: unknown = response, id = requestId, scope = "workhub-company") =>
+    readVerifiedAuditRequestMatch(data, id, scope, now).state;
+  assert.equal(read(), "request-id-found");
+  const invalid = [
+    { ...response, items: [{ ...item, requestId: "other-request" }] },
+    { ...response, items: [{ ...item, scopeId: "another-company" }] },
+    { ...response, items: [{ ...item, environment: "injected-prod" }] },
+    { ...response, items: [{ ...item, timestamp: "2099-01-01T00:00:00.000Z" }] },
+    { ...response, items: [{ ...item, timestamp: "not-a-date" }] },
+    { ...response, items: [{ ...item, id: "unsafe/id" }] },
+    { ...response, items: [{ ...item, action: "" }] },
+    { ...response, items: [{ ...item, category: "hidden-category" }] },
+    { ...response, items: [{ ...item, outcome: "remediated" }] },
+    { ...response, items: [{ ...item, evidenceHtml: "<script>alert(1)</script>" }] },
+    { ...response, items: [item, item] },
+    { items: [], nextCursor: "unexpected-next-page" },
+    { ...response, nextCursor: 123 },
+    { ...response, extra: true },
+    null,
+  ];
+  for (const entry of invalid) assert.equal(read(entry), "invalid");
+  assert.equal(read(response, "ghp_sensitive"), "invalid");
+  assert.equal(read(response, "https://other-site.test"), "invalid");
+  assert.equal(read(response, requestId, "other-company"), "invalid");
+});
+
+test("#488 source declared unknown freshness does not become current solely because TTL is in future", () => {
+  const known = source("secret_detection", 1);
+  const declaredUnknown = { ...known, freshness: "unknown" as const };
+  const now = "2026-10-16T12:10:00.000Z";
+  assert.equal(assessFindingEvidence(first, [declaredUnknown], now).state, "unknown");
+  assert.equal(assessFindingEvidence(first, [known], now).state, "current");
+  assert.equal(assessFindingEvidence(first, [{ ...known, freshness: "stale" as const }], now).state, "stale");
 });
