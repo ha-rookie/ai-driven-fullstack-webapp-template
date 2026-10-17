@@ -110,8 +110,12 @@ test("#430 failure after restore, UNKNOWN audit check and rehearsal UNKNOWN prev
 
 test("#430 stale, reordered, duplicated, cross-scope, absent audit or illegal resume records fail closed", () => {
   const r = makeRun();
+  // Omitted/undefined means no connector was supplied and is intentionally
+  // distinguished from an available connector returning malformed evidence.
+  assert.equal(projectRecoveryPlan(makeReady(), "production", NOW, undefined).evidenceSource,
+    "not-connected");
   const bad: unknown[] = [
-    {}, undefined,
+    {},
     { ...r, scopeId: "other-tenant" },
     { ...r, environment: "preview" },
     { ...r, observedAt: "2026-10-18T05:45:00.000Z" },
