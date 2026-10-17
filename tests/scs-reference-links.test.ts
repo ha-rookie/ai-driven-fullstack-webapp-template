@@ -65,7 +65,8 @@ test("#420 verified OSV observation traces only two reviewed partial SCS require
       { packageRef: "pkg_01", advisoryId: "CVE-2026-12345" },
     ] };
   const traced = mapping.requirements.flatMap(requirement => {
-    const result = scsOsvTechnicalEvidenceTrace(requirement, source, observation, snapshotAt, snapshotAt);
+    const row = { id: requirement.id, responsibility: requirement.status, evidenceReference: requirement.evidence };
+    const result = scsOsvTechnicalEvidenceTrace(row, source, observation, snapshotAt, snapshotAt);
     return result ? [{ requirementId: requirement.id, ...result }] : [];
   });
   assert.deepEqual(traced.map(row => row.requirementId).sort(), ["3-2-1", "4-4-4"]);
@@ -75,12 +76,13 @@ test("#420 verified OSV observation traces only two reviewed partial SCS require
     && row.advisoryCount === 2 && row.checkedAt === checkedAt));
   // At the exact TTL the technical evidence is stale; SCS compliance stays unknown.
   const stale = scsOsvTechnicalEvidenceTrace(
-    mapping.requirements.find(r => r.id === "4-4-4")!, source, observation, snapshotAt,
+    { id: "4-4-4", responsibility: "Partially Implemented", evidenceReference: "Lockfile integrity; Dependency vulnerability scan" },
+    source, observation, snapshotAt,
     "2026-10-17T00:05:00.000Z");
   assert.equal(stale?.freshness, "stale");
   assert.equal(stale?.scsEvidenceState, "unknown");
   const zero = scsOsvTechnicalEvidenceTrace(
-    mapping.requirements.find(r => r.id === "3-2-1")!,
+    { id: "3-2-1", responsibility: "Partially Implemented", evidenceReference: "Dependency vulnerability scan; SBOM generation" },
     { ...source, checkedFindingCount: 0 },
     { ...observation, advisoryCount: 0, advisories: [] },
     snapshotAt, snapshotAt);
@@ -90,7 +92,8 @@ test("#420 verified OSV observation traces only two reviewed partial SCS require
 
 test("#420 OSV SCS linkage fails closed on unverified sources, unrelated mapping, mismatched timestamps and malicious IDs", async () => {
   const mapping = (await import("../config/scs-control-mapping.json")).default;
-  const req = mapping.requirements.find(r => r.id === "4-4-4")!;
+  const fromMapping = mapping.requirements.find(r => r.id === "4-4-4")!;
+  const req = { id: fromMapping.id, responsibility: fromMapping.status, evidenceReference: fromMapping.evidence };
   const checkedAt = "2026-10-17T00:00:00.000Z", snapshotAt = "2026-10-17T00:04:59.000Z";
   const source = { sourceId: "dependency_audit", coverageState: "checked", sourceHealth: "ready",
     checkedFindingCount: 1, lastSuccessfulCheckAt: checkedAt,
