@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
-import { assessFindingEvidence, assessFindingSourceLineage, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
+import { assessFindingEvidence, assessFindingSourceLineage, getFindingTriageRoute, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
 import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
@@ -676,6 +676,19 @@ export default function SecurityCenter() {
             <td><FindingEvidenceStatus finding={item} sources={ready.sources} now={evidenceNow} /></td>
             <td>{item.remediationCode ?? "対応コード未登録"}
               <div>{item.remediationCode ? "調査・修正の候補（実施・完了は未確認）" : "対応方針は未確認"}</div>
+              {(() => {
+                const route = getFindingTriageRoute(item, ready.sources, evidenceNow,
+                  osvTraceSnapshot === ready && osvTraceSnapshot.dependencyScope.state === "verified"
+                    ? osvTraceSnapshot.dependencyScope.advisories : []);
+                return <div data-testid={`finding-remediation-route-${item.ruleId}`}>
+                  <strong>調査の次の一手：{route.action}</strong>
+                  <div>{route.href ? <a href={route.href} target="_blank" rel="noopener noreferrer">
+                    調査対象を開く（読み取り専用）</a> : "原票リンク未確認（Gray／手動照合が必要）"}</div>
+                  <small>Audit correlation：{route.auditCorrelation === "lookup-required"
+                    ? "Request IDの実照合が必要" : "相関IDなし（未確認）"}。
+                    原票への導線は是正の実施・完了や監査上の因果関係を証明しません。</small>
+                </div>;
+              })()}
               <div>{item.auditRequestId
                 ? <a href={`/admin?auditRequestId=${encodeURIComponent(item.auditRequestId)}#admin-audit-and-security`}>
                   監査ログをリクエストIDで照合（{item.auditRequestId}）

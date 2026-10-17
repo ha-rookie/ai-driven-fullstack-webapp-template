@@ -604,6 +604,11 @@ test("#420 admin manually projects an observed CI control failure through the re
   await expect(table).toContainText("ci_step_failure");
   await expect(table).toContainText("control_check_failed");
   await expect(table).toContainText("run_1042");
+  const ciRoute = panel.getByTestId("finding-remediation-route-ci_step_failure");
+  await expect(ciRoute).toContainText("失敗したCI Runの検査Stepと差分を確認");
+  await expect(ciRoute.getByRole("link", { name: "調査対象を開く（読み取り専用）" }))
+    .toHaveAttribute("href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/actions/runs/1042");
+  await expect(ciRoute).toContainText("相関IDなし（未確認）");
   await expect(panel.getByTestId("finding-source-lineage-ci_step_failure"))
     .toContainText("CI実行Runに一致（技術記録のみ）");
   await expect(panel.getByTestId("finding-source-lineage-ci_step_failure"))
@@ -779,6 +784,10 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
   const table = panel.getByTestId("security-findings-table");
   await expect(table).toContainText("osv_advisory_0");
   await expect(table).toContainText("dependency_alert");
+  const osvRoute = panel.getByTestId("finding-remediation-route-osv_advisory_0");
+  await expect(osvRoute).toContainText("OSV原票で対象依存・影響範囲・修正版を調査");
+  await expect(osvRoute.getByRole("link", { name: "調査対象を開く（読み取り専用）" }))
+    .toHaveAttribute("href", "https://osv.dev/vulnerability/GHSA-aaaa-bbbb-cccc");
   const provenance = panel.getByTestId("finding-evidence-status-osv_advisory_0");
   await expect(provenance).toContainText("技術証跡：期限内（ソース限定）");
   await expect(provenance).toContainText("Health：ready");
@@ -853,6 +862,11 @@ test("#420 admin manually verifies persisted Audit Request ID without treating i
   });
   await page.goto("/admin");
   const panel = page.locator("#admin-security-center");
+  const incidentRoute = panel.getByTestId("finding-remediation-route-audit_looked_up");
+  await expect(incidentRoute).toContainText("既存インシデント対応手順に従い初動を整理");
+  await expect(incidentRoute).toContainText("Request IDの実照合が必要");
+  await expect(incidentRoute.getByRole("link", { name: "調査対象を開く（読み取り専用）" }))
+    .toHaveAttribute("href", "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/docs/security/SECURITY_INCIDENT_RESPONSE.md");
   const lookup = panel.getByTestId("finding-audit-request-proof");
   await expect(lookup).toContainText("未照会（実在・同一原因・是正完了はいずれも未確認）");
   expect(exactQueries).toBe(0);
