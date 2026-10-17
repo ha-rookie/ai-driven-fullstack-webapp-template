@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
-import { assessFindingEvidence, isSecurityFindingFeed, selectSecurityFindings, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
+import { assessFindingEvidence, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
 import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
@@ -189,6 +189,60 @@ const FindingEvidenceStatus = ({
     <div>最終成功：{status.lastSuccessfulCheckAt ?? "未確認"}</div>
     <div>証跡期限：{status.evidenceValidUntil ?? "未確認"}</div>
     <small>当該ソースの技術観測のみ。SCS証跡・実稼働環境の安全性は未検証。</small>
+  </div>;
+};
+
+/**
+ * #420: explicit, read-only lookup in the EXISTING independently authorized,
+ * scoped and integrity-checked durable Audit endpoint. A matching request ID
+ * is not remediation proof or causation between this record and the Finding.
+ */
+const AuditRequestProofLookup = ({ requestId }: { readonly requestId: string }) => {
+  const abortRef = useRef<AbortController | null>(null);
+  const [result, setResult] = useState<
+    { readonly kind: "idle" | "loading" | "unavailable" }
+    | { readonly kind: "ready"; readonly evidence: AuditRequestLookupEvidence }
+  >({ kind: "idle" });
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+  const lookup = async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setResult({ kind: "loading" });
+    const params = new URLSearchParams({ scopeId: SCOPE, requestId, limit: "1" });
+    try {
+      const response = await fetch(`/api/admin/audit?${params.toString()}`, {
+        headers: { accept: "application/json" }, cache: "no-store", signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      if (!response.ok) { setResult({ kind: "unavailable" }); return; }
+      const raw: unknown = await response.json();
+      if (controller.signal.aborted) return;
+      setResult({ kind: "ready",
+        evidence: readVerifiedAuditRequestMatch(raw, requestId, SCOPE, new Date().toISOString()) });
+    } catch {
+      if (!controller.signal.aborted) setResult({ kind: "unavailable" });
+    }
+  };
+  return <div data-testid="finding-audit-request-proof">
+    <button type="button" disabled={result.kind === "loading"} onClick={() => { void lookup(); }}>
+      保存済み監査レコードを照合
+    </button>
+    {result.kind === "idle" && <small>未照会（実在・同一原因・是正完了はいずれも未確認）</small>}
+    {result.kind === "loading" && <small role="status">監査ログを実照合中…</small>}
+    {result.kind === "unavailable" && <small role="alert">監査ログ照合不可（Gray・未確認）</small>}
+    {result.kind === "ready" && (result.evidence.state === "request-id-found"
+      ? <div role="status" data-testid="finding-audit-request-match">
+        <strong>同一Request IDの保存済み監査記録あり（環境・Scope限定）</strong>
+        <div>実記録: {result.evidence.record.environment} /
+          <time dateTime={result.evidence.record.timestamp}>{result.evidence.record.timestamp}</time> /
+          {result.evidence.record.category} / {result.evidence.record.action} /
+          {result.evidence.record.outcome}</div>
+        <small>Request ID一致のみ。Findingとの因果関係・修正作業・Remediation完了・SCS適合は未確認。</small>
+      </div>
+      : result.evidence.state === "no-record"
+        ? <small role="status">一致する保存済み監査記録なし（当該環境・Scopeのみ／是正完了未確認）</small>
+        : <small role="alert">監査応答を検証できません（Gray・未確認）</small>)}
   </div>;
 };
 
@@ -605,7 +659,10 @@ export default function SecurityCenter() {
                   監査ログをリクエストIDで照合（{item.auditRequestId}）
                 </a>
                 : "監査相関ID未登録（ログとの関連は未確認）"}
-                {item.auditRequestId && <small>相関IDは照合用ヒント。実在する監査イベントとの一致は別画面で確認が必要。</small>}</div>
+                {item.auditRequestId && <>
+                  <small>相関IDは照合用ヒント。実在する監査イベントとの一致は別途確認が必要。</small>
+                  <AuditRequestProofLookup key={item.auditRequestId} requestId={item.auditRequestId} />
+                </>}</div>
             </td>
           </tr>)}</tbody>
         </table></div>
