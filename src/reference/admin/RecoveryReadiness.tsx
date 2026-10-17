@@ -86,7 +86,10 @@ export default function RecoveryReadiness() {
       APIまたは証跡を取得できません。復旧状況は不明（UNKNOWN）です。</div>}
     {view && recovery && <>
       <p className="admin-audit-note">環境: {view.environment} ／ 観測: {view.observedAt} ／
-        ソース: {recovery.sourceState}。外部バックアップ/復旧ProviderはこのReference Sliceには未接続です。</p>
+        ソース: {recovery.sourceState}。{recovery.sourceState === "not-connected"
+          ? "実バックアップ／復旧Providerは未接続です。"
+          : recovery.sourceState === "unavailable" ? "証跡取得／内容検証に失敗しています。"
+            : "登録済み技術証跡の照合結果であり、Provider保証とは異なります。"}</p>
       <div className="admin-states" aria-label="復旧の判定軸">
         <article className="admin-state-card"><strong>Backup Protection</strong>
           <div data-testid="recovery-protection">{recovery.protection}</div>
