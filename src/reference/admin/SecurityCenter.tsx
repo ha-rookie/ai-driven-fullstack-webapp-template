@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
 import { assessFindingEvidence, assessFindingSourceLineage, getFindingTriageRoute, isSecurityFindingFeed, readVerifiedAuditRequestMatch, selectSecurityFindings, type AuditRequestLookupEvidence, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
-import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../../shared/security/scs-reference-links";
+import { assessScsEvidenceCandidateFreshness, scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
 
@@ -719,6 +719,10 @@ export default function SecurityCenter() {
               osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, scsObservationNow)
             : null;
           const path = scsRequirementEvidencePath(r, osvTrace);
+          const candidateFreshness = assessScsEvidenceCandidateFreshness({
+            responsibility: r.responsibility, sourceVerifiedAt: ready.scs.sourceVerifiedAt,
+            evidence: null, policy: null,
+          }, scsObservationNow);
           const reviewedStepSourceId = scsReviewedCiStepSource(r);
           const reviewedCiSource = reviewedStepSourceId
             ? ready.sources.find(source => source.sourceId === reviewedStepSourceId) : undefined;
@@ -755,6 +759,16 @@ export default function SecurityCenter() {
               </div>}
             </td>
             <td>未検証（SCS証跡 {r.evidenceFreshness}）
+              <div data-testid={"scs-candidate-freshness-" + r.id}>
+                <strong>要件別正式Evidence: {candidateFreshness.state === "missing"
+                  ? "未接続（missing）" : candidateFreshness.state === "not-applicable"
+                    ? "対象外（明示的NA）" : candidateFreshness.state === "unavailable"
+                      ? "取得不能（unavailable）" : candidateFreshness.state === "stale"
+                        ? "再レビューが必要（stale）" : "技術鮮度候補のみ（current）"}</strong>
+                <small>評価に必要：Controlレビュー日時、正式Evidence生成日時、
+                  証跡種別別の承認済み期限、レビューSHA・対象SHA、Runtimeなら稼働SHA。
+                  {r.responsibility}は独立した責任区分。SCS公式評価はunknown（Gray）。</small>
+              </div>
               {osvTrace && <div data-testid={`scs-osv-freshness-${r.id}`}>
                 OSV技術観測：{osvTrace.freshness === "current"
                   ? "取得時点の期限内（SCSは未検証）" : "期限切れ（Gray／再照会要）"}

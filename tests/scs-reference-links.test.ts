@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../src/shared/security/scs-reference-links";
+import { assessScsEvidenceCandidateFreshness, scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource } from "../src/shared/security/scs-reference-links";
 
 const REPO = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/";
 
@@ -224,4 +224,43 @@ test("#420 CI Step trace rejects changed workflow, unreviewed mapping, and injec
   assert.equal(scsReviewedCiStepSource({
     ...valid, testReference: ".github/workflows/../dependency-vulnerability.yml",
   }), null);
+});
+
+
+test("#420 #488 every mapped requirement discloses missing submitted Evidence, without SCS promotion", async () => {
+  const mapping = (await import("../config/scs-control-mapping.json")).default;
+  const rows = mapping.requirements.map(row => assessScsEvidenceCandidateFreshness({
+    responsibility: row.status, sourceVerifiedAt: mapping.source.verifiedAt,
+    evidence: null, policy: null,
+  }, "2026-10-17T08:00:00.000Z"));
+  assert.equal(rows.length, 43);
+  assert.ok(rows.every(row => row.certified === false && row.scsOfficialState === "unknown"));
+  assert.ok(rows.every((row, i) => mapping.requirements[i].status === "Not Applicable"
+    ? row.state === "not-applicable" : row.state === "missing"));
+  assert.equal(assessScsEvidenceCandidateFreshness({ responsibility: "Organization Responsibility",
+    sourceVerifiedAt: "2026-10-02", evidence: null, policy: null,
+    providerState: "unavailable" }, "2026-10-17T08:00:00.000Z").state, "unavailable");
+});
+
+test("#420 #488 kind policy, exact expiry, reviewed and deployed SHA never imply SCS compliance", () => {
+  const sha = "a".repeat(40), now = "2026-10-17T09:59:59.999Z";
+  const policy = { reviewed: true as const, maxAgeHours: { ci: 2, runtime: 1, configuration: 12, dependency: 6 } };
+  const evidence = { kind: "ci" as const, evidenceGeneratedAt: "2026-10-17T08:00:00.000Z",
+    controlReviewedAt: "2026-10-16T08:00:00.000Z", reviewedCommitSha: sha, targetCommitSha: sha };
+  const base = { responsibility: "Implemented", sourceVerifiedAt: "2026-10-02", evidence, policy };
+  const read = (change: Record<string, unknown>, at = now) =>
+    assessScsEvidenceCandidateFreshness({ ...base, ...change }, at);
+  assert.equal(read({}).state, "current");
+  assert.equal(read({}).certified, false);
+  assert.equal(read({}, "2026-10-17T10:00:00.000Z").state, "stale");
+  assert.equal(read({ policy: null }).state, "stale");
+  assert.equal(read({ policy: { reviewed: true, maxAgeHours: { ci: 2 } } }).state, "stale");
+  assert.equal(read({ evidence: { ...evidence, reviewedCommitSha: "b".repeat(40) } }).state, "stale");
+  assert.equal(read({ evidence: { ...evidence, evidenceGeneratedAt: "2030-10-17T08:00:00.000Z" } }).state, "stale");
+  assert.equal(read({ sourceVerifiedAt: "2030-10-01" }).state, "stale");
+  assert.equal(read({ evidence: { ...evidence, kind: "runtime" } }).state, "stale");
+  assert.equal(read({ evidence: { ...evidence, kind: "runtime", deployedCommitSha: "b".repeat(40) } }).state, "stale");
+  assert.equal(read({ evidence: { ...evidence, kind: "runtime", deployedCommitSha: sha } }, "2026-10-17T08:30:00.000Z").state, "current");
+  assert.equal(read({ evidence: { ...evidence, kind: "dependency" } }, "2026-10-17T13:59:00.000Z").state, "current");
+  assert.equal(read({ evidence: { ...evidence, kind: "dependency" } }, "2026-10-17T14:00:00.000Z").state, "stale");
 });

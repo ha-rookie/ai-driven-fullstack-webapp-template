@@ -95,6 +95,86 @@ export const scsRequirementEvidencePath = (
   };
 };
 
+
+/** #420/#488: typed candidate freshness, never an SCS compliance verdict. */
+export type ScsEvidenceKind = "ci" | "runtime" | "configuration" | "dependency";
+export type ScsEvidenceRecency = "current" | "stale" | "missing" | "unavailable" | "not-applicable";
+export interface ScsEvidenceCandidate {
+  readonly kind: ScsEvidenceKind;
+  readonly evidenceGeneratedAt: string;
+  readonly controlReviewedAt: string;
+  readonly reviewedCommitSha: string;
+  readonly targetCommitSha: string;
+  readonly deployedCommitSha?: string | null;
+}
+export interface ScsKindPolicy {
+  readonly reviewed: true;
+  readonly maxAgeHours: Readonly<Record<ScsEvidenceKind, number>>;
+}
+export interface ScsEvidenceFreshnessInput {
+  readonly responsibility: string;
+  readonly sourceVerifiedAt: string | null;
+  readonly evidence: ScsEvidenceCandidate | null;
+  readonly policy: ScsKindPolicy | null;
+  readonly providerState?: "available" | "unavailable";
+}
+export interface ScsEvidenceFreshnessResult {
+  readonly state: ScsEvidenceRecency;
+  readonly reason: string;
+  readonly scsOfficialState: "unknown";
+  readonly certified: false;
+}
+const SCS_SHA = /^[a-f0-9]{40}$/u;
+const SCS_KINDS: readonly ScsEvidenceKind[] = ["ci", "runtime", "configuration", "dependency"];
+const scsIsoTime = (value: unknown): value is string => {
+  if (typeof value !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(value)) return false;
+  const epoch = Date.parse(value);
+  return Number.isFinite(epoch) && new Date(epoch).toISOString() === value;
+};
+const scsVerifiedDate = (v: unknown): v is string => {
+  if (typeof v !== "string" || !/^\d{4}-\d\d-\d\d$/u.test(v)) return false;
+  const epoch = Date.parse(v + "T00:00:00.000Z");
+  return Number.isFinite(epoch) && new Date(epoch).toISOString().slice(0, 10) === v;
+};
+/** Explicit policy is mandatory; "current" is technical candidate recency only. */
+export const assessScsEvidenceCandidateFreshness = (
+  input: ScsEvidenceFreshnessInput,
+  now: string,
+): ScsEvidenceFreshnessResult => {
+  const result = (state: ScsEvidenceRecency, reason: string): ScsEvidenceFreshnessResult =>
+    ({ state, reason, scsOfficialState: "unknown", certified: false });
+  if (input.responsibility === "Not Applicable") return result("not-applicable", "explicit mapping only");
+  if (input.providerState === "unavailable") return result("unavailable", "provider unavailable");
+  const e = input.evidence;
+  if (!e) return result("missing", "no submitted requirement-specific SCS evidence");
+  if (!scsIsoTime(now) || !scsVerifiedDate(input.sourceVerifiedAt)
+    || !SCS_KINDS.includes(e.kind) || !scsIsoTime(e.controlReviewedAt)
+    || !scsIsoTime(e.evidenceGeneratedAt) || !SCS_SHA.test(e.targetCommitSha)
+    || !SCS_SHA.test(e.reviewedCommitSha)
+    || Date.parse(e.evidenceGeneratedAt) > Date.parse(now)
+    || Date.parse(e.controlReviewedAt) > Date.parse(now)) {
+    return result("stale", "invalid/future review, evidence date or SHA");
+  }
+  const policy = input.policy;
+  if (!policy || policy.reviewed !== true || !SCS_KINDS.every(kind => {
+    const hours = policy.maxAgeHours?.[kind];
+    return Number.isSafeInteger(hours) && hours > 0 && hours <= 8760;
+  })) return result("stale", "reviewed kind-specific policy missing");
+  const criteriaReviewAt = Date.parse(input.sourceVerifiedAt + "T00:00:00.000Z");
+  if (criteriaReviewAt > Date.parse(now)
+    || Date.parse(e.controlReviewedAt) < criteriaReviewAt
+    || Date.parse(e.evidenceGeneratedAt) < criteriaReviewAt) {
+    return result("stale", "criteria changed or control needs re-review");
+  }
+  if (e.reviewedCommitSha !== e.targetCommitSha) return result("stale", "reviewed SHA differs from target SHA");
+  if (e.kind === "runtime" && (!e.deployedCommitSha || !SCS_SHA.test(e.deployedCommitSha)
+    || e.deployedCommitSha !== e.targetCommitSha)) return result("stale", "deployed SHA not verified");
+  if (Date.parse(now) - Date.parse(e.evidenceGeneratedAt) >= policy.maxAgeHours[e.kind] * 3600000) {
+    return result("stale", "kind-specific validity expired");
+  }
+  return result("current", "technical recency candidate only; SCS review remains unknown");
+};
+
 /** #420 Slice L: a checked OSV observation can be linked to two mapped
  * requirements, but it never upgrades the requirement's SCS Evidence status.
  * No external query, event creation or unverifiable issue/audit correlation.
