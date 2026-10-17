@@ -113,8 +113,71 @@ export const assessFindingEvidence = (
     || !canonicalUtc(source.evidenceValidUntil)) {
     return { ...base, state: "unknown" };
   }
+  if (source.freshness === "unknown") return { ...base, state: "unknown" };
   return { ...base, state: source.freshness === "stale"
     || Date.parse(now) >= Date.parse(source.evidenceValidUntil) ? "stale" : "current" };
+};
+
+/** A verified, bounded request-ID match in the existing integrity-checked D1 Audit viewer.
+ * This proves a persisted Audit event *with this request ID*, not remediation or
+ * causal linkage between the event and the Security Finding itself.
+ */
+export type AuditRequestLookupEvidence =
+  | { readonly state: "request-id-found"; readonly record: {
+      readonly id: string; readonly timestamp: string; readonly environment: "local" | "test" | "preview" | "production";
+      readonly category: "authentication" | "authorization" | "mutation" | "system";
+      readonly action: string; readonly outcome: "success" | "failure";
+    } }
+  | { readonly state: "no-record" }
+  | { readonly state: "invalid" };
+
+const AUDIT_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/u;
+const UNSAFE_PREFIX = /^(?:sk_live|sk_test|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|bearer_)/iu;
+const AUDIT_ENVIRONMENTS = ["local", "test", "preview", "production"] as const;
+const AUDIT_CATEGORIES = ["authentication", "authorization", "mutation", "system"] as const;
+const AUDIT_OUTCOMES = ["success", "failure"] as const;
+
+/** Validate only minimal controlled fields from the independently authorized
+ * exact-request-ID/scope API; any forged, cross-scope, or malformed result is
+ * invalid, not a claim of stored proof. Runtime and D1 integrity are checked
+ * by the existing Audit API before this client projection is reached.
+ */
+export const readVerifiedAuditRequestMatch = (
+  payload: unknown, requestId: string, scopeId: string, now: string,
+): AuditRequestLookupEvidence => {
+  if (!AUDIT_REQUEST_ID.test(requestId) || UNSAFE_PREFIX.test(requestId)
+    || scopeId !== "workhub-company" || !canonicalUtc(now)
+    || !payload || typeof payload !== "object" || Array.isArray(payload)) return { state: "invalid" };
+  const data = payload as Record<string, unknown>;
+  if (Object.keys(data).sort().join(",") !== "items,nextCursor"
+    || !Array.isArray(data.items) || data.items.length > 1
+    || !(data.nextCursor === null || typeof data.nextCursor === "string")) return { state: "invalid" };
+  if (data.items.length === 0) {
+    return data.nextCursor === null ? { state: "no-record" } : { state: "invalid" };
+  }
+  const candidate: unknown = data.items[0];
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return { state: "invalid" };
+  const item = candidate as Record<string, unknown>;
+  const names = ["id", "environment", "timestamp", "requestId", "category", "action", "outcome",
+    "actorId", "scopeId", "resourceType", "resourceId", "reason"].sort().join(",");
+  if (Object.keys(item).sort().join(",") !== names
+    || typeof item.id !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/u.test(item.id)
+    || !AUDIT_ENVIRONMENTS.some(x => x === item.environment)
+    || !canonicalUtc(item.timestamp) || item.timestamp > now
+    || item.scopeId !== scopeId || item.requestId !== requestId
+    || !AUDIT_CATEGORIES.some(x => x === item.category)
+    || typeof item.action !== "string" || item.action.length === 0 || item.action.length > 128
+    || !AUDIT_OUTCOMES.some(x => x === item.outcome)
+    || ![item.actorId, item.resourceType, item.resourceId, item.reason]
+      .every(x => x === null || typeof x === "string")) return { state: "invalid" };
+  return { state: "request-id-found", record: {
+    id: item.id,
+    timestamp: item.timestamp,
+    environment: item.environment as "local" | "test" | "preview" | "production",
+    category: item.category as "authentication" | "authorization" | "mutation" | "system",
+    action: item.action,
+    outcome: item.outcome as "success" | "failure",
+  } };
 };
 
 export interface FindingViewFilters {
