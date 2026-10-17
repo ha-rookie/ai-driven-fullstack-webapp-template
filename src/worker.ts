@@ -39,6 +39,7 @@ import { handleWorkhubUsersAccessApi } from "./worker/administration/workhub-use
 import { handleWorkhubInvitationApi } from "./worker/administration/workhub-invitation-api";
 import { handleWorkhubOperationsOverviewApi } from "./worker/administration/workhub-operations-overview-api";
 import { handleSecurityCenterApi } from "./worker/administration/security-center-api";
+import { handleRecoveryReadinessApi } from "./worker/administration/recovery-readiness-api";
 import {
   handleWorkhubDemoConfig,
   handleWorkhubLogin,
@@ -257,6 +258,9 @@ export default {
 
     const securityCenterResponse = await handleSecurityCenterApi(request, env, requestContext.requestId);
     if (securityCenterResponse) return api(securityCenterResponse);
+
+    const recoveryReadinessResponse = await handleRecoveryReadinessApi(request, env, requestContext.requestId);
+    if (recoveryReadinessResponse) return api(recoveryReadinessResponse);
 
     const auditViewerResponse = await handleAuditLogViewerApi(
       request,

@@ -1,0 +1,128 @@
+import { useEffect, useState } from "react";
+import type { RecoveryReadinessProjection } from "../../shared/recovery/readiness";
+
+/** #431 Stage9: Recovery is evidence-driven, never inferred from backup creation. */
+const SCOPE = "workhub-company";
+interface ResponseView {
+  readonly schemaVersion: 1;
+  readonly scopeId: typeof SCOPE;
+  readonly environment: "local" | "test" | "preview" | "production";
+  readonly observedAt: string;
+  readonly recovery: RecoveryReadinessProjection;
+  readonly finding: { readonly id: string; readonly summary: string } | null;
+  readonly actionRequired: { readonly findingId: string; readonly reason: string } | null;
+  readonly restoreGate: {
+    readonly risk: "HUMAN_GATE";
+    readonly policyDecision: "HUMAN_GATE";
+    readonly executionAllowed: false;
+    readonly operationId: "recovery.restore";
+    readonly policyVersion: string;
+  };
+}
+const record = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const oneOf = (v: unknown, options: readonly string[]): v is string =>
+  typeof v === "string" && options.includes(v);
+const isRecoveryResponse = (value: unknown): value is ResponseView => {
+  if (!record(value) || value.schemaVersion !== 1 || value.scopeId !== SCOPE
+    || !oneOf(value.environment, ["local", "test", "preview", "production"])
+    || typeof value.observedAt !== "string"
+    || !record(value.recovery) || !record(value.restoreGate)) return false;
+  const r = value.recovery, gate = value.restoreGate;
+  return oneOf(r.sourceState, ["available", "not-connected", "unavailable"])
+    && oneOf(r.protection, ["PROTECTED", "DEGRADED", "UNPROTECTED", "UNKNOWN"])
+    && oneOf(r.readiness, ["READY", "NOT_READY", "UNKNOWN"])
+    && record(r.rpo) && record(r.rto)
+    && oneOf(r.rpo.status, ["WITHIN_TARGET", "BREACHED", "UNKNOWN"])
+    && oneOf(r.rto.status, ["WITHIN_TARGET", "BREACHED", "UNKNOWN"])
+    && oneOf(r.restoreFreshness, ["CURRENT", "STALE", "MISSING", "FAILED", "UNKNOWN"])
+    && Array.isArray(r.missingEvidence) && r.missingEvidence.every((s: unknown) => typeof s === "string")
+    && gate.risk === "HUMAN_GATE" && gate.policyDecision === "HUMAN_GATE"
+    && gate.executionAllowed === false && gate.operationId === "recovery.restore";
+};
+
+const fmt = (s: string | null): string => s ?? "未確認";
+const metric = (n: number | null): string => n === null ? "未確認" : n + "分";
+
+export default function RecoveryReadiness() {
+  const [state, setState] = useState<
+    { readonly kind: "loading" | "denied" | "unavailable" }
+    | { readonly kind: "ready"; readonly data: ResponseView }
+  >({ kind: "loading" });
+  const load = async () => {
+    setState({ kind: "loading" });
+    try {
+      const response = await fetch("/api/admin/operations/recovery-readiness?scopeId=" + SCOPE, {
+        method: "GET", headers: { accept: "application/json" }, cache: "no-store",
+      });
+      if (response.status === 401 || response.status === 403) {
+        setState({ kind: "denied" }); return;
+      }
+      if (!response.ok) { setState({ kind: "unavailable" }); return; }
+      const raw: unknown = await response.json();
+      setState(isRecoveryResponse(raw)
+        ? { kind: "ready", data: raw } : { kind: "unavailable" });
+    } catch { setState({ kind: "unavailable" }); }
+  };
+  useEffect(() => { void load(); }, []);
+  const view = state.kind === "ready" ? state.data : null;
+  const recovery = view?.recovery;
+
+  return <section id="admin-recovery-readiness" className="admin-audit-panel"
+    aria-labelledby="admin-recovery-readiness-title" data-testid="admin-recovery-readiness">
+    <div className="admin-audit-heading">
+      <div>
+        <p className="admin-eyebrow">SYSTEM / RECOVERABILITY</p>
+        <h2 id="admin-recovery-readiness-title">バックアップ・復旧準備状況</h2>
+        <p>バックアップ作成と復旧可能性は別です。実際の復元テストとシステム検証なしにREADYと表示しません。</p>
+      </div>
+      <button type="button" className="admin-inline-action" onClick={() => { void load(); }}
+        disabled={state.kind === "loading"}>状態を再取得</button>
+    </div>
+    {state.kind === "loading" && <div className="admin-audit-state" role="status">復旧証跡を照合中…</div>}
+    {state.kind === "denied" && <div className="admin-audit-state is-error" role="alert">
+      管理権限がないため復旧情報を表示できません。</div>}
+    {state.kind === "unavailable" && <div className="admin-audit-state is-error" role="alert">
+      APIまたは証跡を取得できません。復旧状況は不明（UNKNOWN）です。</div>}
+    {view && recovery && <>
+      <p className="admin-audit-note">環境: {view.environment} ／ 観測: {view.observedAt} ／
+        ソース: {recovery.sourceState}。{recovery.sourceState === "not-connected"
+          ? "実バックアップ／復旧Providerは未接続です。"
+          : recovery.sourceState === "unavailable" ? "証跡取得／内容検証に失敗しています。"
+            : "登録済み技術証跡の照合結果であり、Provider保証とは異なります。"}</p>
+      <div className="admin-states" aria-label="復旧の判定軸">
+        <article className="admin-state-card"><strong>Backup Protection</strong>
+          <div data-testid="recovery-protection">{recovery.protection}</div>
+          <small>最終取得: {fmt(recovery.lastSuccessfulBackupAt)}</small>
+          <small> / 最終検証: {fmt(recovery.lastVerifiedBackupAt)}</small>
+        </article>
+        <article className="admin-state-card"><strong>Recovery Point / RPO</strong>
+          <div data-testid="recovery-rpo">{recovery.rpo.status}</div>
+          <small>推定露出: {metric(recovery.rpo.exposureMinutes)} /
+            目標: {metric(recovery.rpo.targetMinutes)}</small>
+        </article>
+        <article className="admin-state-card"><strong>Restore Verification / RTO</strong>
+          <div data-testid="recovery-restore">{recovery.restoreFreshness} /
+            {recovery.rto.status}</div>
+          <small>最後の復旧検証: {fmt(recovery.lastRestoreVerifiedAt)}</small>
+          <small> / 測定時間: {metric(recovery.rto.measuredMinutes)}</small>
+        </article>
+        <article className="admin-state-card"><strong>Recovery Readiness</strong>
+          <div data-testid="recovery-readiness">{recovery.readiness}</div>
+          <small>Post-Restore Verification: {recovery.postRestoreVerification}</small>
+        </article>
+      </div>
+      <p className="admin-audit-note">復旧ポイント: {fmt(recovery.recoveryPoint?.at ?? null)}
+        （検証: {recovery.recoveryPoint?.verified === true ? "確認済み" : "未確認"}）。
+        欠測: {recovery.missingEvidence.join(" / ") || "登録上の欠測なし（公式保証ではありません）"}。</p>
+      {view.actionRequired && <div className="admin-audit-state is-error" role="alert">
+        RPO違反：対応要確認（{view.actionRequired.reason}）。復旧は自動実行しません。
+      </div>}
+      <div className="admin-audit-state" data-testid="recovery-human-gate">
+        Production Restore: <strong>{view.restoreGate.policyDecision}</strong>
+        （{view.restoreGate.policyVersion}）。Portalからの復元操作は不可、
+        承認・監査・復元後の検証は別工程です。
+      </div>
+    </>}
+  </section>;
+}

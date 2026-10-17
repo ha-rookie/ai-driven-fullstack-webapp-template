@@ -5,6 +5,7 @@ import AccountSwitchButton from "../workhub/AccountSwitchButton";
 import MasterDataViewer from "./MasterDataViewer";
 import OperationsOverview from "./OperationsOverview";
 import SecurityCenter from "./SecurityCenter";
+import RecoveryReadiness from "./RecoveryReadiness";
 import IntegrationStatusPanel from "./IntegrationStatusPanel";
 import UsersAccessPanel from "./UsersAccessPanel";
 import InvitationOperationsPanel from "./InvitationOperationsPanel";
@@ -554,7 +555,7 @@ function AuthorizedAdminPortal() {
         </section>
         <OperationsOverview />
         <section className="admin-grid" aria-label="管理領域">
-          {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Users & Access" ? <a className="admin-section-link" href="#admin-users-and-access">ユーザー・権限を確認</a> : key === "Audit & Security" ? <><a className="admin-section-link" href="#admin-security-center">Security Centerを見る</a> <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a></> : key === "Jobs & Integrations" ? <><a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> <a className="admin-section-link" href="#admin-integration-status">連携配送記録を見る</a></> : key === "Business Operations" ? <><a className="admin-section-link" href="#admin-master-data">マスタ管理を見る</a> <a className="admin-section-link" href="#admin-business-operations">安全なデータ補正を見る</a></> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
+          {sections.slice(1).map(([key, label, description]) => <article id={`admin-${key.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`} className="admin-section-card" key={key}><span className="admin-section-key">{key}</span><h2>{label}</h2><p>{description}</p>{key === "Users & Access" ? <a className="admin-section-link" href="#admin-users-and-access">ユーザー・権限を確認</a> : key === "Audit & Security" ? <><a className="admin-section-link" href="#admin-security-center">Security Centerを見る</a> <a className="admin-section-link" href="#admin-audit-and-security">監査ログを見る</a></> : key === "Jobs & Integrations" ? <><a className="admin-section-link" href="#admin-jobs-and-integrations">ジョブ状態を見る</a> <a className="admin-section-link" href="#admin-integration-status">連携配送記録を見る</a></> : key === "Business Operations" ? <><a className="admin-section-link" href="#admin-master-data">マスタ管理を見る</a> <a className="admin-section-link" href="#admin-business-operations">安全なデータ補正を見る</a></> : key === "System" ? <a className="admin-section-link" href="#admin-recovery-readiness">復旧準備状況を見る</a> : <button type="button" disabled>後続Issueで接続</button>}</article>)}
         </section>
         <UsersAccessPanel />
         <InvitationOperationsPanel />
@@ -573,6 +574,7 @@ function AuthorizedAdminPortal() {
         <JobOperationsViewer />
         <IntegrationStatusPanel />
         <SecurityCenter />
+        <RecoveryReadiness />
         <AuditViewer />
         <section className="admin-foundation" aria-labelledby="admin-foundation-title">
           <div><p className="admin-eyebrow">SAFE OPERATION FOUNDATION</p><h2 id="admin-foundation-title">危険な操作ほど、理由と確認を残す</h2><p>UIで隠すだけでは認可しません。MutationはServer-side Authorization / CSRF / Audit / Operations Guardを通す前提です。</p></div>
