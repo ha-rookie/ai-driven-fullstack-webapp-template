@@ -1,6 +1,8 @@
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, type SecurityFinding, type SecuritySourceCoverage } from "../../shared/security/security-finding";
 import { normalizeSecuritySourceSnapshot, type SecurityCheckStatus, type SecurityCheckConclusion } from "../../shared/security/security-source-snapshot";
 import type { RuntimeEnvironment } from "../../shared/runtime";
+import { scsFullCiEvidenceEligible } from "../../shared/security/scs-reference-links";
+import scsMapping from "../../../config/scs-control-mapping.json";
 
 // WORKHUB reference wiring, not a user-selectable URL or a generic Template policy.
 export const SECURITY_REPOSITORY = "ha-rookie/ai-driven-fullstack-webapp-template";
@@ -289,3 +291,110 @@ export const createSecurityCenterStepReader = (fetcher: typeof fetch = fetch): S
   };
 };
 export const readSecurityCenterStep = createSecurityCenterStepReader();
+
+
+/** #420: bounded real CI run/step trace for an existing SCS mapping row.
+ * Technical execution metadata only: not an official SCS Evidence or certificate.
+ * Read-only, no arbitrary URL, SHA, workflow or job name is accepted from a user.
+ */
+export interface ScsFullCiStepTrace {
+  readonly schemaVersion: 1;
+  readonly requirementId: string;
+  readonly state: "observed" | "unavailable" | "not-connected";
+  readonly runId: number | null;
+  readonly targetSha: string | null;
+  readonly checkedAt: string | null;
+  readonly stepConclusion: "success" | "failure" | null;
+  readonly scsEvidenceState: "unknown";
+}
+export type ScsFullCiStepTraceReader = (
+  environment: RuntimeEnvironment, asOf: string, requirementId: string,
+) => Promise<ScsFullCiStepTrace>;
+
+const fullCiCandidate = (requirementId: string): boolean => {
+  const row = scsMapping.requirements.find(r => r.id === requirementId);
+  return row !== undefined && scsFullCiEvidenceEligible({
+    id: row.id, responsibility: row.status,
+    testReference: row.test || null, evidenceReference: row.evidence || null,
+  });
+};
+
+export const createScsFullCiStepTraceReader = (
+  fetcher: typeof fetch = fetch,
+): ScsFullCiStepTraceReader => async (environment, asOf, requirementId) => {
+  if (!fullCiCandidate(requirementId)) throw new TypeError("Unreviewed SCS requirement");
+  const base = {
+    schemaVersion: 1 as const, requirementId, runId: null, targetSha: null,
+    checkedAt: null, stepConclusion: null, scsEvidenceState: "unknown" as const,
+  };
+  if (environment === "local" || environment === "test") {
+    return { ...base, state: "not-connected" };
+  }
+  if (environment !== "preview" && environment !== "production") {
+    throw new TypeError("Invalid environment");
+  }
+  const current = Date.parse(asOf);
+  if (!Number.isFinite(current) || new Date(current).toISOString() !== asOf) {
+    throw new TypeError("Invalid asOf");
+  }
+  const unavailable = { ...base, state: "unavailable" as const };
+  const headers = { accept: "application/vnd.github+json",
+    "user-agent": "workhub-security-center", "x-github-api-version": "2026-03-10" };
+  const options: RequestInit = {
+    method: "GET", credentials: "omit", redirect: "error",
+    signal: AbortSignal.timeout(15000), headers,
+  };
+  try {
+    const root = 'https://api.github.com/repos/' + SECURITY_REPOSITORY;
+    const runResponse = await fetcher(root + '/actions/workflows/ci.yml/runs?per_page=5', options);
+    const list = object(await readJson(runResponse));
+    if (!Array.isArray(list.workflow_runs) || list.workflow_runs.length > 5
+      || !Number.isSafeInteger(list.total_count)
+      || (list.total_count as number) < list.workflow_runs.length) return unavailable;
+    const valid = list.workflow_runs.map(value => {
+      const r = object(value);
+      if (!Number.isSafeInteger(r.id) || (r.id as number) <= 0
+        || object(r.repository).full_name !== SECURITY_REPOSITORY
+        || r.path !== ".github/workflows/ci.yml"
+        || !/^[a-f0-9]{40}$/u.test(String(r.head_sha))
+        || !["pull_request", "workflow_dispatch", "schedule"].includes(String(r.event))
+        || r.status !== "completed"
+        || !["success", "failure"].includes(String(r.conclusion))) return null;
+      const created = timestamp(r.created_at, asOf);
+      const updated = timestamp(r.updated_at, asOf);
+      if (created > updated) return null;
+      return { id: r.id as number, sha: r.head_sha as string,
+        updated, conclusion: r.conclusion as "success" | "failure" };
+    });
+    // Unrecognized or incomplete provider rows cannot be silently skipped.
+    if (valid.some(v => v === null)) return unavailable;
+    const ordered = valid.filter((v): v is NonNullable<typeof v> => v !== null)
+      .sort((a, b) => b.updated.localeCompare(a.updated) || b.id - a.id);
+    const run = ordered[0];
+    if (!run) return { ...base, state: "not-connected" };
+    const jobResponse = await fetcher(root + '/actions/runs/' + run.id + '/jobs?per_page=20', options);
+    const result = object(await readJson(jobResponse));
+    if (!Array.isArray(result.jobs) || result.jobs.length > 20
+      || !Number.isSafeInteger(result.total_count)
+      || result.total_count !== result.jobs.length) return unavailable;
+    const jobs = result.jobs.map(object).filter(j => j.name === "validate");
+    if (jobs.length !== 1) return unavailable;
+    const job = jobs[0];
+    if (job.run_id !== run.id || job.head_sha !== run.sha
+      || job.status !== "completed" || !Array.isArray(job.steps)
+      || job.steps.length > 64) return unavailable;
+    const steps = job.steps.map(object).filter(step => step.name === "Full local validation core");
+    if (steps.length !== 1 || steps[0].status !== "completed"
+      || !["success", "failure"].includes(String(steps[0].conclusion))
+      || (run.conclusion === "success" && steps[0].conclusion !== "success")) return unavailable;
+    return {
+      schemaVersion: 1, requirementId, state: "observed",
+      runId: run.id, targetSha: run.sha, checkedAt: run.updated,
+      stepConclusion: steps[0].conclusion as "success" | "failure",
+      scsEvidenceState: "unknown",
+    };
+  } catch {
+    return unavailable;
+  }
+};
+export const readScsFullCiStepTrace = createScsFullCiStepTraceReader();
