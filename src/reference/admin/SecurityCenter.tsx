@@ -255,7 +255,7 @@ const AuditRequestProofLookup = ({ requestId, finding }: {
           === "same-resource-successful-mutation"
           ? <strong data-testid="finding-audit-resource-match">同一リソースへの変更監査記録あり（是正完了は未証明）</strong>
           : <small>Request ID一致のみ。Resource/変更実績との相関は未確認。</small>}
-        <small>Findingとの因果関係・Remediation完了・SCS適合は引き続き未確認。</small>
+        <small>Findingとの因果関係・修正作業・Remediation完了・SCS適合は未確認。</small>
       </div>
       : result.evidence.state === "no-record"
         ? <small role="status">一致する保存済み監査記録なし（当該環境・Scopeのみ／是正完了未確認）</small>
