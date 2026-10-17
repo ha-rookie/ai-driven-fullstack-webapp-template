@@ -118,6 +118,7 @@ test("#430 malformed/provider failure/future evidence fails closed without leaky
     undefined, {}, { ...b, observationComplete: false },
     { ...b, backup: { lastSuccessfulAt: null, lastVerifiedAt: point } },
     { ...b, observedAt: "2099-01-01T00:00:00.000Z" },
+    { ...b, observedAt: "2026-10-18T05:45:00.000Z" },
     { ...b, recoveryPoint: { at: "2099-01-01T00:00:00.000Z", verified: true } },
     { ...b, targets: { ...b.targets!, rpoMinutes: -1 } },
     { ...b, restore: { ...b.restore!, checks: { ...b.restore!.checks, audit: "SUCCESS" } } },
