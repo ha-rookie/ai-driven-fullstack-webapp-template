@@ -77,6 +77,8 @@ const validObservation = (value: unknown, asOf: string): value is RecoveryObserv
   if (!object(value) || value.sourceState !== "available"
     || value.observationComplete !== true || !date(value.observedAt, asOf)
     || !object(value.backup)) return false;
+  // Stale observation must not be promoted to a current recovery verdict.
+  if (Date.parse(asOf) - Date.parse(value.observedAt) > 300_000) return false;
   const b = value.backup;
   if ((b.lastSuccessfulAt !== null && !date(b.lastSuccessfulAt, value.observedAt))
     || (b.lastVerifiedAt !== null && !date(b.lastVerifiedAt, value.observedAt))
@@ -102,8 +104,7 @@ const validObservation = (value: unknown, asOf: string): value is RecoveryObserv
           && (value.restore.durationMinutes as number) <= 10_080))
       || !object(value.restore.checks)
       || !CHECKS.every(check => ["PASSED", "FAILED", "UNKNOWN"]
-        .includes(String((value.restore as Record<string, unknown>).checks
-          && (value.restore!.checks as Record<string, unknown>)[check])))) return false;
+        .includes(String((value.restore!.checks as Record<string, unknown>)[check])))) return false;
   }
   return true;
 };
