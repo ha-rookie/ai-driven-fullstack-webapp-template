@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
 import { isSecurityFindingFeed, selectSecurityFindings, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
-import { scsTestSourceLinks } from "../../shared/security/scs-reference-links";
+import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
 
@@ -396,8 +396,10 @@ export default function SecurityCenter() {
   const [findingStatus, setFindingStatus] = useState<SecurityFindingStatus | "all">("all");
   const [osvFindingLookup, setOsvFindingLookup] = useState<"idle" | "loading" | "verified" | "unknown">("idle");
   const [osvAdvisories, setOsvAdvisories] = useState<readonly {packageRef:string;advisoryId:string}[]>([]);
+  const [osvTraceSnapshot, setOsvTraceSnapshot] = useState<OsvSnapshot | null>(null);
   const [controlLookup, setControlLookup] = useState<"idle" | "loading" | "verified" | "unknown" | "unavailable">("idle");
   const load = async () => {
+    setOsvTraceSnapshot(null);
     setState({ kind: "loading" });
     try {
       const response = await fetch(`/api/admin/security/center?scopeId=${encodeURIComponent(SCOPE)}`, {
@@ -412,6 +414,8 @@ export default function SecurityCenter() {
     } catch { setState({ kind: "unavailable" }); }
   };
   const loadObservedControls = async () => {
+    // The CI control feed must never inherit an earlier OSV technical trace.
+    setOsvTraceSnapshot(null);
     setControlLookup("loading");
     try {
       const response = await fetch("/api/admin/security/center?scopeId=workhub-company&controlFindings=latest", {
@@ -437,6 +441,7 @@ export default function SecurityCenter() {
   const loadOsvFindings = async () => {
     setOsvFindingLookup("loading");
     setOsvAdvisories([]);
+    setOsvTraceSnapshot(null);
     try {
       const response = await fetch("/api/admin/security/center?scopeId=workhub-company&dependencyFindings=runtime", {
         headers: { accept: "application/json" }, cache: "no-store",
@@ -452,6 +457,8 @@ export default function SecurityCenter() {
       setState({ kind: "ready", data: payload });
       if (payload.dependencyScope.state === "verified") {
         setOsvAdvisories(payload.dependencyScope.advisories);
+        // Store only a checked, bounded and trusted OSV projection for trace links.
+        setOsvTraceSnapshot(payload);
         setOsvFindingLookup("verified");
       } else setOsvFindingLookup("unknown");
     } catch { setState({ kind: "unavailable" }); setOsvFindingLookup("unknown"); }
@@ -553,7 +560,7 @@ export default function SecurityCenter() {
         </div>
         <p>Finding表示 {visibleFindings.length} / {ready.findings.verifiedCount} 件。
           証跡とRemediationは許可済みコードのみ。外部URL・生ログ・承認操作はありません。</p>
-        <div className="admin-audit-table-wrap"><table className="admin-audit-table" data-testid="security-findings-table">
+        <div className="admin-audit-table-wrap"><table className="admin-audit-table" data-testid="security-findings-table" id="security-findings-table">
           <thead><tr><th>Rule / Source</th><th>Severity / Category</th><th>Status / Risk exception</th>
             <th>Evidence（コード・参照IDのみ）</th><th>Remediation・監査記録照合</th></tr></thead>
           <tbody>{visibleFindings.map(item => <tr key={`${item.sourceId}:${item.ruleId}:${item.resourceRef ?? ""}`}>
@@ -582,12 +589,47 @@ export default function SecurityCenter() {
         placeholder="例：3-1-1、Project Responsibility" /></label>
       <div className="admin-audit-table-wrap"><table className="admin-audit-table">
         <thead><tr><th>Requirement</th><th>Responsibility</th><th>Control</th><th>Test source / Evidence（参照のみ・未検証）</th><th>Freshness</th><th>Finding / Remediation</th></tr></thead>
-        <tbody>{requirements.map((r) => <tr key={r.id}>
-          <td><strong>{r.id}</strong><small>{r.name}</small></td><td>{r.responsibility}</td>
-          <td>{r.control}</td><td><ScsTestReferences reference={r.testReference} />
-            <div>証跡名：{r.evidenceReference ?? "未登録"}（未検証）</div></td>
-          <td>未検証（{r.evidenceFreshness}）</td><td>未接続 / 未接続</td>
-        </tr>)}</tbody>
+        <tbody>{requirements.map((r) => {
+          const osvTrace = osvTraceSnapshot
+            ? scsOsvTechnicalEvidenceTrace(
+              r, osvTraceSnapshot.sources.find(source => source.sourceId === "dependency_audit"),
+              osvTraceSnapshot.dependencyScope, osvTraceSnapshot.observedAt, new Date().toISOString())
+            : null;
+          return <tr key={r.id} data-testid={`scs-requirement-${r.id}`}>
+            <td><strong>{r.id}</strong><small>{r.name}</small></td><td>{r.responsibility}</td>
+            <td>{r.control}</td><td><ScsTestReferences reference={r.testReference} />
+              <div>証跡名：{r.evidenceReference ?? "未登録"}（SCS証跡は未検証）</div>
+              {osvTrace && <div data-testid={`scs-osv-trace-${r.id}`}>
+                <strong>OSV実観測への技術トレース（SCS適合の証明ではありません）</strong>
+                <div>Source: {osvTrace.sourceId} / runtime lock {osvTrace.checkedPackages}件のみ</div>
+                <div>取得: <time dateTime={osvTrace.checkedAt}>{osvTrace.checkedAt}</time>
+                  / 技術観測期限: <time dateTime={osvTrace.validUntil}>{osvTrace.validUntil}</time></div>
+                <div>OSV ID {osvTrace.advisoryCount}件：
+                  {osvTrace.advisories.length > 0
+                    ? osvTrace.advisories.map(advisory => <span key={advisory.packageRef + ":" + advisory.advisoryId}>
+                      {" "}{advisory.packageRef} /
+                      <a target="_blank" rel="noopener noreferrer"
+                        href={"https://osv.dev/vulnerability/" + encodeURIComponent(advisory.advisoryId)}>
+                        {advisory.advisoryId}</a>
+                    </span>)
+                    : "確認済み12エントリでは0件（他ソースは未評価）"}</div>
+              </div>}
+            </td>
+            <td>未検証（SCS証跡 {r.evidenceFreshness}）
+              {osvTrace && <div data-testid={`scs-osv-freshness-${r.id}`}>
+                OSV技術観測：{osvTrace.freshness === "current"
+                  ? "取得時点の期限内（SCSは未検証）" : "期限切れ（Gray／再照会要）"}
+              </div>}
+            </td>
+            <td>{osvTrace
+              ? <div>対応するOSV Finding {osvTrace.advisoryCount}件：
+                <a href="#security-findings-table">Finding一覧の詳細へ</a>
+                <div>Remediation: update_dependency（検討案のみ・完了未確認）</div>
+                <div>Audit correlation: 未確認（相関ID未登録）</div>
+              </div>
+              : "未接続 / 未接続"}</td>
+          </tr>;
+        })}</tbody>
       </table></div>
       <p>表示 {requirements.length} / {ready.scs.requirements.length} 要件。SeverityはFinding、SCS statusは要件別の責任・実装状態であり、別の評価軸です。</p>
       <p><a href="#admin-audit-and-security">操作監査ログを別画面で確認</a></p>
