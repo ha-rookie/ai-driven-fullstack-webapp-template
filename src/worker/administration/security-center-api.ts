@@ -2,8 +2,9 @@ import { requireAuthenticatedUser, requireScopedAuthorization } from "../authori
 import { apiErrorResponse } from "../http";
 import { resolveWorkhubRuntimeEnvironment } from "../workhub-login";
 import type { RuntimeEnvironment } from "../../shared/runtime";
-import { readSecurityCenterSources, unconnectedSecuritySources, readSecurityCenterStep, SECURITY_WORKFLOWS, type SecurityCenterSource, type SecurityCenterSourceReader, type SecurityCenterStepReader } from "./security-center-source-reader";
+import { readSecurityCenterSources, unconnectedSecuritySources, readSecurityCenterStep, readScsFullCiStepTrace, SECURITY_WORKFLOWS, type SecurityCenterSource, type SecurityCenterSourceReader, type SecurityCenterStepReader, type ScsFullCiStepTraceReader } from "./security-center-source-reader";
 import scsMapping from "../../../config/scs-control-mapping.json";
+import { scsFullCiEvidenceEligible } from "../../shared/security/scs-reference-links";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage } from "../../shared/security/security-finding";
 import { readRuntimeOsvAdvisories, type RuntimeOsvReader, type RuntimeOsvResult } from "./security-osv-advisory-reader";
 
@@ -129,6 +130,7 @@ export const handleSecurityCenterApi = async (
   sourceReader: SecurityCenterSourceReader = readSecurityCenterSources,
   stepReader: SecurityCenterStepReader = readSecurityCenterStep,
   osvReader: RuntimeOsvReader = readRuntimeOsvAdvisories,
+  scsCiReader: ScsFullCiStepTraceReader = readScsFullCiStepTrace,
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (url.pathname !== ROUTE) return null;
@@ -138,8 +140,10 @@ export const handleSecurityCenterApi = async (
   const osvDetails = url.searchParams.has("dependencyAdvisories");
   const controlFindings = url.searchParams.has("controlFindings");
   const dependencyFindings = url.searchParams.has("dependencyFindings");
+  const scsCiTrace = url.searchParams.has("scsRequirementId");
+  const selectedRequirement = url.searchParams.get("scsRequirementId");
   const selectedSourceId = url.searchParams.get("sourceId");
-  const selectedModes = Number(details) + Number(osvDetails) + Number(controlFindings) + Number(dependencyFindings);
+  const selectedModes = Number(details) + Number(osvDetails) + Number(controlFindings) + Number(dependencyFindings) + Number(scsCiTrace);
   if (url.searchParams.getAll("scopeId").length !== 1
     || url.searchParams.get("scopeId") !== SCOPE
     || selectedModes > 1
@@ -151,7 +155,13 @@ export const handleSecurityCenterApi = async (
     || (osvDetails && (url.searchParams.getAll("dependencyAdvisories").length !== 1
       || url.searchParams.get("dependencyAdvisories") !== "runtime"))
     || (details && (url.searchParams.getAll("sourceId").length !== 1
-      || !SECURITY_WORKFLOWS.some(p => p.sourceId === selectedSourceId)))) {
+      || !SECURITY_WORKFLOWS.some(p => p.sourceId === selectedSourceId)))
+    || (scsCiTrace && (url.searchParams.getAll("scsRequirementId").length !== 1
+      || !scsMapping.requirements.some(row => row.id === selectedRequirement
+        && scsFullCiEvidenceEligible({
+          id: row.id, responsibility: row.status,
+          testReference: row.test || null, evidenceReference: row.evidence || null,
+        }))))) {
     return reject(requestId, 400, "invalid_security_center_query");
   }
   // Fail closed when a real runtime context is absent; never substitute a synthetic scan.
@@ -190,6 +200,11 @@ export const handleSecurityCenterApi = async (
     if (dependencyFindings) {
       const result = await osvReader(environment, asOf);
       return Response.json(projectRuntimeOsvFindings(result, asOf), {
+        headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
+      });
+    }
+    if (scsCiTrace && selectedRequirement) {
+      return Response.json(await scsCiReader(environment, asOf, selectedRequirement), {
         headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
       });
     }
