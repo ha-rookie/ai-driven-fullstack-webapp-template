@@ -24,3 +24,29 @@ The existing scripts/data-lifecycle-backup-evidence.mjs creates checksum evidenc
 Focused tests/recovery-readiness.test.ts covers unconnected, valid synthetic full rehearsal, backup-only, restore failure, missing post-restore checks, RPO/RTO breach, stale test, recovery point mismatch and malformed/future evidence. Focused tests/recovery-readiness-api.test.ts covers fixed read-only query, scoped authorization before source access, UNKNOWN on provider failure, separate #429 Finding/ActionRequired and denial of Human Gate bypass.
 
 Exactly eight changed files under the approved #431 Change Contract. WBS, Milestone, Priority, migration, GitHub workflows, cloud resources, Secrets, Preview/Production deploy and Remote D1 remain unchanged.
+
+## Stage 9 Slice 2: read-only Recovery Runbook and Resume Safety
+
+The original #431 runbook contains exactly eleven ordered checkpoints:
+
+1. Maintenance Mode
+2. Stop Scheduled Jobs
+3. Stop Outbound Integrations
+4. Select Recovery Point
+5. Restore — Human Gate
+6. Data Integrity Check
+7. Business Consistency Check
+8. Integration Reconcile
+9. Jobs Verify
+10. Application Health
+11. Resume Service — Human Review
+
+The shared source-neutral model src/shared/recovery/recovery-plan.ts projects this sequence and provides a conservative Service Resume decision. It consumes only an ordered-prefix Recovery execution snapshot from a separately authorized, durable-audit Adapter. An event record must match the selected scope/environment, incident/run, freshness, strictly monotonic audit checkpoints, original step order and nonempty Audit event ID; the Restore step additionally requires a Human Approval reference. Post-Restore results are separate from a *rehearsal* and must include application, database integrity, business consistency, integrations, jobs, security and audit checks. Invalid, stale, cross-scope, skipped or forged-by-query inputs are UNKNOWN/BLOCKED, never verified.
+
+**Important boundary:** A record marked as verified-audit is only a *contract for a future trusted Adapter*, not self-authenticating proof. No durable Recovery Audit adapter is registered by this PR, and there is no command to import a client-provided checkpoint. The live panel shows all steps unrecorded and Service Resume BLOCKED. The existing scope-authorized GET does not accept incidentId, source URL, provider, checkpoint or any command parameters. No database schema migration, actual restore or resume action is added.
+
+Even a wholly valid *synthetic* recovery-run snapshot in local unit tests produces only HUMAN_REVIEW_REQUIRED (never ALLOW, NORMAL or executionAllowed=true) after ten verified checkpoints, a separately approved Restore checkpoint, seven complete incident checks, and READY recovery evidence. That state is an advisory request for a separate human decision, not a Production restore/resume permission. It must not be confused with completion of #430 Golden Scenario #8, which still requires real persistence, approved provider verification and end-to-end acceptance.
+
+The initial readiness validator also no longer assumes lastSuccessfulBackupAt and lastVerifiedBackupAt must be monotonic with each other: a newer unverified backup can follow an older verified backup, while delayed verification can follow backup creation. Both timestamps remain individually constrained to valid past observations. This avoids falsely classifying a legitimate provider observation as unavailable.
+
+**Original parent acceptance stays Open 0/9 until separately verified.** The present slice does not supply interruption-resumable durable checkpoints; deterministic projection from a hypothetical persisted snapshot is not persistence. Do not turn on a Recovery Resume operation or mark the service healthy using this read model.

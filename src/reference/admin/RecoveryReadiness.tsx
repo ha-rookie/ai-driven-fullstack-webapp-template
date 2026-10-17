@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { RecoveryReadinessProjection } from "../../shared/recovery/readiness";
+import { RECOVERY_STEPS, type RecoveryPlanProjection } from "../../shared/recovery/recovery-plan";
 
 /** #431 Stage9: Recovery is evidence-driven, never inferred from backup creation. */
 const SCOPE = "workhub-company";
@@ -9,6 +10,7 @@ interface ResponseView {
   readonly environment: "local" | "test" | "preview" | "production";
   readonly observedAt: string;
   readonly recovery: RecoveryReadinessProjection;
+  readonly recoveryPlan: RecoveryPlanProjection;
   readonly finding: { readonly id: string; readonly summary: string } | null;
   readonly actionRequired: { readonly findingId: string; readonly reason: string } | null;
   readonly restoreGate: {
@@ -27,9 +29,20 @@ const isRecoveryResponse = (value: unknown): value is ResponseView => {
   if (!record(value) || value.schemaVersion !== 1 || value.scopeId !== SCOPE
     || !oneOf(value.environment, ["local", "test", "preview", "production"])
     || typeof value.observedAt !== "string"
-    || !record(value.recovery) || !record(value.restoreGate)) return false;
-  const r = value.recovery, gate = value.restoreGate;
-  return oneOf(r.sourceState, ["available", "not-connected", "unavailable"])
+    || !record(value.recovery) || !record(value.restoreGate)
+    || !record(value.recoveryPlan)) return false;
+  const r = value.recovery, gate = value.restoreGate, plan = value.recoveryPlan;
+  const planSafe = oneOf(plan.evidenceSource, ["not-connected", "unavailable", "verified-audit"])
+    && oneOf(plan.resumeDecision, ["BLOCKED", "HUMAN_REVIEW_REQUIRED"])
+    && plan.resumeExecutionAllowed === false
+    && oneOf(plan.postRestore, ["PASSED", "FAILED", "UNKNOWN"])
+    && Array.isArray(plan.steps) && plan.steps.length === RECOVERY_STEPS.length
+    && plan.steps.every((item: unknown, index: number) => record(item)
+      && item.id === RECOVERY_STEPS[index]?.id
+      && item.executionAllowed === false
+      && oneOf(item.state, ["VERIFIED", "FAILED", "PENDING", "UNKNOWN"]))
+    && Array.isArray(plan.blockers) && plan.blockers.every((x: unknown) => typeof x === "string");
+  return planSafe && oneOf(r.sourceState, ["available", "not-connected", "unavailable"])
     && oneOf(r.protection, ["PROTECTED", "DEGRADED", "UNPROTECTED", "UNKNOWN"])
     && oneOf(r.readiness, ["READY", "NOT_READY", "UNKNOWN"])
     && record(r.rpo) && record(r.rto)
@@ -118,6 +131,20 @@ export default function RecoveryReadiness() {
       {view.actionRequired && <div className="admin-audit-state is-error" role="alert">
         RPO違反：対応要確認（{view.actionRequired.reason}）。復旧は自動実行しません。
       </div>}
+      <div className="admin-audit-state" data-testid="recovery-plan" aria-label="復旧手順（読み取り専用）">
+        <h3>復旧手順：11ステップ（実行不可）</h3>
+        <p>復旧事故ごとの監査済み記録: {view.recoveryPlan.evidenceSource}。
+          {view.recoveryPlan.evidenceSource === "not-connected"
+            ? "途中状態の永続化・再取得は未接続です。画面表示だけで復旧を再開したと判断しません。"
+            : "各ステップの監査証跡に基づく判定です。実行コマンドはありません。"}</p>
+        <ol>{view.recoveryPlan.steps.map((step) => <li key={step.id}>
+          <strong>{step.label}</strong>：{step.state}
+          {step.requiresHumanGate ? "（Human Gate）" : ""}
+        </li>)}</ol>
+        <p data-testid="recovery-resume-gate">Service Resume: <strong>{view.recoveryPlan.resumeDecision}</strong>
+          （操作可能: いいえ）。事故ごとのPost-Restore検証: {view.recoveryPlan.postRestore}。
+          未解決: {view.recoveryPlan.blockers.join(" / ") || "要Human Review・実再開は別工程"}。</p>
+      </div>
       <div className="admin-audit-state" data-testid="recovery-human-gate">
         Production Restore: <strong>{view.restoreGate.policyDecision}</strong>
         （{view.restoreGate.policyVersion}）。Portalからの復元操作は不可、
