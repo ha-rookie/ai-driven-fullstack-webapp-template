@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSecurityCenterSourceReader, createSecurityCenterStepReader, unconnectedSecuritySources, SECURITY_REPOSITORY, SECURITY_WORKFLOWS, type SecurityCenterSource } from "../src/worker/administration/security-center-source-reader";
+import { createSecurityCenterSourceReader, createSecurityCenterStepReader, createScsFullCiStepTraceReader, unconnectedSecuritySources, SECURITY_REPOSITORY, SECURITY_WORKFLOWS, type SecurityCenterSource } from "../src/worker/administration/security-center-source-reader";
 
 // Synthetic provider metadata only; no live CI or Production evidence is claimed.
 const AS_OF = "2026-10-16T12:00:00.000Z";
@@ -299,4 +299,83 @@ test("#420 failure mapping preserves approved source-specific classification wit
     assert.equal(result.controlFinding?.sourceId, sourceId);
     assert.equal(result.controlFinding?.ruleId, "ci_step_failure");
   }
+});
+
+
+test("#420 eligible requirement resolves real-shaped Full CI job-step metadata without raw/provider claims", async () => {
+  const urls: string[] = [];
+  const reader = createScsFullCiStepTraceReader((async (input, init) => {
+    const url = String(input); urls.push(url);
+    assert.equal(init?.method, "GET");
+    assert.equal(init?.redirect, "error");
+    assert.equal(init?.credentials, "omit");
+    assert.equal(new Headers(init?.headers).has("authorization"), false);
+    if (url.endsWith("/actions/workflows/ci.yml/runs?per_page=5")) {
+      return Response.json({ total_count: 1, workflow_runs: [{
+        id: 42, repository: { full_name: SECURITY_REPOSITORY },
+        path: ".github/workflows/ci.yml", head_sha: SHA, event: "pull_request",
+        status: "completed", conclusion: "success",
+        created_at: "2026-10-16T09:00:00Z", updated_at: "2026-10-16T10:00:00Z",
+      }] });
+    }
+    assert.equal(url, "https://api.github.com/repos/" + SECURITY_REPOSITORY + "/actions/runs/42/jobs?per_page=20");
+    return Response.json({ total_count: 1, jobs: [{
+      name: "validate", run_id: 42, head_sha: SHA, status: "completed",
+      steps: [{ name: "Full local validation core", status: "completed", conclusion: "success" }],
+    }] });
+  }) as typeof fetch);
+  const value = await reader("preview", AS_OF, "4-1-1");
+  assert.deepEqual(value, {
+    schemaVersion: 1, requirementId: "4-1-1", state: "observed",
+    runId: 42, targetSha: SHA, checkedAt: "2026-10-16T10:00:00.000Z",
+    stepConclusion: "success", scsEvidenceState: "unknown",
+  });
+  assert.equal(urls.length, 2);
+  assert.doesNotMatch(JSON.stringify(value), /certified|compliance|raw_logs|actorId/u);
+});
+
+test("#420 Full CI trace is offline in Local/Test and refuses unreviewed/organization rows", async () => {
+  let calls = 0;
+  const reader = createScsFullCiStepTraceReader((async () => { calls++; throw Error("unexpected"); }) as typeof fetch);
+  for (const env of ["local", "test"] as const) {
+    const v = await reader(env, AS_OF, "4-1-1");
+    assert.equal(v.state, "not-connected");
+    assert.equal(v.runId, null);
+  }
+  assert.equal(calls, 0);
+  await assert.rejects(() => reader("preview", AS_OF, "1-2-1"));
+  await assert.rejects(() => reader("preview", AS_OF, "4-1-4"));
+  await assert.rejects(() => reader("preview", AS_OF, "4-1-1?runId=55"));
+  assert.equal(calls, 0);
+});
+
+test("#420 Full CI trace fails closed on missing jobs, wrong run SHA and non-success step", async () => {
+  const make = (bad: "wrong-sha" | "missing-job" | "step-failure" | "missing-list") =>
+    createScsFullCiStepTraceReader((async (input) => {
+      const url = String(input);
+      if (url.includes("/workflows/ci.yml/runs?")) {
+        if (bad === "missing-list") return Response.json({ total_count: 0, workflow_runs: [] });
+        return Response.json({ total_count: 1, workflow_runs: [{
+          id: 42, repository: { full_name: SECURITY_REPOSITORY },
+          path: ".github/workflows/ci.yml", head_sha: SHA, event: "pull_request",
+          status: "completed", conclusion: "failure",
+          created_at: "2026-10-16T09:00:00Z", updated_at: "2026-10-16T10:00:00Z",
+        }] });
+      }
+      return Response.json({ total_count: 1, jobs: [{
+        name: bad === "missing-job" ? "other" : "validate", run_id: 42,
+        head_sha: bad === "wrong-sha" ? "b".repeat(40) : SHA,
+        status: "completed", steps: [{
+          name: "Full local validation core", status: "completed",
+          conclusion: bad === "step-failure" ? "failure" : "success",
+        }],
+      }] });
+    }) as typeof fetch);
+  for (const bad of ["wrong-sha", "missing-job"] as const) {
+    assert.equal((await make(bad)("preview", AS_OF, "4-1-1")).state, "unavailable");
+  }
+  const observed = await make("step-failure")("preview", AS_OF, "4-1-1");
+  assert.equal(observed.state, "observed");
+  assert.equal(observed.stepConclusion, "failure");
+  assert.equal((await make("missing-list")("preview", AS_OF, "4-1-1")).state, "not-connected");
 });
