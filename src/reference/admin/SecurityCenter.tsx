@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { normalizeSecurityFinding, normalizeSecuritySourceCoverage, SECURITY_SEVERITIES, SECURITY_CATEGORIES, SECURITY_STATUSES, type SecurityFinding, type SecuritySourceCoverage, type SecuritySeverity, type SecurityCategory, type SecurityFindingStatus } from "../../shared/security/security-finding";
-import { isSecurityFindingFeed, selectSecurityFindings, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
+import { assessFindingEvidence, isSecurityFindingFeed, selectSecurityFindings, type SecurityFindingFeed } from "../../shared/security/security-finding-view";
 import { scsTestSourceLinks, scsOsvTechnicalEvidenceTrace } from "../../shared/security/scs-reference-links";
 import { classifySecurityCi } from "../../shared/security/security-ci-triage";
 import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
@@ -173,6 +173,23 @@ const coverageDisplay = (source: Coverage) => {
     label: "証跡鮮度不明（Gray）", count: `${source.checkedFindingCount}件（鮮度不明）`,
   };
   return { label: "当該ソース確認済（全体の安全判定ではない）", count: `${source.checkedFindingCount}件（当該ソースのみ）` };
+};
+
+/** Actual source observation state for a single finding, not a system security score. */
+const FindingEvidenceStatus = ({
+  finding, sources, now,
+}: { readonly finding: SecurityFinding; readonly sources: readonly Coverage[]; readonly now: string }) => {
+  const status = assessFindingEvidence(finding, sources, now);
+  const freshnessLabel = status.state === "current" ? "期限内（ソース限定）"
+    : status.state === "stale" ? "期限切れ（Gray／再照会要）"
+      : status.state === "unavailable" ? "取得不能（Gray）" : "未確認（Gray）";
+  return <div data-testid={`finding-evidence-status-${finding.ruleId}`}>
+    <strong>技術証跡：{freshnessLabel}</strong>
+    <div>発行元：{finding.sourceId} / Health：{status.health}</div>
+    <div>最終成功：{status.lastSuccessfulCheckAt ?? "未確認"}</div>
+    <div>証跡期限：{status.evidenceValidUntil ?? "未確認"}</div>
+    <small>当該ソースの技術観測のみ。SCS証跡・実稼働環境の安全性は未検証。</small>
+  </div>;
 };
 
 /** Registered file paths are navigation hints, not successful tests or evidence. */
@@ -396,6 +413,13 @@ export default function SecurityCenter() {
   const [findingStatus, setFindingStatus] = useState<SecurityFindingStatus | "all">("all");
   const [osvFindingLookup, setOsvFindingLookup] = useState<"idle" | "loading" | "verified" | "unknown">("idle");
   const [osvAdvisories, setOsvAdvisories] = useState<readonly {packageRef:string;advisoryId:string}[]>([]);
+  const [evidenceNow, setEvidenceNow] = useState(() => new Date().toISOString());
+  useEffect(() => {
+    // Evidence can expire while an administrator leaves the panel open.
+    // Reevaluate in memory only: no background remote scan or audit query.
+    const timer = setInterval(() => setEvidenceNow(new Date().toISOString()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
   const [osvTraceSnapshot, setOsvTraceSnapshot] = useState<OsvSnapshot | null>(null);
   const [controlLookup, setControlLookup] = useState<"idle" | "loading" | "verified" | "unknown" | "unavailable">("idle");
   const load = async () => {
@@ -559,10 +583,11 @@ export default function SecurityCenter() {
           </select></label>
         </div>
         <p>Finding表示 {visibleFindings.length} / {ready.findings.verifiedCount} 件。
-          証跡とRemediationは許可済みコードのみ。外部URL・生ログ・承認操作はありません。</p>
+          証跡とRemediationは許可済みコードのみ。外部URL・生ログ・承認操作はありません。
+          技術Evidenceの鮮度は当該ソースの取得時刻・期限から自動更新します。SCS適合やAudit一致の証明ではありません。</p>
         <div className="admin-audit-table-wrap"><table className="admin-audit-table" data-testid="security-findings-table" id="security-findings-table">
           <thead><tr><th>Rule / Source</th><th>Severity / Category</th><th>Status / Risk exception</th>
-            <th>Evidence（コード・参照IDのみ）</th><th>Remediation・監査記録照合</th></tr></thead>
+            <th>Evidence（コード・参照IDのみ）</th><th>Evidence鮮度・Source health</th><th>Remediation・監査記録照合</th></tr></thead>
           <tbody>{visibleFindings.map(item => <tr key={`${item.sourceId}:${item.ruleId}:${item.resourceRef ?? ""}`}>
             <td>{item.ruleId}<small>{item.sourceId}</small></td>
             <td>{item.severity} / {item.category}</td>
@@ -572,12 +597,15 @@ export default function SecurityCenter() {
             <td>{item.evidence.map((evidence, i) => <div key={i}>
               {evidence.kind} / {evidence.code} / {evidence.referenceId ?? "参照ID未登録"}
             </div>)}</td>
+            <td><FindingEvidenceStatus finding={item} sources={ready.sources} now={evidenceNow} /></td>
             <td>{item.remediationCode ?? "対応コード未登録"}
+              <div>{item.remediationCode ? "調査・修正の候補（実施・完了は未確認）" : "対応方針は未確認"}</div>
               <div>{item.auditRequestId
                 ? <a href={`/admin?auditRequestId=${encodeURIComponent(item.auditRequestId)}#admin-audit-and-security`}>
                   監査ログをリクエストIDで照合（{item.auditRequestId}）
                 </a>
-                : "監査相関ID未登録（ログとの関連は未確認）"}</div>
+                : "監査相関ID未登録（ログとの関連は未確認）"}
+                {item.auditRequestId && <small>相関IDは照合用ヒント。実在する監査イベントとの一致は別画面で確認が必要。</small>}</div>
             </td>
           </tr>)}</tbody>
         </table></div>
