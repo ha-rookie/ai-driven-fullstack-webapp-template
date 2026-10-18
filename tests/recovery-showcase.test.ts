@@ -191,3 +191,38 @@ test("#430 Golden #8: rehearsal still blocks review on RPO breach or unavailable
     projectRecoveryShowcase("ready", NOW, undefined, state),
     "pure fictional read-model supports deterministic re-evaluation, not durable execution");
 });
+
+test("#430 Golden #8: all five verification checkpoints fail closed independently", () => {
+  for (let failedAt = 5; failedAt <= 9; failedAt++) {
+    let state = INITIAL_RECOVERY_DRILL;
+    for (let i = 0; i < 4; i++) state = transitionRecoveryDrill(state, "advance");
+    state = transitionRecoveryDrill(state, "simulate-restore-approval");
+    for (let i = 4; i < failedAt; i++) state = transitionRecoveryDrill(state, "advance");
+    state = transitionRecoveryDrill(state, "fail-next-check");
+    const failed = projectRecoveryShowcase("ready", NOW, undefined, state);
+    assert.equal(state.failedStepIndex, failedAt);
+    assert.equal(failed.recoveryPlan.steps[failedAt]?.state, "FAILED", String(failedAt));
+    assert.equal(failed.recoveryPlan.postRestore, "FAILED", String(failedAt));
+    assert.equal(failed.recoveryPlan.resumeDecision, "BLOCKED", String(failedAt));
+    assert.equal(failed.recoveryPlan.resumeExecutionAllowed, false);
+    assert.equal(transitionRecoveryDrill(state, "advance"), state);
+  }
+});
+
+test("#430 Golden #8: complete fictional run is insufficient under RTO breach or stale verification", () => {
+  let state = INITIAL_RECOVERY_DRILL;
+  for (let i = 0; i < 4; i++) state = transitionRecoveryDrill(state, "advance");
+  state = transitionRecoveryDrill(state, "simulate-restore-approval");
+  for (let i = 4; i < 10; i++) state = transitionRecoveryDrill(state, "advance");
+  const rtoBreach = projectRecoveryShowcase("ready", NOW, {
+    rpoMinutes: 60, rtoMinutes: 10, restoreMaxAgeHours: 24,
+  }, state);
+  assert.equal(rtoBreach.recovery.rto.status, "BREACHED");
+  assert.equal(rtoBreach.recoveryPlan.resumeDecision, "BLOCKED");
+  const stale = projectRecoveryShowcase("restore_stale", NOW, {
+    rpoMinutes: 43200, rtoMinutes: 45, restoreMaxAgeHours: 1,
+  }, state);
+  assert.equal(stale.recovery.restoreFreshness, "STALE");
+  assert.equal(stale.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(stale.recoveryPlan.resumeExecutionAllowed, false);
+});
