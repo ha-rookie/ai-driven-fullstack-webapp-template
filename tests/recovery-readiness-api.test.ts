@@ -137,6 +137,90 @@ test("#430 forbidden Production restore is never offered in local, preview, test
   }
 });
 
+test("#429/#430 failed, stale and RTO-breached restore checks create a bounded human review Finding", () => {
+  const NOW = "2026-10-18T06:00:00.000Z";
+  const source: RecoveryObservation = {
+    sourceState: "available", observationComplete: true,
+    observedAt: NOW,
+    backup: { lastSuccessfulAt: "2026-10-18T05:30:00.000Z", lastVerifiedAt: "2026-10-18T05:30:00.000Z" },
+    recoveryPoint: { at: "2026-10-18T05:30:00.000Z", verified: true },
+    targets: { rpoMinutes: 60, rtoMinutes: 45, restoreMaxAgeHours: 24 },
+    restore: {
+      completedAt: "2026-10-18T05:45:00.000Z",
+      testedRecoveryPointAt: "2026-10-18T05:30:00.000Z",
+      result: "PASSED", durationMinutes: 20,
+      checks: { application: "PASSED", dataIntegrity: "PASSED",
+        businessConsistency: "PASSED", integrations: "PASSED",
+        jobs: "PASSED", security: "PASSED", audit: "PASSED" },
+    },
+  };
+  const failure = projectRecoveryCenter("production", NOW, {
+    ...source, restore: { ...source.restore!, result: "FAILED",
+      checks: { ...source.restore!.checks, dataIntegrity: "FAILED" } },
+  });
+  assert.equal(failure.recovery.restoreTest?.checks.dataIntegrity, "FAILED");
+  assert.equal(failure.finding?.id, "recovery_restore_verification_failed");
+  assert.equal(failure.actionRequired?.operationId, "recovery.review");
+  assert.equal(failure.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(failure.restoreGate.executionAllowed, false);
+
+  const overdue = projectRecoveryCenter("production", NOW, {
+    ...source,
+    targets: { rpoMinutes: 43200, rtoMinutes: 45, restoreMaxAgeHours: 24 },
+    backup: { lastSuccessfulAt: "2026-10-16T04:00:00.000Z",
+      lastVerifiedAt: "2026-10-16T04:00:00.000Z" },
+    recoveryPoint: { at: "2026-10-16T04:00:00.000Z", verified: true },
+    restore: { ...source.restore!, testedRecoveryPointAt: "2026-10-16T04:00:00.000Z",
+      completedAt: "2026-10-16T05:00:00.000Z" },
+  });
+  assert.equal(overdue.recovery.restoreFreshness, "STALE");
+  assert.equal(overdue.finding?.id, "recovery_restore_test_stale");
+  assert.equal(overdue.actionRequired?.findingId, overdue.finding?.id);
+  assert.equal(overdue.recoveryPlan.resumeExecutionAllowed, false);
+
+  const overRto = projectRecoveryCenter("production", NOW, {
+    ...source, restore: { ...source.restore!, durationMinutes: 60 },
+  });
+  assert.equal(overRto.recovery.rto.status, "BREACHED");
+  assert.equal(overRto.finding?.id, "recovery_rto_breach");
+  assert.equal(overRto.actionRequired?.operationId, "recovery.review");
+
+  const healthy = projectRecoveryCenter("production", NOW, source);
+  assert.equal(healthy.recovery.readiness, "READY");
+  assert.equal(healthy.finding, null);
+  assert.equal(healthy.actionRequired, null);
+  assert.equal(healthy.restoreGate.executionAllowed, false, "rehearsal READY is not restore permission");
+  assert.equal(healthy.recoveryPlan.resumeExecutionAllowed, false, "incident Resume remains blocked");
+});
+
+test("#431 authorized Worker GET transports actual bounded post-restore check results", async () => {
+  const response = await handleRecoveryReadinessApi(req(), {
+    DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "test",
+  }, "verified-evidence", async (_env, asOf) => {
+    const point = new Date(Date.parse(asOf) - 30 * 60_000).toISOString();
+    return {
+      sourceState: "available", observationComplete: true, observedAt: asOf,
+      backup: { lastSuccessfulAt: point, lastVerifiedAt: point },
+      recoveryPoint: { at: point, verified: true },
+      targets: { rpoMinutes: 60, rtoMinutes: 45, restoreMaxAgeHours: 24 },
+      restore: { completedAt: asOf, testedRecoveryPointAt: point,
+        result: "FAILED", durationMinutes: 15,
+        checks: { application: "PASSED", dataIntegrity: "FAILED",
+          businessConsistency: "PASSED", integrations: "PASSED",
+          jobs: "PASSED", security: "PASSED", audit: "PASSED" },
+      },
+    } satisfies RecoveryObservation;
+  });
+  assert.equal(response?.status, 200);
+  const body = await response!.json() as ReturnType<typeof projectRecoveryCenter>;
+  assert.equal(body.recovery.sourceState, "available");
+  assert.equal(body.recovery.restoreTest?.checks.dataIntegrity, "FAILED");
+  assert.equal(body.recovery.postRestoreVerification, "FAILED");
+  assert.equal(body.finding?.id, "recovery_restore_verification_failed");
+  assert.equal(body.actionRequired?.operationId, "recovery.review");
+  assert.equal(body.restoreGate.executionAllowed, false);
+});
+
 /** All following fixtures are injected AFTER the real API's auth + scope checks.
  * No provider calls, writes, or real Recovery approvals are created. */
 const minutesAgo = (asOf: string, count: number): string =>
