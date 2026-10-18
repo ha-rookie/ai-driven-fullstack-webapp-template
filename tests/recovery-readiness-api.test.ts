@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  handleRecoveryReadinessApi, projectRecoveryCenter, type RecoveryEvidenceReader,
+  handleRecoveryReadinessApi, projectRecoveryCenter,
+  type RecoveryEvidenceReader, type RecoveryOperationAuditReader,
 } from "../src/worker/administration/recovery-readiness-api";
+import { RECOVERY_STEPS, type RecoveryOperationSnapshot } from "../src/shared/recovery/recovery-plan";
 import type { RecoveryObservation } from "../src/shared/recovery/readiness";
 
 const root = "https://example.test/api/admin/operations/recovery-readiness";
@@ -133,4 +135,158 @@ test("#430 forbidden Production restore is never offered in local, preview, test
     assert.equal(result.recoveryPlan.resumeDecision, "BLOCKED");
     assert.equal(result.auditEvidence.provesRecoverability, false);
   }
+});
+
+/** All following fixtures are injected AFTER the real API's auth + scope checks.
+ * No provider calls, writes, or real Recovery approvals are created. */
+const minutesAgo = (asOf: string, count: number): string =>
+  new Date(Date.parse(asOf) - count * 60_000).toISOString();
+const allPass = {
+  application: "PASSED", dataIntegrity: "PASSED", businessConsistency: "PASSED",
+  integrations: "PASSED", jobs: "PASSED", security: "PASSED", audit: "PASSED",
+} as const;
+const verifiedBackup: RecoveryEvidenceReader = async (_environment, asOf) => {
+  const point = minutesAgo(asOf, 30);
+  return {
+    sourceState: "available", observationComplete: true, observedAt: asOf,
+    backup: { lastSuccessfulAt: minutesAgo(asOf, 45), lastVerifiedAt: minutesAgo(asOf, 40) },
+    recoveryPoint: { at: point, verified: true },
+    targets: { rpoMinutes: 60, rtoMinutes: 45, restoreMaxAgeHours: 24 },
+    restore: {
+      completedAt: minutesAgo(asOf, 5), testedRecoveryPointAt: point,
+      result: "PASSED", durationMinutes: 20, checks: allPass,
+    },
+  } satisfies RecoveryObservation;
+};
+const verifiedIncident: RecoveryOperationAuditReader = async (environment, asOf) => ({
+  source: "verified-audit", scopeId: "workhub-company", environment,
+  incidentId: "fixture-incident", runId: "fixture-run", observedAt: asOf,
+  steps: RECOVERY_STEPS.slice(0, 10).map((step, i) => ({
+    id: step.id as Exclude<typeof step.id, "resume_service">,
+    result: "PASSED", recordedAt: minutesAgo(asOf, 20 - i),
+    auditEventId: "fixture-audit-" + i,
+    ...(step.id === "restore" ? { humanApprovalId: "fixture-human-approval" } : {}),
+  })),
+  postRestoreChecks: allPass,
+} satisfies RecoveryOperationSnapshot);
+
+test("#430 Golden #8: authenticated HTTP projects ten audited steps and still requires a Human decision", async () => {
+  let backupReads = 0, auditReads = 0;
+  const backup: RecoveryEvidenceReader = async (environment, asOf) => {
+    backupReads++;
+    assert.equal(environment, "production");
+    return verifiedBackup(environment, asOf);
+  };
+  const audit: RecoveryOperationAuditReader = async (environment, asOf) => {
+    auditReads++;
+    assert.equal(environment, "production");
+    return verifiedIncident(environment, asOf);
+  };
+  const env = { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "production" };
+  const first = await handleRecoveryReadinessApi(req(), env, "golden-1", backup, audit);
+  const afterBrowserReload = await handleRecoveryReadinessApi(req(), env, "golden-2", backup, audit);
+  assert.equal(first?.status, 200);
+  assert.equal(afterBrowserReload?.status, 200);
+  assert.equal(backupReads, 2);
+  assert.equal(auditReads, 2, "each GET reads audit again, never trusts browser-local progress");
+  for (const response of [first!, afterBrowserReload!]) {
+    const body = await response.json() as ReturnType<typeof projectRecoveryCenter>;
+    assert.equal(body.recovery.readiness, "READY");
+    assert.equal(body.recovery.rpo.status, "WITHIN_TARGET");
+    assert.equal(body.recovery.rto.status, "WITHIN_TARGET");
+    assert.equal(body.recovery.restoreFreshness, "CURRENT");
+    assert.equal(body.recoveryPlan.evidenceSource, "verified-audit");
+    assert.equal(body.recoveryPlan.incidentId, "fixture-incident");
+    assert.equal(body.recoveryPlan.steps.filter(s => s.state === "VERIFIED").length, 10);
+    assert.equal(body.recoveryPlan.postRestore, "PASSED");
+    assert.equal(body.recoveryPlan.resumeDecision, "HUMAN_REVIEW_REQUIRED");
+    assert.equal(body.recoveryPlan.resumeExecutionAllowed, false);
+    assert.equal(body.restoreGate.policyDecision, "HUMAN_GATE");
+    assert.equal(body.restoreGate.executionAllowed, false);
+    assert.equal(body.auditEvidence.provesRecoverability, false);
+  }
+});
+
+test("#430 interruption and uncertain durable incident evidence block resume through HTTP", async () => {
+  const env = { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" };
+  const variants: readonly {
+    name: string;
+    read: RecoveryOperationAuditReader;
+    expectedSource: string;
+  }[] = [
+    { name: "adapter unconnected", read: async () => null, expectedSource: "not-connected" },
+    { name: "adapter failed", read: async () => { throw new Error("must-never-leak"); },
+      expectedSource: "unavailable" },
+    { name: "adapter returned undefined", read: async () => undefined, expectedSource: "unavailable" },
+    { name: "restore approval absent", read: async (e, now) => {
+      const original = await verifiedIncident(e, now) as RecoveryOperationSnapshot;
+      return { ...original, steps: original.steps.map(s =>
+        s.id === "restore" ? { ...s, humanApprovalId: undefined } : s) };
+    }, expectedSource: "unavailable" },
+    { name: "interrupted before Restore", read: async (e, now) => {
+      const original = await verifiedIncident(e, now) as RecoveryOperationSnapshot;
+      return { ...original, steps: original.steps.slice(0, 4), postRestoreChecks: null };
+    }, expectedSource: "verified-audit" },
+    { name: "business check unknown", read: async (e, now) => {
+      const original = await verifiedIncident(e, now) as RecoveryOperationSnapshot;
+      return { ...original, postRestoreChecks: { ...allPass, businessConsistency: "UNKNOWN" } };
+    }, expectedSource: "verified-audit" },
+  ];
+  for (const variant of variants) {
+    const response = await handleRecoveryReadinessApi(req(), env, variant.name,
+      verifiedBackup, variant.read);
+    assert.equal(response?.status, 200, variant.name);
+    const raw = await response!.text();
+    assert.doesNotMatch(raw, /must-never-leak/u);
+    const body = JSON.parse(raw) as ReturnType<typeof projectRecoveryCenter>;
+    assert.equal(body.recovery.readiness, "READY", variant.name);
+    assert.equal(body.recoveryPlan.evidenceSource, variant.expectedSource, variant.name);
+    assert.equal(body.recoveryPlan.resumeDecision, "BLOCKED", variant.name);
+    assert.equal(body.recoveryPlan.resumeExecutionAllowed, false, variant.name);
+    assert.equal(body.restoreGate.executionAllowed, false, variant.name);
+    if (variant.name === "interrupted before Restore") {
+      assert.equal(body.recoveryPlan.steps.filter(s => s.state === "VERIFIED").length, 4);
+      assert.equal(body.recoveryPlan.steps[4]?.state, "PENDING");
+    }
+    if (variant.name === "business check unknown") {
+      assert.equal(body.recoveryPlan.postRestore, "UNKNOWN");
+      assert.ok(body.recoveryPlan.blockers.includes("incident_post_restore_checks_incomplete"));
+    }
+  }
+});
+
+test("#430 the admin authorization gate denies before calling either recovery evidence reader", async () => {
+  let backupReads = 0, incidentReads = 0;
+  const backup: RecoveryEvidenceReader = async () => { backupReads++; return null; };
+  const incident: RecoveryOperationAuditReader = async () => { incidentReads++; return null; };
+  for (const role of ["employee", null]) {
+    const response = await handleRecoveryReadinessApi(req(),
+      { DB: sessionDb(role), RUNTIME_ENVIRONMENT: "preview" },
+      "unauthorized", backup, incident);
+    assert.equal(response?.status, 403);
+  }
+  const post = await handleRecoveryReadinessApi(new Request(req().url, { method: "POST" }),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "preview" },
+    "no-execution", backup, incident);
+  assert.equal(post?.status, 405);
+  assert.equal(backupReads, 0);
+  assert.equal(incidentReads, 0);
+});
+
+test("#430 Golden #7: backup exists but Restore verification failed; never READY through HTTP", async () => {
+  const badBackup: RecoveryEvidenceReader = async (environment, asOf) => {
+    const passed = await verifiedBackup(environment, asOf) as RecoveryObservation;
+    return { ...passed, restore: { ...passed.restore!, result: "FAILED",
+      checks: { ...allPass, dataIntegrity: "FAILED" } } };
+  };
+  const response = await handleRecoveryReadinessApi(req(),
+    { DB: sessionDb("system_admin"), RUNTIME_ENVIRONMENT: "production" },
+    "golden-7", badBackup, verifiedIncident);
+  assert.equal(response?.status, 200);
+  const data = await response!.json() as ReturnType<typeof projectRecoveryCenter>;
+  assert.equal(data.recovery.protection, "PROTECTED");
+  assert.equal(data.recovery.restoreFreshness, "FAILED");
+  assert.equal(data.recovery.readiness, "NOT_READY");
+  assert.equal(data.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(data.recoveryPlan.resumeExecutionAllowed, false);
 });
