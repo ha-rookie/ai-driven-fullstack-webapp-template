@@ -6,6 +6,7 @@ import type { ActionRequired, Finding, OperationDefinition } from "../operations
 import type { RuntimeEnvironment } from "../../shared/runtime";
 import { assessRecoveryReadiness, type RecoveryReadinessProjection } from "../../shared/recovery/readiness";
 import { projectRecoveryPlan, type RecoveryPlanProjection } from "../../shared/recovery/recovery-plan";
+import { projectRecoveryReviewAction } from "../../shared/recovery/review-action";
 import { readRecoveryAuditEvidence, unavailableRecoveryAudit,
   type RecoveryAuditEvidence } from "./recovery-audit-evidence";
 
@@ -83,40 +84,8 @@ export const projectRecoveryCenter = (
     || canExecuteOperation(preview)) {
     throw new TypeError("Recovery operation must remain behind Human Gate");
   }
-  // An independently audited incident verification failure is ActionRequired
-  // even when an older backup rehearsal was READY. Never mark an incident healthy
-  // from backup verification alone; no restore/resume command is exposed here.
-  const issue = recoveryPlan.evidenceSource === "verified-audit"
-    && recoveryPlan.postRestore === "FAILED"
-    // Preserve established Recovery breach/failure priorities if BOTH are present.
-    && recovery.rpo.status !== "BREACHED"
-    && recovery.postRestoreVerification !== "FAILED"
-    ? { id: "recovery_incident_verification_failed",
-      summary: "Audited incident post-restore verification failed",
-      reason: "incident_verification_failed_requires_human_review" }
-    : recovery.sourceState !== "available" ? null
-      : recovery.rpo.status === "BREACHED"
-      ? { id: "recovery_rpo_breach", summary: "Verified recovery point exceeds RPO",
-        reason: "rpo_breach_requires_human_review" }
-      : recovery.postRestoreVerification === "FAILED"
-        ? { id: "recovery_restore_verification_failed", summary: "Restore verification failed",
-          reason: "restore_verification_failed_requires_human_review" }
-        : recovery.rto.status === "BREACHED"
-          ? { id: "recovery_rto_breach", summary: "Verified rehearsal duration exceeds RTO",
-            reason: "rto_breach_requires_human_review" }
-          : recovery.restoreFreshness === "STALE"
-            ? { id: "recovery_restore_test_stale", summary: "Restore verification is overdue",
-              reason: "restore_test_stale_requires_human_review" }
-            : null;
-  const finding: Finding | null = issue ? {
-    id: issue.id, resource: {
-      resourceType: "recovery", resourceId: "workhub-recovery", scopeId: SCOPE,
-    }, health: "DEGRADED", detectedAt: asOf, summary: issue.summary,
-  } : null;
-  const actionRequired: ActionRequired | null = finding && issue ? {
-    findingId: finding.id, operationId: "recovery.review",
-    reason: issue.reason,
-  } : null;
+  // Shared #429 finding/action decision for the API and fictitious Showcase.
+  const { finding, actionRequired } = projectRecoveryReviewAction(recovery, recoveryPlan, asOf);
   return {
     schemaVersion: 1, scopeId: SCOPE, environment, observedAt: asOf,
     recovery, recoveryPlan, auditEvidence, finding, actionRequired,

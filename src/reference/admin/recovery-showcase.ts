@@ -4,11 +4,12 @@
  */
 import { assessRecoveryReadiness, type RecoveryObservation } from "../../shared/recovery/readiness";
 import { projectRecoveryPlan, RECOVERY_STEPS, type RecoveryOperationSnapshot } from "../../shared/recovery/recovery-plan";
+import { projectRecoveryReviewAction } from "../../shared/recovery/review-action";
 
 export const RECOVERY_SHOWCASE_SCENARIOS = [
-  { id: "ready", label: "復旧検証OK", description: "検証済みの復旧ポイント、復元テスト、業務検証が揃った場合" },
+  { id: "ready", label: "復旧検証OK", description: "架空のProduction復旧を想定し、模擬Human Gate・10件の検証済み手順が揃ってもサービス再開は人間の別判断とする" },
   { id: "rpo_breach", label: "RPO超過", description: "最後の復旧ポイントが目標より古く、運用者の確認が必要な場合" },
-  { id: "restore_failed", label: "復元テスト失敗", description: "復元後のデータ整合性チェックが失敗した場合" },
+  { id: "restore_failed", label: "復元テスト失敗", description: "バックアップは成功していても復元後の整合性検証に失敗した場合、対応要確認となりサービスを再開しない" },
   { id: "restore_stale", label: "テスト期限切れ", description: "復元テスト自体は成功したが、最終検証が古い場合" },
   { id: "restore_missing", label: "復元記録なし", description: "バックアップの記録だけがあり、復元テストが実施されていない場合" },
   { id: "not_connected", label: "実証跡未接続", description: "取得元が未接続で、復旧可否を判断できない場合" },
@@ -122,10 +123,13 @@ export const projectRecoveryShowcase = (
   };
   const recoveryPlan = projectRecoveryPlan(recovery, "preview", asOf,
     scenario === "not_connected" ? null : injected);
+  const review = projectRecoveryReviewAction(recovery, recoveryPlan, asOf);
   return {
     recovery,
     recoveryPlan,
-    actionRequired: recovery.sourceState === "available" && recovery.rpo.status === "BREACHED",
+    finding: review.finding,
+    reviewAction: review.actionRequired,
+    actionRequired: review.actionRequired !== null,
     restoreExecutionAllowed: false as const,
     resumeExecutionAllowed: false as const,
   };
