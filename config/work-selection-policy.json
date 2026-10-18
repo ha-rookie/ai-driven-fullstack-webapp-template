@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    431
+    433
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-18 Stage9 Work Selection transition PROPOSED: user authorized governance-only PR creation from completed existing WBS #132 Stage8 #420 (Closed 11/11) to existing next Stage9 #431 Backup & Recovery Readiness Console (Open 0/9). Until this policy PR is separately approved and Squash-merged, main focus remains [420] and #431 implementation must not begin. WBS order, milestones, priorities, original #431 acceptance and cross-cutting #429/#430 constraints stay unchanged. #431 must distinguish Backup success from restore verification and recoverability; Production restore requires Human Gate. Formal ST #694 remains deferred. No Preview/Production deploy, remote D1, migration, secrets or Cloudflare resource changes are authorized. Previous policy decision history remains in Git revisions (prior notes summarized: 2026-10-16 Stage8 current work-selection transition request: user authorized an independent governance-only PR (NOT its merge) from completed #727 to existing WBS #132 Stage8 )."
+  "notes": "2026-10-19 Governance-only proposal: user requested the next existing WBS #132 work-selection decision after all 11 Admin/Operations Portal Stage0–9 plan items were checked and Stage9 #431 was Closed with original showcase-level 9/9. Next existing WBS finalization track is #433 Reference Site / Developer & Architecture Reference (Open, P3), completing Code + Running WORKHUB Reference Application + Reference Site. The already-existing public WORKHUB Showcase (#402 design-only) and staged documentation are reused; no new Stage or feature is inserted. #433 begins with its existing outstanding technology/framework/hosting decision and documented completion criteria; this one-file governance PR does not choose a stack or build/deploy the site. #430 remains an Open cross-cutting Failure Safety acceptance, #694 formal ST/physical-device acceptance remains Not Run and separately gated; Preview read-only safety #609 and remote D1 governance #599/#632 remain independent Open, without being silently waived. #475 external validation depends on Reference readiness. Until this PR is separately approved and Squash-merged, main focus remains [431] and #433 implementation is not authorized. WBS original order/priority, milestones, issue acceptance conditions, security/Human Gate and governance lists remain unchanged. Production/Preview deploy, remote D1, Migration, Secrets and Cloudflare resource changes are not authorized. Historical policy decisions remain in Git history."
 }
