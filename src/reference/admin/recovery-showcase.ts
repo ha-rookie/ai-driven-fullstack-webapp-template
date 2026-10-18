@@ -3,6 +3,7 @@
  * It must never be sent to the API or treated as an actual provider observation.
  */
 import { assessRecoveryReadiness, type RecoveryObservation } from "../../shared/recovery/readiness";
+import { projectRecoveryPlan, RECOVERY_STEPS, type RecoveryOperationSnapshot } from "../../shared/recovery/recovery-plan";
 
 export const RECOVERY_SHOWCASE_SCENARIOS = [
   { id: "ready", label: "復旧検証OK", description: "検証済みの復旧ポイント、復元テスト、業務検証が揃った場合" },
@@ -60,8 +61,34 @@ export const projectRecoveryShowcase = (scenario: RecoveryShowcaseScenarioId, as
   }
 
   const recovery = assessRecoveryReadiness(scenario === "not_connected" ? null : evidence, asOf);
+  // Synthetic, audit-shaped checkpoints for display only. No API write or
+  // persistent incident state: an interrupted run is reconstructed from the
+  // same immutable evidence, never treated as a real resume authorization.
+  const count = scenario === "not_connected" ? 0
+    : scenario === "restore_missing" ? 4
+      : scenario === "restore_failed" ? 7 : 10;
+  const audit: RecoveryOperationSnapshot = {
+    source: "verified-audit", scopeId: "workhub-company", environment: "preview",
+    incidentId: "demo-incident", runId: "demo-recovery-run",
+    observedAt: asOf,
+    steps: RECOVERY_STEPS.slice(0, count).map((step, i) => ({
+      id: step.id as Exclude<typeof step.id, "resume_service">,
+      result: scenario === "restore_failed" && i === 6 ? "FAILED" as const : "PASSED" as const,
+      recordedAt: ago(20 - i),
+      auditEventId: "demo-audit-" + (i + 1),
+      ...(step.id === "restore" ? { humanApprovalId: "DEMO-approval-only" } : {}),
+    })),
+    postRestoreChecks: count < 5 ? null : {
+      application: "PASSED", dataIntegrity: scenario === "restore_failed" ? "FAILED" : "PASSED",
+      businessConsistency: "PASSED", integrations: "PASSED",
+      jobs: "PASSED", security: "PASSED", audit: "PASSED",
+    },
+  };
+  const recoveryPlan = projectRecoveryPlan(recovery, "preview", asOf,
+    scenario === "not_connected" ? null : audit);
   return {
     recovery,
+    recoveryPlan,
     actionRequired: recovery.sourceState === "available" && recovery.rpo.status === "BREACHED",
     restoreExecutionAllowed: false as const,
     resumeExecutionAllowed: false as const,

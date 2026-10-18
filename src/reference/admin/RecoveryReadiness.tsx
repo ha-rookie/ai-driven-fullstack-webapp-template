@@ -197,6 +197,21 @@ export default function RecoveryReadiness() {
         </div>
         {showcase.actionRequired && <p role="status" data-testid="recovery-showcase-action-required">
           RPO超過のためActionRequired：運用者による確認が必要です（デモ）。</p>}
+        <div className="admin-audit-state" data-testid="recovery-showcase-plan">
+          <h4>復旧手順・監査済みステップ（デモ専用）</h4>
+          <p>事故ID: demo-incident ／ 実行ID: demo-recovery-run（架空）。
+            記録された手順だけを検証済みとして表示し、途中中断・失敗時は再開を許可しません。</p>
+          <ol>{showcase.recoveryPlan.steps.map(step => <li key={step.id}>
+            <strong>{step.label}</strong>：{step.state}
+            {step.requiresHumanGate ? "（Human Gate）" : ""}
+          </li>)}</ol>
+          <p data-testid="recovery-showcase-resume">Service Resume 判定:
+            <strong> {showcase.recoveryPlan.resumeDecision}</strong>（実行不可）。
+            復元後チェック: {showcase.recoveryPlan.postRestore}。
+            {showcase.recoveryPlan.blockers.length > 0
+              ? " 未解決: " + showcase.recoveryPlan.blockers.join(" / ")
+              : " 証跡上は人間による最終確認待ちです。自動再開しません。"}</p>
+        </div>
         <p>不足証跡: {describeMissingRecoveryEvidence(showcase.recovery.missingEvidence)}</p>
         <p>Production Restore: HUMAN_GATE ／ 自動復旧: 不可 ／ Service Resume: 不可。
           デモは操作権限や実際の復旧成功を意味しません。</p>
