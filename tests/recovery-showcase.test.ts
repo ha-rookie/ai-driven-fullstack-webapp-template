@@ -9,7 +9,7 @@ test("#431 showcase covers six distinct original recovery decisions using actual
     ready: ["READY", "WITHIN_TARGET", "CURRENT", "PASSED", false],
     rpo_breach: ["NOT_READY", "BREACHED", "CURRENT", "PASSED", true],
     restore_failed: ["NOT_READY", "WITHIN_TARGET", "FAILED", "FAILED", false],
-    restore_stale: ["NOT_READY", "WITHIN_TARGET", "STALE", "PASSED", false],
+    restore_stale: ["NOT_READY", "BREACHED", "STALE", "PASSED", true],
     restore_missing: ["UNKNOWN", "WITHIN_TARGET", "MISSING", "UNKNOWN", false],
     not_connected: ["UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN", false],
   } as const;
