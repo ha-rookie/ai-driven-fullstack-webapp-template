@@ -143,6 +143,11 @@ export default function RecoveryReadiness() {
         <article className="admin-state-card"><strong>Recovery Readiness</strong>
           <div data-testid="recovery-readiness">{recovery.readiness}</div>
           <small>Post-Restore Verification: {recovery.postRestoreVerification}</small>
+          <small>{recovery.readiness === "READY"
+            ? "必要な復旧検証の証跡が揃い、設定目標内です。"
+            : recovery.readiness === "NOT_READY"
+              ? "復旧条件を満たしていません。違反または失敗の証跡を確認してください。"
+              : "復旧可能性は未確認です。証跡不足を正常とみなしません。"}</small>
         </article>
       </div>
       <p className="admin-audit-note">復旧ポイント: {fmt(recovery.recoveryPoint?.at ?? null)}
