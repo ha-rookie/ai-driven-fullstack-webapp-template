@@ -27,8 +27,18 @@ const RESTORE_DEFINITION: OperationDefinition = Object.freeze({
 export type RecoveryEvidenceReader = (
   environment: RuntimeEnvironment, asOf: string,
 ) => Promise<unknown>;
+/**
+ * #431: Trusted adapter boundary for recovering a single incident's immutable
+ * Audit checkpoints. This is an evidence read, not an operation executor.
+ * The default adapter remains unconnected until a separately approved durable
+ * recovery Audit producer is available; the generic D1 Audit count is NOT proof.
+ */
+export type RecoveryOperationAuditReader = (
+  environment: RuntimeEnvironment, asOf: string,
+) => Promise<unknown>;
 /** No connection to Remote D1, Cloudflare, production backups or migration APIs. */
 const readUnconnected: RecoveryEvidenceReader = async () => null;
+const readUnconnectedRecoveryOperations: RecoveryOperationAuditReader = async () => null;
 
 interface Env { readonly DB: D1Database; readonly RUNTIME_ENVIRONMENT?: string }
 const reject = (requestId: string, status: number, code: string): Response =>
@@ -97,6 +107,7 @@ export const projectRecoveryCenter = (
 export const handleRecoveryReadinessApi = async (
   request: Request, env: Env, requestId: string,
   reader: RecoveryEvidenceReader = readUnconnected,
+  auditReader: RecoveryOperationAuditReader = readUnconnectedRecoveryOperations,
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (url.pathname !== ROUTE) return null;
@@ -127,11 +138,20 @@ export const handleRecoveryReadinessApi = async (
   let evidence: unknown;
   try { evidence = await reader(environment, asOf); }
   catch { evidence = undefined; } // UNKNOWN, not healthy or verified.
-  // Real read of existing durable D1 Audit rows. Never turns backup readiness
-  // green and never consumes untrusted HTTP-provided Audit evidence.
+  // A future trusted adapter can rehydrate independently audited incident
+  // checkpoints after a browser restart. Missing adapter => not-connected;
+  // adapter failure/malformed response => unavailable, never a false resume.
+  let incidentAudit: unknown;
+  try {
+    incidentAudit = await auditReader(environment, asOf);
+  } catch {
+    incidentAudit = { adapterUnavailable: true };
+  }
+  if (incidentAudit === undefined) incidentAudit = { adapterUnavailable: true };
+  // Existing D1 Audit coverage is independent. It is not incident verification.
   const auditEvidence = await readRecoveryAuditEvidence(env.DB, environment, asOf);
   try {
-    return Response.json(projectRecoveryCenter(environment, asOf, evidence, null, auditEvidence), {
+    return Response.json(projectRecoveryCenter(environment, asOf, evidence, incidentAudit, auditEvidence), {
       headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
     });
   } catch { return reject(requestId, 503, "recovery_projection_unavailable"); }
