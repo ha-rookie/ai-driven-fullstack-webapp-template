@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { RecoveryReadinessProjection } from "../../shared/recovery/readiness";
 import { RECOVERY_STEPS, type RecoveryPlanProjection } from "../../shared/recovery/recovery-plan";
+import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, type RecoveryShowcaseScenarioId } from "./recovery-showcase";
 
 /** #431 Stage9: Recovery is evidence-driven, never inferred from backup creation. */
 const SCOPE = "workhub-company";
@@ -112,6 +113,8 @@ export default function RecoveryReadiness() {
     } catch { setState({ kind: "unavailable" }); }
   };
   useEffect(() => { void load(); }, []);
+  const [showcaseScenario, setShowcaseScenario] = useState<RecoveryShowcaseScenarioId>("ready");
+  const showcase = projectRecoveryShowcase(showcaseScenario, new Date().toISOString());
   const view = state.kind === "ready" ? state.data : null;
   const recovery = view?.recovery;
 
@@ -159,6 +162,44 @@ export default function RecoveryReadiness() {
           <div data-testid="recovery-readiness">{recovery.readiness}</div>
           <small>Post-Restore Verification: {recovery.postRestoreVerification}</small>
         </article>
+      </div>
+      <div className="admin-audit-state" data-testid="recovery-showcase" aria-label="復旧判定シミュレーション">
+        <h3>復旧判断を体験する（架空データのデモ）</h3>
+        <p>シナリオを切り替えると実装済みのRPO/RTO・復元検証・Readiness判定が変わります。
+          上の実環境の証跡とは完全に別で、DB・バックアップ・サービス状態は変更しません。</p>
+        <div role="group" aria-label="デモシナリオ" style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "12px 0" }}>
+          {RECOVERY_SHOWCASE_SCENARIOS.map(item => <button
+            key={item.id} type="button" className="admin-inline-action"
+            aria-pressed={showcaseScenario === item.id}
+            onClick={() => setShowcaseScenario(item.id)}>{item.label}</button>)}
+        </div>
+        <p>{RECOVERY_SHOWCASE_SCENARIOS.find(item => item.id === showcaseScenario)?.description}</p>
+        <div className="admin-states" aria-label="デモ判定結果">
+          <article className="admin-state-card">
+            <strong>Recovery Readiness（デモ）</strong>
+            <div data-testid="recovery-showcase-readiness">{showcase.recovery.readiness}</div>
+          </article>
+          <article className="admin-state-card">
+            <strong>RPO（デモ）</strong>
+            <div data-testid="recovery-showcase-rpo">{showcase.recovery.rpo.status}</div>
+            <small>復旧ポイント経過: {metric(showcase.recovery.rpo.exposureMinutes)} ／ 目標: {metric(showcase.recovery.rpo.targetMinutes)}</small>
+          </article>
+          <article className="admin-state-card">
+            <strong>RTO（デモ）</strong>
+            <div data-testid="recovery-showcase-rto">{showcase.recovery.rto.status}</div>
+            <small>復元所要: {metric(showcase.recovery.rto.measuredMinutes)} ／ 目標: {metric(showcase.recovery.rto.targetMinutes)}</small>
+          </article>
+          <article className="admin-state-card">
+            <strong>Restore Verification（デモ）</strong>
+            <div data-testid="recovery-showcase-freshness">{showcase.recovery.restoreFreshness}</div>
+            <small>復元後検証: {showcase.recovery.postRestoreVerification}</small>
+          </article>
+        </div>
+        {showcase.actionRequired && <p role="status" data-testid="recovery-showcase-action-required">
+          RPO超過のためActionRequired：運用者による確認が必要です（デモ）。</p>}
+        <p>不足証跡: {describeMissingRecoveryEvidence(showcase.recovery.missingEvidence)}</p>
+        <p>Production Restore: HUMAN_GATE ／ 自動復旧: 不可 ／ Service Resume: 不可。
+          デモは操作権限や実際の復旧成功を意味しません。</p>
       </div>
       <p className="admin-audit-note">復旧ポイント: {fmt(recovery.recoveryPoint?.at ?? null)}
         （検証: {recovery.recoveryPoint?.verified === true ? "確認済み" : "未確認"}）。
