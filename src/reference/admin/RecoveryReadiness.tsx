@@ -34,6 +34,33 @@ const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const oneOf = (v: unknown, options: readonly string[]): v is string =>
   typeof v === "string" && options.includes(v);
+const RESTORE_CHECKS = [
+  { key: "application", label: "Application Health" },
+  { key: "dataIntegrity", label: "DB Integrity" },
+  { key: "businessConsistency", label: "Business Consistency" },
+  { key: "integrations", label: "Integration Reconciliation" },
+  { key: "jobs", label: "Job State" },
+  { key: "security", label: "Security Check" },
+  { key: "audit", label: "Audit Evidence" },
+] as const;
+const checkStatus = (value: unknown): boolean =>
+  oneOf(value, ["PASSED", "FAILED", "UNKNOWN"]);
+const validRestoreTest = (value: unknown): boolean => value === null || (
+  record(value) && checkStatus(value.result)
+  && typeof value.completedAt === "string"
+  && typeof value.testedRecoveryPointAt === "string"
+  && (value.durationMinutes === null ||
+    (typeof value.durationMinutes === "number"
+      && Number.isSafeInteger(value.durationMinutes) && value.durationMinutes >= 0))
+  && record(value.checks)
+  && RESTORE_CHECKS.every(check => checkStatus((value.checks as Record<string, unknown>)[check.key]))
+);
+const RESTORE_ACTION_LABELS: Readonly<Record<string, string>> = {
+  rpo_breach_requires_human_review: "RPO目標を超過しています",
+  rto_breach_requires_human_review: "復元時間がRTO目標を超過しています",
+  restore_verification_failed_requires_human_review: "復元後の検証に失敗しています",
+  restore_test_stale_requires_human_review: "復元テストの有効期間を超えています",
+};
 const isRecoveryResponse = (value: unknown): value is ResponseView => {
   if (!record(value) || value.schemaVersion !== 1 || value.scopeId !== SCOPE
     || !oneOf(value.environment, ["local", "test", "preview", "production"])
@@ -69,6 +96,7 @@ const isRecoveryResponse = (value: unknown): value is ResponseView => {
     && oneOf(r.rpo.status, ["WITHIN_TARGET", "BREACHED", "UNKNOWN"])
     && oneOf(r.rto.status, ["WITHIN_TARGET", "BREACHED", "UNKNOWN"])
     && oneOf(r.restoreFreshness, ["CURRENT", "STALE", "MISSING", "FAILED", "UNKNOWN"])
+    && validRestoreTest(r.restoreTest)
     && Array.isArray(r.missingEvidence) && r.missingEvidence.every((s: unknown) => typeof s === "string")
     && gate.risk === "HUMAN_GATE" && gate.policyDecision === "HUMAN_GATE"
     && gate.executionAllowed === false && gate.operationId === "recovery.restore";
@@ -91,6 +119,26 @@ export const describeMissingRecoveryEvidence = (codes: readonly string[]): strin
   codes.length === 0 ? "登録上の欠測なし（実際の復旧保証ではありません）"
     : codes.map(code => RECOVERY_MISSING_EVIDENCE_LABELS[code]
       ?? "未確認の復旧証跡があります").join(" / ");
+
+/** Same seven evidence checks in live and fictitious showcase views. */
+const RestoreCheckDetails = ({ recovery, demo }: {
+  readonly recovery: RecoveryReadinessProjection; readonly demo: boolean;
+}) => <div className="admin-audit-state"
+  data-testid={demo ? "recovery-showcase-post-restore" : "recovery-post-restore-verification"}>
+  <h3>復元後の7項目検証{demo ? "（架空データ）" : ""}</h3>
+  <p>復元テスト: {recovery.restoreTest?.result ?? "UNKNOWN"} ／
+    実施日時: {fmt(recovery.restoreTest?.completedAt ?? null)} ／
+    検証した復旧ポイント: {fmt(recovery.restoreTest?.testedRecoveryPointAt ?? null)}</p>
+  <ul>{RESTORE_CHECKS.map(check => <li key={check.key}>
+    {check.label}：<strong data-testid={demo ? "demo-check-" + check.key : "check-" + check.key}>
+      {recovery.restoreTest?.checks[check.key] ?? "UNKNOWN"}</strong>
+  </li>)}</ul>
+  <p>{recovery.restoreTest === null
+    ? "復元テストの検証記録は取得できていません。"
+    : recovery.postRestoreVerification === "PASSED"
+      ? "7項目が合格。ただし復元テストの鮮度とRPO/RTOは別途確認が必要です。"
+      : "未合格または未確認の項目があるため、復旧完了とは判定できません。"}</p>
+</div>;
 
 export default function RecoveryReadiness() {
   const [state, setState] = useState<
@@ -165,11 +213,13 @@ export default function RecoveryReadiness() {
           <small>Post-Restore Verification: {recovery.postRestoreVerification}</small>
         </article>
       </div>
+      <RestoreCheckDetails recovery={recovery} demo={false} />
       <p className="admin-audit-note">復旧ポイント: {fmt(recovery.recoveryPoint?.at ?? null)}
         （検証: {recovery.recoveryPoint?.verified === true ? "確認済み" : "未確認"}）。
         未確認・不足項目: {describeMissingRecoveryEvidence(recovery.missingEvidence)}。</p>
       {view.actionRequired && <div className="admin-audit-state is-error" role="alert">
-        RPO違反：対応要確認（{view.actionRequired.reason}）。復旧は自動実行しません。
+        復旧状態：対応要確認（{RESTORE_ACTION_LABELS[view.actionRequired.reason]
+          ?? "追加確認が必要です"}）。復旧は自動実行しません。
       </div>}
       <div className="admin-audit-state" data-testid="recovery-audit-coverage">
         <h3>監査証跡（既存D1監査ログ・読み取り専用）</h3>
@@ -268,6 +318,7 @@ export default function RecoveryReadiness() {
         </div>
         {showcase.actionRequired && <p role="status" data-testid="recovery-showcase-action-required">
           RPO超過のためActionRequired：運用者による確認が必要です（デモ）。</p>}
+        <RestoreCheckDetails recovery={showcase.recovery} demo />
         <div className="admin-audit-state" data-testid="recovery-showcase-plan">
           <h4>復旧手順・監査済みステップ（デモ専用）</h4>
           <p>事故ID: demo-incident ／ 実行ID: demo-recovery-run（架空）。
