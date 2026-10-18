@@ -60,3 +60,31 @@ The UI now distinguishes `RECORDED` (one or more SHA-checked audit events in a b
 **Critical distinction:** An audit record, including a successful one, does *not* attest to an export existing, backup integrity, a restorable recovery point, a successful rehearsal, verified RTO/RPO, or Production service recovery. This adapter does not set `recovery.sourceState` to available, nor fill a `RecoveryOperationSnapshot`. Until there is **trusted, provider-derived backup and restore evidence**, the Recovery Readiness remains UNKNOWN and Resume BLOCKED. Existing audit records can demonstrate an operator action was recorded, not that the underlying infrastructure operation succeeded.
 
 This slice advances the **Audit visibility part** of #431 acceptance 8 via the already existing #429/D1 shared durable audit; it does not claim the full #429 Finding/ActionRequired/Verification/Audit end-to-end link or acceptance 8 as complete. The original #431 is Open 2/9. Later provider integration must be reviewed independently for provenance, trusted storage and Human Gate. No Preview/Production deploy, remote D1, migration, resource change, or Restore command is authorized by this change.
+
+## Stage9 Acceptance convergence — seven post-restore verification results
+
+The provider-neutral evaluator now exposes the existing seven allowlisted post-restore
+check statuses (application health, DB integrity, business consistency, integration,
+jobs, security, audit), the tested point/time, result and duration in a bounded
+`restoreTest` projection. Missing or invalid source observations keep this field
+`null`; unknown provider payload fields are not projected. Both the authenticated
+admin response and the explicitly fictitious six-scenario showcase show which exact
+check failed. This allows an evaluator to assess original #431 clauses 3 (RPO/RTO),
+4 (freshness), 5 (readiness) and 7 (Post-Restore Verification) together instead
+of inferring them from a single summary value.
+
+The existing #429 Finding / ActionRequired separation now handles a confirmed
+restore verification failure, RTO breach or stale restore rehearsal as well as
+the RPO breach. It reports one priority Finding with a fixed non-executable
+`recovery.review` action. Unknown/missing evidence creates no fabricated Finding;
+no Restore or Resume command, data mutation, remote provider call or Audit writer
+is added. Real Audit binding and checkpoint durability are still incomplete.
+The #430 recovery Golden Scenario remains **not fully accepted**, and formal
+ST #694 is deferred as before. All live Provider evidence remains
+`not-connected` unless an independently verified adapter is registered.
+
+Focused tests cover projection, authorized Worker/API transport, fail-closed
+UNKNOWN, all seven statuses, verified/failed/stale/RPO/RTO scenarios and
+blocked service resume. Re-evaluate the original nine #431 acceptance checkboxes
+only after the PR is merged with current CI proof; do not claim remote
+restore verification from synthetic test evidence.

@@ -145,3 +145,27 @@ test("#430 malformed/provider failure/future evidence fails closed without leaky
   }
   assert.throws(() => assessRecoveryReadiness(null, "not-a-date"));
 });
+
+test("#431 all seven post-restore checks are projected without provider payload fields", () => {
+  const observation = complete();
+  const projected = assessRecoveryReadiness({
+    ...observation, restore: {
+      ...observation.restore!,
+      checks: { ...observation.restore!.checks, dataIntegrity: "FAILED",
+        untrustedProviderMetadata: "secret-do-not-leak" },
+    },
+  }, NOW);
+  assert.equal(projected.postRestoreVerification, "FAILED");
+  assert.equal(projected.readiness, "NOT_READY");
+  assert.equal(projected.restoreTest?.checks.dataIntegrity, "FAILED");
+  assert.equal(Object.keys(projected.restoreTest!.checks).length, 7);
+  assert.doesNotMatch(JSON.stringify(projected), /secret-do-not-leak/u);
+  assert.equal(projected.restoreTest?.completedAt, observation.restore!.completedAt);
+  assert.equal(projected.lastRestoreVerifiedAt, null, "a failed restore cannot be last verified");
+});
+
+test("#431 missing/untrusted source has no invented individual verification evidence", () => {
+  assert.equal(assessRecoveryReadiness(null, NOW).restoreTest, null);
+  assert.equal(assessRecoveryReadiness(undefined, NOW).restoreTest, null);
+  assert.equal(assessRecoveryReadiness({ sourceState: "available" }, NOW).restoreTest, null);
+});
