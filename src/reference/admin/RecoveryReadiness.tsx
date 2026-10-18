@@ -138,6 +138,7 @@ export default function RecoveryReadiness() {
             {recovery.rto.status}</div>
           <small>最後の復旧検証: {fmt(recovery.lastRestoreVerifiedAt)}</small>
           <small> / 測定時間: {metric(recovery.rto.measuredMinutes)}</small>
+          <small> / RTO目標: {metric(recovery.rto.targetMinutes)}</small>
         </article>
         <article className="admin-state-card"><strong>Recovery Readiness</strong>
           <div data-testid="recovery-readiness">{recovery.readiness}</div>
