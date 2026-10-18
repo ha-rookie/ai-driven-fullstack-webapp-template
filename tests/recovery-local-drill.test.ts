@@ -191,7 +191,7 @@ const authenticated = () => new Request(
   "https://example.test/api/admin/operations/recovery-readiness?scopeId=workhub-company",
   { headers: { cookie: "app_session=synthetic-test-only" } },
 );
-const liveReadyFixture = (_environment: string, asOf: string): RecoveryObservation => {
+const liveReadyFixture = async (_environment: string, asOf: string): Promise<RecoveryObservation> => {
   const point = new Date(Date.parse(asOf) - 30 * 60_000).toISOString();
   return {
     ...makeReady(), observedAt: asOf,
