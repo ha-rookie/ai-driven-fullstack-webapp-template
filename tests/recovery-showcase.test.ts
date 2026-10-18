@@ -24,6 +24,9 @@ test("#431 showcase covers six distinct original recovery decisions using actual
     ], expected, scenario.id);
     assert.equal(result.restoreExecutionAllowed, false);
     assert.equal(result.resumeExecutionAllowed, false);
+    assert.equal(result.recoveryPlan.steps.length, 11);
+    assert.ok(result.recoveryPlan.steps.every(step => step.executionAllowed === false));
+    assert.equal(result.recoveryPlan.resumeExecutionAllowed, false);
   }
 });
 
@@ -42,4 +45,36 @@ test("#431 showcases are pure time-relative simulations, not provider observatio
   assert.equal(later.recovery.rpo.exposureMinutes, 30);
   assert.equal(projectRecoveryShowcase("not_connected", NOW).recovery.sourceState, "not-connected");
   assert.equal(projectRecoveryShowcase("rpo_breach", NOW).actionRequired, true);
+});
+
+test("#431 showcase runs full 11-step recovery projection and keeps final Human Review", () => {
+  const ready = projectRecoveryShowcase("ready", NOW);
+  assert.equal(ready.recoveryPlan.evidenceSource, "verified-audit");
+  assert.equal(ready.recoveryPlan.steps.slice(0, 10).filter(s => s.state === "VERIFIED").length, 10);
+  assert.equal(ready.recoveryPlan.steps[4]?.requiresHumanGate, true);
+  assert.equal(ready.recoveryPlan.steps[10]?.state, "PENDING");
+  assert.equal(ready.recoveryPlan.resumeDecision, "HUMAN_REVIEW_REQUIRED");
+  assert.equal(ready.recoveryPlan.resumeExecutionAllowed, false);
+});
+
+test("#430 interrupted restore and failed verification cannot resume service", () => {
+  const interrupted = projectRecoveryShowcase("restore_missing", NOW);
+  assert.equal(interrupted.recoveryPlan.steps.filter(s => s.state === "VERIFIED").length, 4);
+  assert.equal(interrupted.recoveryPlan.steps[4]?.state, "PENDING");
+  assert.equal(interrupted.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.deepEqual(interrupted.recoveryPlan, projectRecoveryShowcase("restore_missing", NOW).recoveryPlan);
+  const failed = projectRecoveryShowcase("restore_failed", NOW);
+  assert.equal(failed.recoveryPlan.steps[6]?.state, "FAILED");
+  assert.equal(failed.recoveryPlan.steps[7]?.state, "PENDING");
+  assert.equal(failed.recoveryPlan.postRestore, "FAILED");
+  assert.equal(failed.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(projectRecoveryShowcase("not_connected", NOW).recoveryPlan.evidenceSource, "not-connected");
+});
+
+test("#431 RPO breach or stale test blocks resume despite synthetic audited checkpoints", () => {
+  for (const scenario of ["rpo_breach", "restore_stale"] as const) {
+    const view = projectRecoveryShowcase(scenario, NOW);
+    assert.equal(view.recoveryPlan.resumeDecision, "BLOCKED");
+    assert.ok(view.recoveryPlan.blockers.includes("recovery_readiness_not_verified"));
+  }
 });
