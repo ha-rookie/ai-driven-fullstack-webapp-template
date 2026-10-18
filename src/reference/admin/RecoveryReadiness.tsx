@@ -60,6 +60,7 @@ const RESTORE_ACTION_LABELS: Readonly<Record<string, string>> = {
   rto_breach_requires_human_review: "復元時間がRTO目標を超過しています",
   restore_verification_failed_requires_human_review: "復元後の検証に失敗しています",
   restore_test_stale_requires_human_review: "復元テストの有効期間を超えています",
+  incident_verification_failed_requires_human_review: "復旧時の照合に失敗しています",
 };
 const isRecoveryResponse = (value: unknown): value is ResponseView => {
   if (!record(value) || value.schemaVersion !== 1 || value.scopeId !== SCOPE
@@ -316,8 +317,14 @@ export default function RecoveryReadiness() {
             <small>復元後検証: {showcase.recovery.postRestoreVerification}</small>
           </article>
         </div>
-        {showcase.actionRequired && <p role="status" data-testid="recovery-showcase-action-required">
-          RPO超過のためActionRequired：運用者による確認が必要です（デモ）。</p>}
+        {showcase.reviewAction && <div role="status" className="admin-audit-state is-error"
+          data-testid="recovery-showcase-action-required">
+          <strong>Finding → ActionRequired（架空データ）</strong>
+          <p>{RESTORE_ACTION_LABELS[showcase.reviewAction.reason]
+            ?? "運用者の確認が必要です"}。自動復旧は実行しません。</p>
+          <small>Finding: {showcase.finding?.id ?? "未確認"} ／
+            Operation: {showcase.reviewAction.operationId}（表示のみ）</small>
+        </div>}
         <RestoreCheckDetails recovery={showcase.recovery} demo />
         <div className="admin-audit-state" data-testid="recovery-showcase-plan">
           <h4>復旧手順・監査済みステップ（デモ専用）</h4>
