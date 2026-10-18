@@ -15,6 +15,15 @@ export const RECOVERY_SHOWCASE_SCENARIOS = [
 ] as const;
 
 export type RecoveryShowcaseScenarioId = typeof RECOVERY_SHOWCASE_SCENARIOS[number]["id"];
+/** #430 Golden Recovery failure injection; local-only, never modifies an incident or Audit. */
+export const RECOVERY_SHOWCASE_FAILURES = [
+  { id: "none", label: "証跡正常", description: "記録が検証可能な状態" },
+  { id: "audit_missing", label: "監査証跡欠落", description: "途中ステップのAudit Event IDが欠落" },
+  { id: "approval_missing", label: "承認証跡欠落", description: "RestoreのHuman Gate承認IDが欠落" },
+  { id: "audit_stale", label: "監査観測期限切れ", description: "最後の監査観測が5分を超えて古い" },
+  { id: "verification_unknown", label: "業務検証不明", description: "復元後の業務整合性がUNKNOWN" },
+] as const;
+export type RecoveryShowcaseFailureId = typeof RECOVERY_SHOWCASE_FAILURES[number]["id"];
 
 export interface RecoveryShowcaseTargets {
   readonly rpoMinutes: number;
@@ -27,6 +36,7 @@ export const RECOVERY_SHOWCASE_DEFAULT_TARGETS: RecoveryShowcaseTargets = Object
 export const projectRecoveryShowcase = (
   scenario: RecoveryShowcaseScenarioId, asOf: string,
   targets: RecoveryShowcaseTargets = RECOVERY_SHOWCASE_DEFAULT_TARGETS,
+  failure: RecoveryShowcaseFailureId = "none",
 ) => {
   const ago = (minutes: number) => new Date(Date.parse(asOf) - minutes * 60_000).toISOString();
   const passed = {
@@ -95,8 +105,23 @@ export const projectRecoveryShowcase = (
       jobs: "PASSED", security: "PASSED", audit: "PASSED",
     },
   };
+  // Inject one failure into the synthetic Audit-shaped input and let the
+  // existing fail-closed validator decide. Never bypass its policy.
+  const injected: RecoveryOperationSnapshot = {
+    ...audit,
+    observedAt: failure === "audit_stale" ? ago(6) : audit.observedAt,
+    steps: audit.steps.map((step, index) => ({
+      ...step,
+      ...(failure === "audit_missing" && index === 2 ? { auditEventId: "" } : {}),
+      ...(failure === "approval_missing" && step.id === "restore"
+        ? { humanApprovalId: "" } : {}),
+    })),
+    postRestoreChecks: failure === "verification_unknown" && audit.postRestoreChecks
+      ? { ...audit.postRestoreChecks, businessConsistency: "UNKNOWN" }
+      : audit.postRestoreChecks,
+  };
   const recoveryPlan = projectRecoveryPlan(recovery, "preview", asOf,
-    scenario === "not_connected" ? null : audit);
+    scenario === "not_connected" ? null : injected);
   return {
     recovery,
     recoveryPlan,
