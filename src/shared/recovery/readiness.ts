@@ -53,6 +53,14 @@ export interface RecoveryReadinessProjection {
   readonly recoveryPoint: { readonly at: string; readonly verified: boolean } | null;
   readonly lastRestoreVerifiedAt: string | null;
   readonly postRestoreVerification: "PASSED" | "FAILED" | "UNKNOWN";
+  /** Structured results of a verified source observation, not proof of a Production restore. */
+  readonly restoreTest: {
+    readonly result: Check;
+    readonly completedAt: string;
+    readonly testedRecoveryPointAt: string;
+    readonly durationMinutes: number | null;
+    readonly checks: Readonly<Record<PostRestoreCheck, Check>>;
+  } | null;
   readonly missingEvidence: readonly string[];
 }
 
@@ -71,7 +79,7 @@ const empty = (state: RecoverySourceState): RecoveryReadinessProjection => ({
   rto: { status: "UNKNOWN", measuredMinutes: null, targetMinutes: null },
   restoreFreshness: "UNKNOWN", lastSuccessfulBackupAt: null, lastVerifiedBackupAt: null,
   recoveryPoint: null, lastRestoreVerifiedAt: null, postRestoreVerification: "UNKNOWN",
-  missingEvidence: ["source_not_verified"],
+  restoreTest: null, missingEvidence: ["source_not_verified"],
 });
 const validObservation = (value: unknown, asOf: string): value is RecoveryObservation => {
   if (!object(value) || value.sourceState !== "available"
@@ -174,6 +182,18 @@ export const assessRecoveryReadiness = (
     lastSuccessfulBackupAt: b.lastSuccessfulAt, lastVerifiedBackupAt: b.lastVerifiedAt,
     recoveryPoint: rp, lastRestoreVerifiedAt: tested ? test!.completedAt : null,
     postRestoreVerification: postRestore,
+    restoreTest: test ? {
+      result: test.result, completedAt: test.completedAt,
+      testedRecoveryPointAt: test.testedRecoveryPointAt,
+      durationMinutes: test.durationMinutes,
+      // Copy the seven allowlisted statuses; never pass arbitrary Provider fields.
+      checks: {
+        application: test.checks.application, dataIntegrity: test.checks.dataIntegrity,
+        businessConsistency: test.checks.businessConsistency,
+        integrations: test.checks.integrations, jobs: test.checks.jobs,
+        security: test.checks.security, audit: test.checks.audit,
+      },
+    } : null,
     missingEvidence: missing,
   };
 };

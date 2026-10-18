@@ -73,16 +73,28 @@ export const projectRecoveryCenter = (
     || canExecuteOperation(preview)) {
     throw new TypeError("Recovery operation must remain behind Human Gate");
   }
-  const breached = recovery.sourceState === "available" && recovery.rpo.status === "BREACHED";
-  const finding: Finding | null = breached ? {
-    id: "recovery_rpo_breach", resource: {
+  const issue = recovery.sourceState !== "available" ? null
+    : recovery.rpo.status === "BREACHED"
+      ? { id: "recovery_rpo_breach", summary: "Verified recovery point exceeds RPO",
+        reason: "rpo_breach_requires_human_review" }
+      : recovery.postRestoreVerification === "FAILED"
+        ? { id: "recovery_restore_verification_failed", summary: "Restore verification failed",
+          reason: "restore_verification_failed_requires_human_review" }
+        : recovery.rto.status === "BREACHED"
+          ? { id: "recovery_rto_breach", summary: "Verified rehearsal duration exceeds RTO",
+            reason: "rto_breach_requires_human_review" }
+          : recovery.restoreFreshness === "STALE"
+            ? { id: "recovery_restore_test_stale", summary: "Restore verification is overdue",
+              reason: "restore_test_stale_requires_human_review" }
+            : null;
+  const finding: Finding | null = issue ? {
+    id: issue.id, resource: {
       resourceType: "recovery", resourceId: "workhub-recovery", scopeId: SCOPE,
-    }, health: "DEGRADED", detectedAt: asOf,
-    summary: "Verified recovery point age exceeds the configured RPO",
+    }, health: "DEGRADED", detectedAt: asOf, summary: issue.summary,
   } : null;
-  const actionRequired: ActionRequired | null = finding ? {
+  const actionRequired: ActionRequired | null = finding && issue ? {
     findingId: finding.id, operationId: "recovery.review",
-    reason: "rpo_breach_requires_human_review",
+    reason: issue.reason,
   } : null;
   return {
     schemaVersion: 1, scopeId: SCOPE, environment, observedAt: asOf,

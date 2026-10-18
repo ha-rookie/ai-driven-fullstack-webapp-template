@@ -43,3 +43,16 @@ test("#431 showcases are pure time-relative simulations, not provider observatio
   assert.equal(projectRecoveryShowcase("not_connected", NOW).recovery.sourceState, "not-connected");
   assert.equal(projectRecoveryShowcase("rpo_breach", NOW).actionRequired, true);
 });
+
+test("#431 showcase reveals which of the seven checks failed, without enabling service resume", () => {
+  const failed = projectRecoveryShowcase("restore_failed", NOW);
+  assert.equal(failed.recovery.restoreTest?.checks.dataIntegrity, "FAILED");
+  assert.equal(failed.recovery.restoreTest?.checks.application, "PASSED");
+  assert.equal(Object.keys(failed.recovery.restoreTest!.checks).length, 7);
+  const stale = projectRecoveryShowcase("restore_stale", NOW);
+  assert.equal(stale.recovery.restoreTest?.checks.audit, "PASSED");
+  assert.equal(stale.recovery.restoreFreshness, "STALE");
+  assert.equal(projectRecoveryShowcase("restore_missing", NOW).recovery.restoreTest, null);
+  assert.equal(projectRecoveryShowcase("not_connected", NOW).recovery.restoreTest, null);
+  assert.equal(failed.resumeExecutionAllowed, false);
+});
