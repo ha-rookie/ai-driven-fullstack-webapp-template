@@ -16,7 +16,20 @@ export const RECOVERY_SHOWCASE_SCENARIOS = [
 
 export type RecoveryShowcaseScenarioId = typeof RECOVERY_SHOWCASE_SCENARIOS[number]["id"];
 
-export const projectRecoveryShowcase = (scenario: RecoveryShowcaseScenarioId, asOf: string) => {
+/** Controls only synthetic evidence, never live recovery observations. */
+export interface RecoveryShowcaseTargets {
+  readonly rpoMinutes: number;
+  readonly rtoMinutes: number;
+}
+
+export const projectRecoveryShowcase = (
+  scenario: RecoveryShowcaseScenarioId, asOf: string, targets?: RecoveryShowcaseTargets,
+) => {
+  if (targets && (!Number.isSafeInteger(targets.rpoMinutes) || targets.rpoMinutes < 1
+    || targets.rpoMinutes > 43_200 || !Number.isSafeInteger(targets.rtoMinutes)
+    || targets.rtoMinutes < 1 || targets.rtoMinutes > 10_080)) {
+    throw new RangeError("Invalid demonstration RPO/RTO target");
+  }
   const ago = (minutes: number) => new Date(Date.parse(asOf) - minutes * 60_000).toISOString();
   const passed = {
     application: "PASSED", dataIntegrity: "PASSED", businessConsistency: "PASSED",
@@ -60,6 +73,12 @@ export const projectRecoveryShowcase = (scenario: RecoveryShowcaseScenarioId, as
     evidence = { ...evidence, restore: null };
   }
 
+  if (targets && evidence.targets) {
+    evidence = {
+      ...evidence,
+      targets: { ...evidence.targets, rpoMinutes: targets.rpoMinutes, rtoMinutes: targets.rtoMinutes },
+    };
+  }
   const recovery = assessRecoveryReadiness(scenario === "not_connected" ? null : evidence, asOf);
   // Synthetic, audit-shaped checkpoints for display only. No API write or
   // persistent incident state: an interrupted run is reconstructed from the

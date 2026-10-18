@@ -151,3 +151,54 @@ test("visitor can choose one reusable capability and follow real Recipe, Source 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(apiRequests, "public reuse picker must not call auth or business API").toEqual([]);
 });
+
+test("#431 public recovery lab is interactive without login, API access or live recovery actions", async ({ page }) => {
+  const calls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) {
+      calls.push(request.method() + " " + new URL(request.url()).pathname);
+    }
+  });
+  await page.goto("/showcase");
+  await page.getByRole("link", { name: /復旧できるかを実際に判定/u }).click();
+  await expect(page).toHaveURL(/#showcase-recovery$/u);
+  const lab = page.locator("#showcase-recovery");
+  await expect(lab.getByRole("heading", { name: /バックアップできた/u })).toBeVisible();
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await expect(lab.getByTestId("public-recovery-resume")).toHaveText("HUMAN_REVIEW_REQUIRED");
+  await expect(lab.locator(".showcase-recovery-runbook li")).toHaveCount(11);
+
+  await lab.getByRole("button", { name: "RPO超過" }).click();
+  await expect(lab.getByTestId("public-recovery-rpo")).toHaveText("目標超過");
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("NOT_READY");
+  await expect(lab.getByTestId("public-recovery-resume")).toHaveText("BLOCKED");
+  await expect(lab.getByTestId("public-recovery-action")).toBeVisible();
+
+  await lab.getByRole("button", { name: "復元テスト失敗" }).click();
+  await expect(lab.getByTestId("public-recovery-freshness")).toHaveText("失敗");
+  await expect(lab.locator(".showcase-recovery-runbook li[data-state=FAILED]")).toHaveCount(1);
+  await expect(lab.getByTestId("public-recovery-resume")).toHaveText("BLOCKED");
+
+  await lab.getByRole("button", { name: "実証跡未接続" }).click();
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("UNKNOWN");
+  await expect(lab.locator(".showcase-recovery-runbook li[data-state=PENDING]")).toHaveCount(11);
+
+  await lab.getByRole("button", { name: "目標値を変える" }).click();
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await lab.getByRole("combobox", { name: "RPO目標" }).selectOption("15");
+  await expect(lab.getByTestId("public-recovery-rpo")).toHaveText("目標超過");
+  await expect(lab.getByTestId("public-recovery-resume")).toHaveText("BLOCKED");
+  await lab.getByRole("combobox", { name: "RPO目標" }).selectOption("60");
+  await lab.getByRole("combobox", { name: "RTO目標" }).selectOption("10");
+  await expect(lab.getByTestId("public-recovery-rto")).toHaveText("目標超過");
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("NOT_READY");
+  await lab.getByRole("button", { name: "目標値を初期状態に戻す" }).click();
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await expect(lab.getByRole("link", { name: "判定ロジックを見る ↗" }))
+    .toHaveAttribute("href", /\/src\/shared\/recovery\/readiness\.ts$/u);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(lab.getByTestId("public-recovery-readiness")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(calls, "public showcase must not request private operations or authentication").toEqual([]);
+});
