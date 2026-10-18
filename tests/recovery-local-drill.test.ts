@@ -256,7 +256,7 @@ test("#429/#430 adapter never bypasses authorization or local/test-only boundary
   const denied = durableFixture([], "employee");
   let auditCalls = 0;
   const localReader = createLocalRecoveryOperationAuditReader(argsFor(denied.db));
-  const auditReader = async (environment: "test" | "production", at: string) => {
+  const auditReader = async (environment: Parameters<typeof localReader>[0], at: string) => {
     auditCalls++;
     return localReader(environment, at);
   };
