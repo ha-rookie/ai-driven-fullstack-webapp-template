@@ -24,9 +24,43 @@ export interface RecoveryShowcaseTargets {
 export const RECOVERY_SHOWCASE_DEFAULT_TARGETS: RecoveryShowcaseTargets = Object.freeze({
   rpoMinutes: 60, rtoMinutes: 45, restoreMaxAgeHours: 24,
 });
+/** Local, fictional drill progression. Never persists or approves real recovery. */
+export interface RecoveryDrillState {
+  readonly completedSteps: number;
+  readonly simulatedRestoreApproval: boolean;
+  readonly failedStepIndex: number | null;
+}
+export type RecoveryDrillAction = "advance" | "simulate-restore-approval" | "fail-next-check" | "reset";
+export const INITIAL_RECOVERY_DRILL: RecoveryDrillState = Object.freeze({
+  completedSteps: 0, simulatedRestoreApproval: false, failedStepIndex: null,
+});
+
+/** Ordered exercise: stage five is an explicit mock Human Gate; failures are terminal until reset. */
+export const transitionRecoveryDrill = (
+  state: RecoveryDrillState, action: RecoveryDrillAction,
+): RecoveryDrillState => {
+  if (action === "reset") return INITIAL_RECOVERY_DRILL;
+  if (state.failedStepIndex !== null) return state;
+  if (action === "simulate-restore-approval") {
+    return state.completedSteps === 4
+      ? { ...state, simulatedRestoreApproval: true } : state;
+  }
+  if (action === "fail-next-check") {
+    return state.completedSteps >= 5 && state.completedSteps < 10
+      ? { ...state, failedStepIndex: state.completedSteps } : state;
+  }
+  if (action === "advance") {
+    if (state.completedSteps >= 10
+      || (state.completedSteps === 4 && !state.simulatedRestoreApproval)) return state;
+    return { ...state, completedSteps: state.completedSteps + 1 };
+  }
+  return state;
+};
+
 export const projectRecoveryShowcase = (
   scenario: RecoveryShowcaseScenarioId, asOf: string,
   targets: RecoveryShowcaseTargets = RECOVERY_SHOWCASE_DEFAULT_TARGETS,
+  drill?: RecoveryDrillState,
 ) => {
   const ago = (minutes: number) => new Date(Date.parse(asOf) - minutes * 60_000).toISOString();
   const passed = {
@@ -76,23 +110,40 @@ export const projectRecoveryShowcase = (
   // persistent incident state: an interrupted run is reconstructed from the
   // same immutable evidence, never treated as a real resume authorization.
   const count = scenario === "not_connected" ? 0
-    : scenario === "restore_missing" ? 4
-      : scenario === "restore_failed" ? 7 : 10;
+    : drill !== undefined ? drill.completedSteps + (drill.failedStepIndex === null ? 0 : 1)
+      : scenario === "restore_missing" ? 4
+        : scenario === "restore_failed" ? 7 : 10;
+  // Every verification remains UNKNOWN until its own fictional checkpoint
+  // has been recorded. Audit/security are simulated only after step ten.
+  const exerciseCheck = (index: number): "PASSED" | "FAILED" | "UNKNOWN" =>
+    drill?.failedStepIndex === index ? "FAILED"
+      : drill !== undefined && drill.completedSteps > index ? "PASSED" : "UNKNOWN";
+  const exerciseComplete = drill !== undefined
+    && drill.completedSteps === 10 && drill.failedStepIndex === null;
   const audit: RecoveryOperationSnapshot = {
     source: "verified-audit", scopeId: "workhub-company", environment: "preview",
     incidentId: "demo-incident", runId: "demo-recovery-run",
     observedAt: asOf,
     steps: RECOVERY_STEPS.slice(0, count).map((step, i) => ({
       id: step.id as Exclude<typeof step.id, "resume_service">,
-      result: scenario === "restore_failed" && i === 6 ? "FAILED" as const : "PASSED" as const,
+      result: drill !== undefined ? (drill.failedStepIndex === i ? "FAILED" as const : "PASSED" as const)
+        : scenario === "restore_failed" && i === 6 ? "FAILED" as const : "PASSED" as const,
       recordedAt: ago(20 - i),
       auditEventId: "demo-audit-" + (i + 1),
-      ...(step.id === "restore" ? { humanApprovalId: "DEMO-approval-only" } : {}),
+      ...(step.id === "restore" && (drill === undefined || drill.simulatedRestoreApproval)
+        ? { humanApprovalId: "DEMO-approval-only" } : {}),
     })),
-    postRestoreChecks: count < 5 ? null : {
+    postRestoreChecks: count < 5 ? null : drill === undefined ? {
       application: "PASSED", dataIntegrity: scenario === "restore_failed" ? "FAILED" : "PASSED",
       businessConsistency: "PASSED", integrations: "PASSED",
       jobs: "PASSED", security: "PASSED", audit: "PASSED",
+    } : {
+      application: exerciseCheck(9),
+      dataIntegrity: scenario === "restore_failed" ? "FAILED" : exerciseCheck(5),
+      businessConsistency: exerciseCheck(6),
+      integrations: exerciseCheck(7), jobs: exerciseCheck(8),
+      security: exerciseComplete ? "PASSED" : "UNKNOWN",
+      audit: exerciseComplete ? "PASSED" : "UNKNOWN",
     },
   };
   const recoveryPlan = projectRecoveryPlan(recovery, "preview", asOf,
