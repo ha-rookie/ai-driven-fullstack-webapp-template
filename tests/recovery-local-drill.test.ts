@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appendLocalRecoveryDrillStep, readLocalRecoveryDrill } from
+import { appendLocalRecoveryDrillStep, createLocalRecoveryOperationAuditReader, readLocalRecoveryDrill } from
   "../src/worker/administration/recovery-local-drill";
 import { RECOVERY_STEPS, projectRecoveryPlan } from "../src/shared/recovery/recovery-plan";
 import { assessRecoveryReadiness, type RecoveryObservation } from "../src/shared/recovery/readiness";
-import { projectRecoveryCenter } from "../src/worker/administration/recovery-readiness-api";
+import { projectRecoveryCenter, handleRecoveryReadinessApi } from "../src/worker/administration/recovery-readiness-api";
 
 const NOW = "2026-10-18T06:00:00.000Z";
 const RP = "2026-10-18T05:30:00.000Z";
@@ -13,12 +13,21 @@ type AuditRow = {
   request_id: string; scope_id: string; resource_type: string; resource_id: string;
   record_json: string; record_sha256: string;
 };
-const durableFixture = (rows: AuditRow[] = []) => {
+const durableFixture = (rows: AuditRow[] = [], role: string | null = "system_admin") => {
   const db = {
     prepare(sql: string) {
       return {
         bind(...values: unknown[]) {
           return {
+            async first() {
+              if (sql.includes("JOIN users")) {
+                return { id: "recovery-admin", displayName: "Fixture",
+                  lastSeenAt: new Date().toISOString(),
+                  expiresAt: new Date(Date.now() + 60_000).toISOString() };
+              }
+              return role === null ? null : { userId: "recovery-admin",
+                scopeId: "workhub-company", role };
+            },
             async run() {
               assert.match(sql, /INSERT INTO durable_audit_events/u);
               rows.push({
@@ -32,15 +41,23 @@ const durableFixture = (rows: AuditRow[] = []) => {
             },
             async all() {
               assert.match(sql, /FROM durable_audit_events/u);
-              const [env, requestId, scopeId, resourceType, resourceId, limit] = values;
-              assert.equal(scopeId, "workhub-company");
-              assert.equal(resourceType, "recovery");
+              // Existing Recovery Center reads scoped Audit coverage without an
+              // incident; the local drill reader additionally filters run/incident.
+              const specific = values.length === 6;
+              assert.equal(values.length === 4 || specific, true);
+              const env = values[0], run = specific ? values[1] : null;
+              const scope = values[specific ? 2 : 1];
+              const type = values[specific ? 3 : 2];
+              const incident = specific ? values[4] : null;
+              const limit = values[specific ? 5 : 3] as number;
+              assert.equal(scope, "workhub-company");
+              assert.equal(type, "recovery");
               return {
                 results: rows.filter(row => row.environment === env
-                  && row.request_id === requestId && row.scope_id === scopeId
-                  && row.resource_type === resourceType && row.resource_id === resourceId)
+                  && row.scope_id === scope && row.resource_type === type
+                  && (!specific || (row.request_id === run && row.resource_id === incident)))
                   .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)
-                    || b.id.localeCompare(a.id)).slice(0, limit as number),
+                    || b.id.localeCompare(a.id)).slice(0, limit),
               };
             },
           };
@@ -168,4 +185,108 @@ test("#429 logged checkpoint is not real approval; cross-environment, duplicate 
   fixture.rows.pop();
   fixture.rows[0]!.record_sha256 = "0".repeat(64);
   await assert.rejects(readLocalRecoveryDrill(args, NOW), /integrity/u);
+});
+
+const authenticated = () => new Request(
+  "https://example.test/api/admin/operations/recovery-readiness?scopeId=workhub-company",
+  { headers: { cookie: "app_session=synthetic-test-only" } },
+);
+const liveReadyFixture = async (_environment: string, asOf: string): Promise<RecoveryObservation> => {
+  const point = new Date(Date.parse(asOf) - 30 * 60_000).toISOString();
+  return {
+    ...makeReady(), observedAt: asOf,
+    backup: { lastSuccessfulAt: point, lastVerifiedAt: point },
+    recoveryPoint: { at: point, verified: true },
+    restore: { ...makeReady().restore!,
+      completedAt: new Date(Date.parse(asOf) - 5 * 60_000).toISOString(),
+      testedRecoveryPointAt: point },
+  };
+};
+
+test("#431/#430 Golden #8: authorized API reloads the real D1 AuditStore reader after restart, never resumes", async () => {
+  const fixture = durableFixture();
+  const args = await passUntil(fixture.db, 10);
+  const adapter = createLocalRecoveryOperationAuditReader(args);
+  const env = { DB: fixture.db, RUNTIME_ENVIRONMENT: "test" };
+  const first = await handleRecoveryReadinessApi(authenticated(), env,
+    "local-golden-8-first", liveReadyFixture, adapter);
+  assert.equal(first?.status, 200);
+  const v1 = await first!.json() as ReturnType<typeof projectRecoveryCenter>;
+  assert.equal(v1.recovery.readiness, "READY");
+  assert.equal(v1.recoveryPlan.evidenceSource, "verified-audit");
+  assert.equal(v1.recoveryPlan.steps.filter(s => s.state === "VERIFIED").length, 10);
+  assert.equal(v1.recoveryPlan.postRestore, "PASSED");
+  assert.equal(v1.recoveryPlan.resumeDecision, "HUMAN_REVIEW_REQUIRED");
+  assert.equal(v1.recoveryPlan.resumeExecutionAllowed, false);
+  assert.equal(v1.restoreGate.policyDecision, "HUMAN_GATE");
+  assert.equal(v1.restoreGate.executionAllowed, false);
+  assert.equal(v1.auditEvidence.status, "RECORDED");
+  assert.equal(v1.auditEvidence.provesRecoverability, false);
+
+  const recreated = durableFixture(fixture.rows);
+  const next = await handleRecoveryReadinessApi(authenticated(),
+    { DB: recreated.db, RUNTIME_ENVIRONMENT: "test" }, "local-golden-8-reloaded",
+    liveReadyFixture, createLocalRecoveryOperationAuditReader(argsFor(recreated.db)));
+  const v2 = await next!.json() as ReturnType<typeof projectRecoveryCenter>;
+  assert.equal(next?.status, 200);
+  assert.deepEqual(v2.recoveryPlan.steps, v1.recoveryPlan.steps,
+    "server reconstructs audit checkpoints, never trusts browser state");
+  assert.equal(v2.recoveryPlan.resumeExecutionAllowed, false);
+});
+
+test("#431/#430 Golden #7: authorized API maps failed persisted incident check to Finding/ActionRequired", async () => {
+  const fixture = durableFixture();
+  const args = await passUntil(fixture.db, 6, 5);
+  const response = await handleRecoveryReadinessApi(authenticated(),
+    { DB: fixture.db, RUNTIME_ENVIRONMENT: "test" }, "local-golden-7",
+    liveReadyFixture, createLocalRecoveryOperationAuditReader(args));
+  assert.equal(response?.status, 200);
+  const result = await response!.json() as ReturnType<typeof projectRecoveryCenter>;
+  assert.equal(result.recovery.readiness, "READY", "old rehearsal is independently READY");
+  assert.equal(result.recoveryPlan.postRestore, "FAILED");
+  assert.equal(result.recoveryPlan.steps[5]?.state, "FAILED");
+  assert.equal(result.finding?.id, "recovery_incident_verification_failed");
+  assert.equal(result.actionRequired?.findingId, result.finding?.id);
+  assert.equal(result.actionRequired?.operationId, "recovery.review");
+  assert.equal(result.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(result.recoveryPlan.resumeExecutionAllowed, false);
+});
+
+test("#429/#430 adapter never bypasses authorization or local/test-only boundary", async () => {
+  const denied = durableFixture([], "employee");
+  let auditCalls = 0;
+  const localReader = createLocalRecoveryOperationAuditReader(argsFor(denied.db));
+  const auditReader = async (environment: Parameters<typeof localReader>[0], at: string) => {
+    auditCalls++;
+    return localReader(environment, at);
+  };
+  const response = await handleRecoveryReadinessApi(authenticated(),
+    { DB: denied.db, RUNTIME_ENVIRONMENT: "test" }, "forbidden-local",
+    liveReadyFixture, auditReader);
+  assert.equal(response?.status, 403);
+  assert.equal(auditCalls, 0);
+  const adminDb = durableFixture().db;
+  const onProduction = await handleRecoveryReadinessApi(authenticated(),
+    { DB: adminDb, RUNTIME_ENVIRONMENT: "production" }, "cannot-attach-test-adapter",
+    liveReadyFixture, createLocalRecoveryOperationAuditReader(argsFor(adminDb)));
+  assert.equal(onProduction?.status, 200);
+  const prod = await onProduction!.json() as ReturnType<typeof projectRecoveryCenter>;
+  assert.equal(prod.recoveryPlan.evidenceSource, "unavailable");
+  assert.equal(prod.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(prod.restoreGate.executionAllowed, false);
+});
+
+test("#430 API Audit corruption stays unavailable, never reported as an authorized resume", async () => {
+  const fixture = durableFixture();
+  const args = await passUntil(fixture.db, 5);
+  fixture.rows[0]!.record_sha256 = "0".repeat(64);
+  const response = await handleRecoveryReadinessApi(authenticated(),
+    { DB: fixture.db, RUNTIME_ENVIRONMENT: "test" }, "bad-audit",
+    liveReadyFixture, createLocalRecoveryOperationAuditReader(args));
+  assert.equal(response?.status, 200);
+  const view = await response!.json() as ReturnType<typeof projectRecoveryCenter>;
+  assert.equal(view.recoveryPlan.evidenceSource, "unavailable");
+  assert.equal(view.auditEvidence.status, "UNAVAILABLE");
+  assert.equal(view.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(view.recoveryPlan.resumeExecutionAllowed, false);
 });

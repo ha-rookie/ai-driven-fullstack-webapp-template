@@ -83,8 +83,19 @@ export const projectRecoveryCenter = (
     || canExecuteOperation(preview)) {
     throw new TypeError("Recovery operation must remain behind Human Gate");
   }
-  const issue = recovery.sourceState !== "available" ? null
-    : recovery.rpo.status === "BREACHED"
+  // An independently audited incident verification failure is ActionRequired
+  // even when an older backup rehearsal was READY. Never mark an incident healthy
+  // from backup verification alone; no restore/resume command is exposed here.
+  const issue = recoveryPlan.evidenceSource === "verified-audit"
+    && recoveryPlan.postRestore === "FAILED"
+    // Preserve established Recovery breach/failure priorities if BOTH are present.
+    && recovery.rpo.status !== "BREACHED"
+    && recovery.postRestoreVerification !== "FAILED"
+    ? { id: "recovery_incident_verification_failed",
+      summary: "Audited incident post-restore verification failed",
+      reason: "incident_verification_failed_requires_human_review" }
+    : recovery.sourceState !== "available" ? null
+      : recovery.rpo.status === "BREACHED"
       ? { id: "recovery_rpo_breach", summary: "Verified recovery point exceeds RPO",
         reason: "rpo_breach_requires_human_review" }
       : recovery.postRestoreVerification === "FAILED"
