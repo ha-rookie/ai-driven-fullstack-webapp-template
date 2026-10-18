@@ -93,7 +93,7 @@ test("public WORKHUB Showcase opens at pinned Preview origin on desktop and mobi
   // #431: verify the deployed Recovery lab via local-only UI controls.
   // No authentication, private API, backup, restore, or service-resume requests.
   await page.goto("/showcase#showcase-recovery", { waitUntil: "networkidle" });
-  await expect(page).toHaveURL(/\\/showcase#showcase-recovery$/u);
+  await expect(page).toHaveURL(/#showcase-recovery$/u);
   const recovery = page.getByTestId("public-recovery-lab");
   await expect(recovery.getByRole("heading", { name: /バックアップできた/u })).toBeVisible();
   await expect(recovery.getByRole("note")).toContainText("架空の復旧データ");
