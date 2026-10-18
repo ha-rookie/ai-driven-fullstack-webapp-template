@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS } from "../src/reference/admin/recovery-showcase";
+import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, INITIAL_RECOVERY_DRILL, transitionRecoveryDrill } from "../src/reference/admin/recovery-showcase";
 
 const NOW = "2026-10-18T06:00:00.000Z";
 
@@ -107,4 +107,87 @@ test("#431 showcase remains usable without real provider evidence; target change
     assert.ok(result.recoveryPlan.steps.every(step => step.executionAllowed === false));
   }
   assert.equal(projectRecoveryShowcase("not_connected", NOW, targets).recovery.sourceState, "not-connected");
+});
+
+test("#430 Golden #8: walkthrough cannot bypass step-five simulated Human Gate", () => {
+  let state = INITIAL_RECOVERY_DRILL;
+  for (let i = 0; i < 4; i++) state = transitionRecoveryDrill(state, "advance");
+  assert.equal(state.completedSteps, 4);
+  assert.equal(transitionRecoveryDrill(state, "advance"), state, "restore gate cannot be skipped");
+  assert.equal(transitionRecoveryDrill(INITIAL_RECOVERY_DRILL, "simulate-restore-approval"),
+    INITIAL_RECOVERY_DRILL, "approval cannot be issued out of sequence");
+  const waiting = projectRecoveryShowcase("ready", NOW, undefined, state);
+  assert.equal(waiting.recoveryPlan.steps[4]?.state, "PENDING");
+  assert.equal(waiting.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(waiting.restoreExecutionAllowed, false);
+  state = transitionRecoveryDrill(state, "simulate-restore-approval");
+  assert.equal(state.simulatedRestoreApproval, true);
+  state = transitionRecoveryDrill(state, "advance");
+  assert.equal(state.completedSteps, 5);
+  const afterGate = projectRecoveryShowcase("ready", NOW, undefined, state);
+  assert.equal(afterGate.recoveryPlan.steps[4]?.state, "VERIFIED");
+  assert.equal(afterGate.recoveryPlan.steps[4]?.requiresHumanGate, true);
+  assert.equal(afterGate.recoveryPlan.postRestore, "UNKNOWN");
+  assert.equal(afterGate.recoveryPlan.resumeExecutionAllowed, false);
+});
+
+test("#430 Golden #8: every simulated verification checkpoint is required before Human Review", () => {
+  let state = INITIAL_RECOVERY_DRILL;
+  for (let i = 0; i < 4; i++) state = transitionRecoveryDrill(state, "advance");
+  state = transitionRecoveryDrill(state, "simulate-restore-approval");
+  for (let i = 4; i < 10; i++) {
+    state = transitionRecoveryDrill(state, "advance");
+    const partial = projectRecoveryShowcase("ready", NOW, undefined, state);
+    assert.equal(partial.recoveryPlan.steps.filter(s => s.state === "VERIFIED").length, state.completedSteps);
+    assert.equal(partial.recoveryPlan.resumeExecutionAllowed, false);
+    if (state.completedSteps < 10) {
+      assert.equal(partial.recoveryPlan.postRestore, "UNKNOWN");
+      assert.equal(partial.recoveryPlan.resumeDecision, "BLOCKED");
+    }
+  }
+  const last = projectRecoveryShowcase("ready", NOW, undefined, state);
+  assert.equal(state.completedSteps, 10);
+  assert.equal(last.recoveryPlan.postRestore, "PASSED");
+  assert.equal(last.recoveryPlan.resumeDecision, "HUMAN_REVIEW_REQUIRED");
+  assert.equal(last.recoveryPlan.steps[10]?.state, "PENDING");
+  assert.equal(last.recoveryPlan.resumeExecutionAllowed, false);
+  assert.equal(transitionRecoveryDrill(state, "advance"), state, "demo cannot simulate service resume");
+});
+
+test("#430 Golden #7: a failed verification stops the rehearsal until explicit restart", () => {
+  let state = INITIAL_RECOVERY_DRILL;
+  for (let i = 0; i < 4; i++) state = transitionRecoveryDrill(state, "advance");
+  state = transitionRecoveryDrill(state, "simulate-restore-approval");
+  state = transitionRecoveryDrill(state, "advance");
+  state = transitionRecoveryDrill(state, "fail-next-check");
+  assert.equal(state.failedStepIndex, 5);
+  const failed = projectRecoveryShowcase("ready", NOW, undefined, state);
+  assert.equal(failed.recoveryPlan.steps[5]?.state, "FAILED");
+  assert.equal(failed.recoveryPlan.steps[6]?.state, "PENDING");
+  assert.equal(failed.recoveryPlan.postRestore, "FAILED");
+  assert.equal(failed.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(transitionRecoveryDrill(state, "advance"), state, "blind retry forbidden");
+  assert.deepEqual(transitionRecoveryDrill(state, "reset"), INITIAL_RECOVERY_DRILL);
+  assert.equal(projectRecoveryShowcase("restore_missing", NOW).recovery.readiness, "UNKNOWN",
+    "backup alone must not be mistaken for recoverability");
+});
+
+test("#430 Golden #8: rehearsal still blocks review on RPO breach or unavailable provider", () => {
+  let state = INITIAL_RECOVERY_DRILL;
+  for (let i = 0; i < 4; i++) state = transitionRecoveryDrill(state, "advance");
+  state = transitionRecoveryDrill(state, "simulate-restore-approval");
+  for (let i = 4; i < 10; i++) state = transitionRecoveryDrill(state, "advance");
+  const breach = projectRecoveryShowcase("ready", NOW, {
+    rpoMinutes: 15, rtoMinutes: 45, restoreMaxAgeHours: 24,
+  }, state);
+  assert.equal(breach.recovery.rpo.status, "BREACHED");
+  assert.equal(breach.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(breach.recoveryPlan.resumeExecutionAllowed, false);
+  const unknown = projectRecoveryShowcase("not_connected", NOW, undefined, state);
+  assert.equal(unknown.recoveryPlan.evidenceSource, "not-connected");
+  assert.equal(unknown.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(unknown.restoreExecutionAllowed, false);
+  assert.deepEqual(projectRecoveryShowcase("ready", NOW, undefined, state),
+    projectRecoveryShowcase("ready", NOW, undefined, state),
+    "pure fictional read-model supports deterministic re-evaluation, not durable execution");
 });

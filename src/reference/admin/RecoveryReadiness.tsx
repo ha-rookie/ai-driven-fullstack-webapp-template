@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { RecoveryReadinessProjection } from "../../shared/recovery/readiness";
 import { RECOVERY_STEPS, type RecoveryPlanProjection } from "../../shared/recovery/recovery-plan";
-import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, RECOVERY_SHOWCASE_DEFAULT_TARGETS, type RecoveryShowcaseScenarioId } from "./recovery-showcase";
+import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, RECOVERY_SHOWCASE_DEFAULT_TARGETS, INITIAL_RECOVERY_DRILL, transitionRecoveryDrill, type RecoveryDrillState, type RecoveryShowcaseScenarioId } from "./recovery-showcase";
 
 /** #431 Stage9: Recovery is evidence-driven, never inferred from backup creation. */
 const SCOPE = "workhub-company";
@@ -115,7 +115,9 @@ export default function RecoveryReadiness() {
   useEffect(() => { void load(); }, []);
   const [showcaseScenario, setShowcaseScenario] = useState<RecoveryShowcaseScenarioId>("ready");
   const [demoTargets, setDemoTargets] = useState(RECOVERY_SHOWCASE_DEFAULT_TARGETS);
-  const showcase = projectRecoveryShowcase(showcaseScenario, new Date().toISOString(), demoTargets);
+  const [drill, setDrill] = useState<RecoveryDrillState | null>(null);
+  const showcase = projectRecoveryShowcase(showcaseScenario, new Date().toISOString(),
+    demoTargets, drill ?? undefined);
   const view = state.kind === "ready" ? state.data : null;
   const recovery = view?.recovery;
 
@@ -208,7 +210,7 @@ export default function RecoveryReadiness() {
           {RECOVERY_SHOWCASE_SCENARIOS.map(item => <button
             key={item.id} type="button" className="admin-inline-action"
             aria-pressed={showcaseScenario === item.id}
-            onClick={() => setShowcaseScenario(item.id)}>{item.label}</button>)}
+            onClick={() => { setShowcaseScenario(item.id); setDrill(null); }}>{item.label}</button>)}
         </div>
         <p>{RECOVERY_SHOWCASE_SCENARIOS.find(item => item.id === showcaseScenario)?.description}</p>
         <fieldset style={{ display: "flex", flexWrap: "wrap", gap: 12, margin: "12px 0" }}>
@@ -254,8 +256,49 @@ export default function RecoveryReadiness() {
         </div>
         {showcase.actionRequired && <p role="status" data-testid="recovery-showcase-action-required">
           RPO超過のためActionRequired：運用者による確認が必要です（デモ）。</p>}
+        <div className="admin-audit-state" data-testid="recovery-drill" aria-label="復旧の模擬演習">
+          <h4>復旧演習：順序・Human Gate・検証失敗を操作する</h4>
+          <p>これはブラウザ内だけの架空演習です。実承認、実監査、復元、永続化は行いません。
+            ページ更新で演習状態は消えます。実環境の操作権限を付与するものでもありません。</p>
+          {drill === null ? <button type="button" className="admin-inline-action"
+            onClick={() => setDrill(INITIAL_RECOVERY_DRILL)}>模擬演習を開始</button> : <>
+            <p data-testid="recovery-drill-progress" role="status">
+              模擬完了 {drill.completedSteps}/10 ／
+              {drill.failedStepIndex !== null ? "検証失敗で停止" : drill.completedSteps === 10
+                ? "模擬チェック完了（最終Human Review待ち）"
+                : "次: " + RECOVERY_STEPS[drill.completedSteps]?.label}
+              {drill.completedSteps === 4 && !drill.simulatedRestoreApproval
+                ? " ／ 復元の模擬Human Gate未確認" : ""}
+            </p>
+            <div role="group" aria-label="模擬演習の操作"
+              style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "12px 0" }}>
+              {drill.completedSteps === 4 && !drill.simulatedRestoreApproval && <button
+                type="button" className="admin-inline-action"
+                onClick={() => setDrill(prev => prev && transitionRecoveryDrill(prev,
+                  "simulate-restore-approval"))}>模擬Human Gateを確認</button>}
+              <button type="button" className="admin-inline-action"
+                disabled={showcaseScenario === "not_connected" || drill.failedStepIndex !== null
+                  || drill.completedSteps >= 10
+                  || (drill.completedSteps === 4 && !drill.simulatedRestoreApproval)}
+                onClick={() => setDrill(prev => prev && transitionRecoveryDrill(prev, "advance"))}>
+                次の模擬ステップを検証
+              </button>
+              <button type="button" className="admin-inline-action"
+                disabled={showcaseScenario === "not_connected" || drill.failedStepIndex !== null
+                  || drill.completedSteps < 5 || drill.completedSteps >= 10}
+                onClick={() => setDrill(prev => prev && transitionRecoveryDrill(prev,
+                  "fail-next-check"))}>次の検証を失敗させる</button>
+              <button type="button" className="admin-inline-action"
+                onClick={() => setDrill(INITIAL_RECOVERY_DRILL)}>演習を最初から</button>
+              <button type="button" className="admin-inline-action"
+                onClick={() => setDrill(null)}>既定シナリオへ戻す</button>
+            </div>
+            <p>模擬手順が10/10でも実行・サービス再開はできません。
+              RPO/RTO違反や復元検証未達の場合は最終レビューにも進めません。</p>
+          </>}
+        </div>
         <div className="admin-audit-state" data-testid="recovery-showcase-plan">
-          <h4>復旧手順・監査済みステップ（デモ専用）</h4>
+          <h4>復旧手順・模擬監査ステップ（デモ専用）</h4>
           <p>事故ID: demo-incident ／ 実行ID: demo-recovery-run（架空）。
             記録された手順だけを検証済みとして表示し、途中中断・失敗時は再開を許可しません。</p>
           <ol>{showcase.recoveryPlan.steps.map(step => <li key={step.id}>
