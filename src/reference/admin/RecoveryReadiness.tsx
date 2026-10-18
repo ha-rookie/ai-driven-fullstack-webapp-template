@@ -75,6 +75,21 @@ const isRecoveryResponse = (value: unknown): value is ResponseView => {
 
 const fmt = (s: string | null): string => s ?? "未確認";
 const metric = (n: number | null): string => n === null ? "未確認" : n + "分";
+const RECOVERY_MISSING_EVIDENCE_LABELS: Readonly<Record<string, string>> = {
+  source_not_verified: "復旧証跡の取得元が確認できません",
+  backup_verification_missing: "バックアップの検証記録がありません",
+  verified_recovery_point_missing: "検証済みの復旧ポイントがありません",
+  rpo_rto_targets_missing: "RPO・RTOの目標が確認できません",
+  restore_verification_missing: "復元テストの記録がありません",
+  tested_recovery_point_unmatched: "復元テストと復旧ポイントが一致しません",
+  restore_test_stale: "復元テストの結果が期限切れです",
+  post_restore_verification_incomplete: "復元後の検証が完了していません",
+};
+/** Keep unrecognized provider diagnostics out of the operator-facing showcase. */
+export const describeMissingRecoveryEvidence = (codes: readonly string[]): string =>
+  codes.length === 0 ? "登録上の欠測なし（実際の復旧保証ではありません）"
+    : codes.map(code => RECOVERY_MISSING_EVIDENCE_LABELS[code]
+      ?? "未確認の復旧証跡があります").join(" / ");
 
 export default function RecoveryReadiness() {
   const [state, setState] = useState<
@@ -147,7 +162,7 @@ export default function RecoveryReadiness() {
       </div>
       <p className="admin-audit-note">復旧ポイント: {fmt(recovery.recoveryPoint?.at ?? null)}
         （検証: {recovery.recoveryPoint?.verified === true ? "確認済み" : "未確認"}）。
-        欠測: {recovery.missingEvidence.join(" / ") || "登録上の欠測なし（公式保証ではありません）"}。</p>
+        未確認・不足項目: {describeMissingRecoveryEvidence(recovery.missingEvidence)}。</p>
       {view.actionRequired && <div className="admin-audit-state is-error" role="alert">
         RPO違反：対応要確認（{view.actionRequired.reason}）。復旧は自動実行しません。
       </div>}
