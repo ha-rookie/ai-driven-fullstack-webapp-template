@@ -1,6 +1,7 @@
 import { useState } from "react";
 import "./showcase.css";
 import ReusePathPicker from "./ReusePathPicker";
+import RecoveryDecisionLab from "./RecoveryDecisionLab";
 
 /**
  * Public, static evaluation entry for WORKHUB. No auth bypass, demo login,
@@ -167,6 +168,7 @@ export default function WorkhubShowcase() {
           <a href={item.evidence} target="_blank" rel="noopener noreferrer">{item.evidenceLabel} ↗</a>
         </article>)}</div>
         <ReusePathPicker />
+        <p className="showcase-recovery-jump"><a href="#showcase-recovery">復旧できるかを実際に判定してみる →</a></p>
       </section>
 
       <section className="showcase-tour-section" id="showcase-tour" aria-labelledby="showcase-tour-title">
@@ -201,6 +203,8 @@ export default function WorkhubShowcase() {
           </article>
         </div>
       </section>
+
+      <RecoveryDecisionLab />
 
       <section className="showcase-start" aria-labelledby="showcase-start-title">
         <div className="showcase-section-heading"><p className="showcase-label">TRY WORKHUB / DEMO WALKTHROUGH</p>
