@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS } from "../src/reference/admin/recovery-showcase";
+import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, RECOVERY_SHOWCASE_FAILURES } from "../src/reference/admin/recovery-showcase";
 
 const NOW = "2026-10-18T06:00:00.000Z";
 
@@ -107,4 +107,41 @@ test("#431 showcase remains usable without real provider evidence; target change
     assert.ok(result.recoveryPlan.steps.every(step => step.executionAllowed === false));
   }
   assert.equal(projectRecoveryShowcase("not_connected", NOW, targets).recovery.sourceState, "not-connected");
+});
+
+test("#430 injected audit failure paths fail closed without fake incident completion", () => {
+  const normal = projectRecoveryShowcase("ready", NOW);
+  assert.equal(normal.recoveryPlan.resumeDecision, "HUMAN_REVIEW_REQUIRED");
+  assert.equal(RECOVERY_SHOWCASE_FAILURES.length, 5);
+  for (const failure of ["audit_missing", "approval_missing", "audit_stale"] as const) {
+    const view = projectRecoveryShowcase("ready", NOW, undefined, failure);
+    assert.equal(view.recovery.readiness, "READY", "Rehearsal readiness is not incident audit");
+    assert.equal(view.recoveryPlan.evidenceSource, "unavailable", failure);
+    assert.equal(view.recoveryPlan.resumeDecision, "BLOCKED", failure);
+    assert.equal(view.recoveryPlan.steps.some(step => step.state === "VERIFIED"), false);
+    assert.equal(view.recoveryPlan.resumeExecutionAllowed, false);
+    assert.ok(view.recoveryPlan.blockers.includes("durable_recovery_audit_unavailable"));
+  }
+  const unknown = projectRecoveryShowcase("ready", NOW, undefined, "verification_unknown");
+  assert.equal(unknown.recoveryPlan.evidenceSource, "verified-audit");
+  assert.equal(unknown.recoveryPlan.postRestore, "UNKNOWN");
+  assert.equal(unknown.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.ok(unknown.recoveryPlan.blockers.includes("incident_post_restore_checks_incomplete"));
+  assert.equal(unknown.recoveryPlan.steps[10]?.state, "PENDING");
+});
+
+test("#430 cross product: all failure injections and targets never enable restore or resume", () => {
+  const targets = { rpoMinutes: 15, rtoMinutes: 10, restoreMaxAgeHours: 1 };
+  for (const scenario of RECOVERY_SHOWCASE_SCENARIOS) {
+    for (const failure of RECOVERY_SHOWCASE_FAILURES) {
+      const view = projectRecoveryShowcase(scenario.id, NOW, targets, failure.id);
+      assert.equal(view.restoreExecutionAllowed, false);
+      assert.equal(view.resumeExecutionAllowed, false);
+      assert.equal(view.recoveryPlan.resumeExecutionAllowed, false);
+      assert.ok(view.recoveryPlan.steps.every(step => step.executionAllowed === false));
+      if (failure.id !== "none" && scenario.id === "ready") {
+        assert.equal(view.recoveryPlan.resumeDecision, "BLOCKED");
+      }
+    }
+  }
 });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { RecoveryReadinessProjection } from "../../shared/recovery/readiness";
 import { RECOVERY_STEPS, type RecoveryPlanProjection } from "../../shared/recovery/recovery-plan";
-import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, RECOVERY_SHOWCASE_DEFAULT_TARGETS, type RecoveryShowcaseScenarioId } from "./recovery-showcase";
+import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, RECOVERY_SHOWCASE_FAILURES, RECOVERY_SHOWCASE_DEFAULT_TARGETS, type RecoveryShowcaseScenarioId, type RecoveryShowcaseFailureId } from "./recovery-showcase";
 
 /** #431 Stage9: Recovery is evidence-driven, never inferred from backup creation. */
 const SCOPE = "workhub-company";
@@ -114,8 +114,9 @@ export default function RecoveryReadiness() {
   };
   useEffect(() => { void load(); }, []);
   const [showcaseScenario, setShowcaseScenario] = useState<RecoveryShowcaseScenarioId>("ready");
+  const [showcaseFailure, setShowcaseFailure] = useState<RecoveryShowcaseFailureId>("none");
   const [demoTargets, setDemoTargets] = useState(RECOVERY_SHOWCASE_DEFAULT_TARGETS);
-  const showcase = projectRecoveryShowcase(showcaseScenario, new Date().toISOString(), demoTargets);
+  const showcase = projectRecoveryShowcase(showcaseScenario, new Date().toISOString(), demoTargets, showcaseFailure);
   const view = state.kind === "ready" ? state.data : null;
   const recovery = view?.recovery;
 
@@ -231,6 +232,19 @@ export default function RecoveryReadiness() {
             onClick={() => setDemoTargets(RECOVERY_SHOWCASE_DEFAULT_TARGETS)}>目標を初期化</button>
         </fieldset>
 
+        <fieldset style={{ display: "flex", flexWrap: "wrap", gap: 12, margin: "12px 0" }}>
+          <legend>復旧途中の異常を注入して安全停止を確認（架空監査証跡）</legend>
+          <label>異常パターン{" "}
+            <select data-testid="recovery-showcase-failure" value={showcaseFailure}
+              onChange={event => setShowcaseFailure(event.target.value as RecoveryShowcaseFailureId)}>
+              {RECOVERY_SHOWCASE_FAILURES.map(item =>
+                <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
+          </label>
+          <button type="button" className="admin-inline-action"
+            onClick={() => setShowcaseFailure("none")}>異常を解除</button>
+          <small>{RECOVERY_SHOWCASE_FAILURES.find(item => item.id === showcaseFailure)?.description}</small>
+        </fieldset>
         <div className="admin-states" aria-label="デモ判定結果">
           <article className="admin-state-card">
             <strong>Recovery Readiness（デモ）</strong>
@@ -262,6 +276,9 @@ export default function RecoveryReadiness() {
             <strong>{step.label}</strong>：{step.state}
             {step.requiresHumanGate ? "（Human Gate）" : ""}
           </li>)}</ol>
+          <p data-testid="recovery-showcase-audit-source">監査証跡の検証:
+            <strong> {showcase.recoveryPlan.evidenceSource}</strong>。
+            証跡欠落・古い観測・承認ID欠落は、正常な復旧履歴とみなしません。</p>
           <p data-testid="recovery-showcase-resume">Service Resume 判定:
             <strong> {showcase.recoveryPlan.resumeDecision}</strong>（実行不可）。
             復元後チェック: {showcase.recoveryPlan.postRestore}。
