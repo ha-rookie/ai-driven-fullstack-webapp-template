@@ -207,3 +207,9 @@ For a Production incident/restore:
 - `.github/workflows/d1-recovery-rehearsal.yml`
 - `docs/DATA_DESIGN.md`
 - `docs/FULLSTACK_ARCHITECTURE.md`
+
+## #431 local audit-backed Recovery Golden rehearsal (showcase boundary)
+
+A restricted **local/test-only** module `src/worker/administration/recovery-local-drill.ts` uses the existing D1 `durable_audit_events` store without migration. An internal test harness appends **one ordered mock checkpoint per call**, using fixed `system` audit actions, a single incident/run correlation and existing D1 integrity hashes. The reader searches by environment, scope, run and incident, reconstructs the bounded ordered prefix and hands it to the existing `projectRecoveryPlan` / `projectRecoveryCenter` policy and readiness evaluators. Reopening the client/process can replay the same D1 records; this is not browser-local simulated persistence. Test scenarios cover #430 Golden #7 (backup success / restore verification failure), #8 (explicit simulated Human Gate / post-restore checks), duplicate/tampered events, cross-environment denial, interruption and no automatic service resume.
+
+**Crucial limit:** this is an **internal local/test demonstration**, with no registered HTTP command, backup provider adapter, Production approval, actual Restore or Resume, remote D1/Preview/Production write, or real recovery audit producer. The simulated step-five marker begins with `SIMULATED-` and is explicitly *not* a real human approval. Security/Audit post-check successes in this drill are synthetic outcomes; they are not independently verified Production evidence. The append helper is not concurrency-safe as an actual recovery coordinator; duplicate/out-of-sequence reads fail closed. Main Admin production recovery evidence remains UNKNOWN when real adapters are absent. #431 original acceptance 8 and 9 must still be evaluated independently after merge, and formal ST #694 remains separate.
