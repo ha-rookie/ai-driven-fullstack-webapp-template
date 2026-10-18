@@ -78,3 +78,33 @@ test("#431 RPO breach or stale test blocks resume despite synthetic audited chec
     assert.ok(view.recoveryPlan.blockers.includes("recovery_readiness_not_verified"));
   }
 });
+
+test("#431 target knobs change RPO/RTO verdict and recovery decision using real evaluator", () => {
+  const baseline = projectRecoveryShowcase("ready", NOW);
+  assert.equal(baseline.recovery.readiness, "READY");
+  const strictRpo = projectRecoveryShowcase("ready", NOW, {
+    rpoMinutes: 15, rtoMinutes: 45, restoreMaxAgeHours: 24,
+  });
+  assert.equal(strictRpo.recovery.rpo.status, "BREACHED");
+  assert.equal(strictRpo.recovery.readiness, "NOT_READY");
+  assert.equal(strictRpo.recoveryPlan.resumeDecision, "BLOCKED");
+  assert.equal(strictRpo.actionRequired, true);
+  const strictRto = projectRecoveryShowcase("ready", NOW, {
+    rpoMinutes: 60, rtoMinutes: 10, restoreMaxAgeHours: 24,
+  });
+  assert.equal(strictRto.recovery.rto.status, "BREACHED");
+  assert.equal(strictRto.recovery.readiness, "NOT_READY");
+  assert.equal(strictRto.recoveryPlan.resumeExecutionAllowed, false);
+  assert.equal(projectRecoveryShowcase("ready", NOW).recovery.readiness, "READY");
+});
+
+test("#431 showcase remains usable without real provider evidence; target changes never authorize restore", () => {
+  const targets = { rpoMinutes: 15, rtoMinutes: 10, restoreMaxAgeHours: 1 };
+  for (const scenario of RECOVERY_SHOWCASE_SCENARIOS) {
+    const result = projectRecoveryShowcase(scenario.id, NOW, targets);
+    assert.equal(result.restoreExecutionAllowed, false);
+    assert.equal(result.resumeExecutionAllowed, false);
+    assert.ok(result.recoveryPlan.steps.every(step => step.executionAllowed === false));
+  }
+  assert.equal(projectRecoveryShowcase("not_connected", NOW, targets).recovery.sourceState, "not-connected");
+});

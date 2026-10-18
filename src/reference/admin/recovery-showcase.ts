@@ -16,7 +16,18 @@ export const RECOVERY_SHOWCASE_SCENARIOS = [
 
 export type RecoveryShowcaseScenarioId = typeof RECOVERY_SHOWCASE_SCENARIOS[number]["id"];
 
-export const projectRecoveryShowcase = (scenario: RecoveryShowcaseScenarioId, asOf: string) => {
+export interface RecoveryShowcaseTargets {
+  readonly rpoMinutes: number;
+  readonly rtoMinutes: number;
+  readonly restoreMaxAgeHours: number;
+}
+export const RECOVERY_SHOWCASE_DEFAULT_TARGETS: RecoveryShowcaseTargets = Object.freeze({
+  rpoMinutes: 60, rtoMinutes: 45, restoreMaxAgeHours: 24,
+});
+export const projectRecoveryShowcase = (
+  scenario: RecoveryShowcaseScenarioId, asOf: string,
+  targets: RecoveryShowcaseTargets = RECOVERY_SHOWCASE_DEFAULT_TARGETS,
+) => {
   const ago = (minutes: number) => new Date(Date.parse(asOf) - minutes * 60_000).toISOString();
   const passed = {
     application: "PASSED", dataIntegrity: "PASSED", businessConsistency: "PASSED",
@@ -27,7 +38,7 @@ export const projectRecoveryShowcase = (scenario: RecoveryShowcaseScenarioId, as
     sourceState: "available", observationComplete: true, observedAt: asOf,
     backup: { lastSuccessfulAt: ago(45), lastVerifiedAt: ago(40) },
     recoveryPoint: { at: point, verified: true },
-    targets: { rpoMinutes: 60, rtoMinutes: 45, restoreMaxAgeHours: 24 },
+    targets,
     restore: {
       completedAt: ago(5), testedRecoveryPointAt: point, result: "PASSED",
       durationMinutes: 20, checks: passed,
@@ -53,7 +64,7 @@ export const projectRecoveryShowcase = (scenario: RecoveryShowcaseScenarioId, as
       ...evidence,
       backup: { lastSuccessfulAt: ago(2900), lastVerifiedAt: ago(2890) },
       recoveryPoint: { at: oldPoint, verified: true },
-      targets: { rpoMinutes: 43200, rtoMinutes: 45, restoreMaxAgeHours: 24 },
+      targets,
       restore: { ...evidence.restore!, completedAt: ago(2800), testedRecoveryPointAt: oldPoint },
     };
   } else if (scenario === "restore_missing") {

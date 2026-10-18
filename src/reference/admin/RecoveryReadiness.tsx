@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { RecoveryReadinessProjection } from "../../shared/recovery/readiness";
 import { RECOVERY_STEPS, type RecoveryPlanProjection } from "../../shared/recovery/recovery-plan";
-import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, type RecoveryShowcaseScenarioId } from "./recovery-showcase";
+import { projectRecoveryShowcase, RECOVERY_SHOWCASE_SCENARIOS, RECOVERY_SHOWCASE_DEFAULT_TARGETS, type RecoveryShowcaseScenarioId } from "./recovery-showcase";
 
 /** #431 Stage9: Recovery is evidence-driven, never inferred from backup creation. */
 const SCOPE = "workhub-company";
@@ -114,7 +114,8 @@ export default function RecoveryReadiness() {
   };
   useEffect(() => { void load(); }, []);
   const [showcaseScenario, setShowcaseScenario] = useState<RecoveryShowcaseScenarioId>("ready");
-  const showcase = projectRecoveryShowcase(showcaseScenario, new Date().toISOString());
+  const [demoTargets, setDemoTargets] = useState(RECOVERY_SHOWCASE_DEFAULT_TARGETS);
+  const showcase = projectRecoveryShowcase(showcaseScenario, new Date().toISOString(), demoTargets);
   const view = state.kind === "ready" ? state.data : null;
   const recovery = view?.recovery;
 
@@ -163,6 +164,42 @@ export default function RecoveryReadiness() {
           <small>Post-Restore Verification: {recovery.postRestoreVerification}</small>
         </article>
       </div>
+      <p className="admin-audit-note">復旧ポイント: {fmt(recovery.recoveryPoint?.at ?? null)}
+        （検証: {recovery.recoveryPoint?.verified === true ? "確認済み" : "未確認"}）。
+        未確認・不足項目: {describeMissingRecoveryEvidence(recovery.missingEvidence)}。</p>
+      {view.actionRequired && <div className="admin-audit-state is-error" role="alert">
+        RPO違反：対応要確認（{view.actionRequired.reason}）。復旧は自動実行しません。
+      </div>}
+      <div className="admin-audit-state" data-testid="recovery-audit-coverage">
+        <h3>監査証跡（既存D1監査ログ・読み取り専用）</h3>
+        <p>取得状態: <strong>{view.auditEvidence.status}</strong> ／
+          照合レコード数: {view.auditEvidence.recordsChecked ?? "未確認"}
+          {view.auditEvidence.hasMore === true ? "（次ページあり）" : ""} ／
+          最新記録: {fmt(view.auditEvidence.latestAuditAt)}</p>
+        <p>対象環境・業務スコープの監査レコードを既存D1から照合します。
+          記録があっても、バックアップ検証やシステム復旧の成功を示すものではありません。</p>
+      </div>
+      <div className="admin-audit-state" data-testid="recovery-plan" aria-label="復旧手順（読み取り専用）">
+        <h3>復旧手順：11ステップ（実行不可）</h3>
+        <p>復旧事故ごとの監査済み記録: {view.recoveryPlan.evidenceSource}。
+          {view.recoveryPlan.evidenceSource === "not-connected"
+            ? "途中状態の永続化・再取得は未接続です。画面表示だけで復旧を再開したと判断しません。"
+            : "各ステップの監査証跡に基づく判定です。実行コマンドはありません。"}</p>
+        <ol>{view.recoveryPlan.steps.map((step) => <li key={step.id}>
+          <strong>{step.label}</strong>：{step.state}
+          {step.requiresHumanGate ? "（Human Gate）" : ""}
+        </li>)}</ol>
+        <p data-testid="recovery-resume-gate">Service Resume: <strong>{view.recoveryPlan.resumeDecision}</strong>
+          （操作可能: いいえ）。事故ごとのPost-Restore検証: {view.recoveryPlan.postRestore}。
+          未解決: {view.recoveryPlan.blockers.join(" / ") || "要Human Review・実再開は別工程"}。</p>
+      </div>
+      <div className="admin-audit-state" data-testid="recovery-human-gate">
+        Production Restore: <strong>{view.restoreGate.policyDecision}</strong>
+        （{view.restoreGate.policyVersion}）。Portalからの復元操作は不可、
+        承認・監査・復元後の検証は別工程です。
+      </div>
+    </>}
+    {/* The demo must remain usable even if the real admin API is offline or denies access. */}
       <div className="admin-audit-state" data-testid="recovery-showcase" aria-label="復旧判定シミュレーション">
         <h3>復旧判断を体験する（架空データのデモ）</h3>
         <p>シナリオを切り替えると実装済みのRPO/RTO・復元検証・Readiness判定が変わります。
@@ -174,6 +211,26 @@ export default function RecoveryReadiness() {
             onClick={() => setShowcaseScenario(item.id)}>{item.label}</button>)}
         </div>
         <p>{RECOVERY_SHOWCASE_SCENARIOS.find(item => item.id === showcaseScenario)?.description}</p>
+        <fieldset style={{ display: "flex", flexWrap: "wrap", gap: 12, margin: "12px 0" }}>
+          <legend>復旧目標を変更して判定を比較（架空データのみ）</legend>
+          {([
+            { key: "rpoMinutes", label: "RPO目標（分）", values: [15, 60, 180] },
+            { key: "rtoMinutes", label: "RTO目標（分）", values: [10, 45, 90] },
+            { key: "restoreMaxAgeHours", label: "復元テスト有効期限（時間）", values: [1, 24, 72] },
+          ] as const).map(({ key, label, values }) => <label key={key}>
+            {label}{" "}
+            <select data-testid={"recovery-showcase-target-" + key}
+              value={demoTargets[key]}
+              onChange={event => setDemoTargets(prev => ({
+                ...prev, [key]: Number(event.target.value),
+              }))}>
+              {values.map(value => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>)}
+          <button type="button" className="admin-inline-action"
+            onClick={() => setDemoTargets(RECOVERY_SHOWCASE_DEFAULT_TARGETS)}>目標を初期化</button>
+        </fieldset>
+
         <div className="admin-states" aria-label="デモ判定結果">
           <article className="admin-state-card">
             <strong>Recovery Readiness（デモ）</strong>
@@ -216,40 +273,5 @@ export default function RecoveryReadiness() {
         <p>Production Restore: HUMAN_GATE ／ 自動復旧: 不可 ／ Service Resume: 不可。
           デモは操作権限や実際の復旧成功を意味しません。</p>
       </div>
-      <p className="admin-audit-note">復旧ポイント: {fmt(recovery.recoveryPoint?.at ?? null)}
-        （検証: {recovery.recoveryPoint?.verified === true ? "確認済み" : "未確認"}）。
-        未確認・不足項目: {describeMissingRecoveryEvidence(recovery.missingEvidence)}。</p>
-      {view.actionRequired && <div className="admin-audit-state is-error" role="alert">
-        RPO違反：対応要確認（{view.actionRequired.reason}）。復旧は自動実行しません。
-      </div>}
-      <div className="admin-audit-state" data-testid="recovery-audit-coverage">
-        <h3>監査証跡（既存D1監査ログ・読み取り専用）</h3>
-        <p>取得状態: <strong>{view.auditEvidence.status}</strong> ／
-          照合レコード数: {view.auditEvidence.recordsChecked ?? "未確認"}
-          {view.auditEvidence.hasMore === true ? "（次ページあり）" : ""} ／
-          最新記録: {fmt(view.auditEvidence.latestAuditAt)}</p>
-        <p>対象環境・業務スコープの監査レコードを既存D1から照合します。
-          記録があっても、バックアップ検証やシステム復旧の成功を示すものではありません。</p>
-      </div>
-      <div className="admin-audit-state" data-testid="recovery-plan" aria-label="復旧手順（読み取り専用）">
-        <h3>復旧手順：11ステップ（実行不可）</h3>
-        <p>復旧事故ごとの監査済み記録: {view.recoveryPlan.evidenceSource}。
-          {view.recoveryPlan.evidenceSource === "not-connected"
-            ? "途中状態の永続化・再取得は未接続です。画面表示だけで復旧を再開したと判断しません。"
-            : "各ステップの監査証跡に基づく判定です。実行コマンドはありません。"}</p>
-        <ol>{view.recoveryPlan.steps.map((step) => <li key={step.id}>
-          <strong>{step.label}</strong>：{step.state}
-          {step.requiresHumanGate ? "（Human Gate）" : ""}
-        </li>)}</ol>
-        <p data-testid="recovery-resume-gate">Service Resume: <strong>{view.recoveryPlan.resumeDecision}</strong>
-          （操作可能: いいえ）。事故ごとのPost-Restore検証: {view.recoveryPlan.postRestore}。
-          未解決: {view.recoveryPlan.blockers.join(" / ") || "要Human Review・実再開は別工程"}。</p>
-      </div>
-      <div className="admin-audit-state" data-testid="recovery-human-gate">
-        Production Restore: <strong>{view.restoreGate.policyDecision}</strong>
-        （{view.restoreGate.policyVersion}）。Portalからの復元操作は不可、
-        承認・監査・復元後の検証は別工程です。
-      </div>
-    </>}
   </section>;
 }
