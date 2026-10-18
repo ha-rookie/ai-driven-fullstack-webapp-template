@@ -147,3 +147,14 @@ export const appendLocalRecoveryDrillStep = async (
   // Concurrent duplicate calls cannot be atomically coordinated by the Audit
   // API; an inconsistent replay must fail closed instead of granting resume.
 };
+
+/**
+ * Opt-in integration adapter for an authorized Recovery Readiness GET in
+ * local/test. Never register this factory in Preview/Production composition.
+ * The caller must still pass the normal authentication and scope gates before
+ * this reader is called; it has no capability to execute Restore/Resume.
+ */
+export const createLocalRecoveryOperationAuditReader = (
+  args: Omit<LocalRecoveryDrillArgs, "environment">,
+): ((environment: RuntimeEnvironment, asOf: string) => Promise<RecoveryOperationSnapshot | null>) =>
+  (environment, asOf) => readLocalRecoveryDrill({ ...args, environment }, asOf);
