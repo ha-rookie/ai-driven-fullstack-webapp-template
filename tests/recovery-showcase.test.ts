@@ -8,7 +8,7 @@ test("#431 showcase covers six distinct original recovery decisions using actual
   const cases = {
     ready: ["READY", "WITHIN_TARGET", "CURRENT", "PASSED", false],
     rpo_breach: ["NOT_READY", "BREACHED", "CURRENT", "PASSED", true],
-    restore_failed: ["NOT_READY", "WITHIN_TARGET", "FAILED", "FAILED", false],
+    restore_failed: ["NOT_READY", "WITHIN_TARGET", "FAILED", "FAILED", true],
     restore_stale: ["NOT_READY", "BREACHED", "STALE", "PASSED", true],
     restore_missing: ["UNKNOWN", "WITHIN_TARGET", "MISSING", "UNKNOWN", false],
     not_connected: ["UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN", false],
@@ -156,5 +156,44 @@ test("#430 cross product: all failure injections and targets never enable restor
         assert.equal(view.recoveryPlan.resumeDecision, "BLOCKED");
       }
     }
+  }
+});
+test("#431/#429 Showcase uses one Finding → ActionRequired rule for Golden #7 and RPO", () => {
+  const ready = projectRecoveryShowcase("ready", NOW);
+  assert.equal(ready.finding, null);
+  assert.equal(ready.reviewAction, null);
+  const failed = projectRecoveryShowcase("restore_failed", NOW);
+  assert.equal(failed.recovery.protection, "PROTECTED");
+  assert.equal(failed.recovery.readiness, "NOT_READY");
+  assert.equal(failed.recoveryPlan.postRestore, "FAILED");
+  assert.equal(failed.finding?.id, "recovery_restore_verification_failed");
+  assert.equal(failed.reviewAction?.findingId, failed.finding?.id);
+  assert.equal(failed.reviewAction?.operationId, "recovery.review");
+  assert.equal(failed.reviewAction?.reason, "restore_verification_failed_requires_human_review");
+  assert.equal(failed.actionRequired, true);
+  assert.equal(failed.recoveryPlan.resumeExecutionAllowed, false);
+  const breach = projectRecoveryShowcase("rpo_breach", NOW);
+  assert.equal(breach.finding?.id, "recovery_rpo_breach");
+  assert.equal(breach.reviewAction?.reason, "rpo_breach_requires_human_review");
+  assert.equal(breach.reviewAction?.findingId, breach.finding?.id);
+  const unknown = projectRecoveryShowcase("not_connected", NOW);
+  assert.equal(unknown.finding, null);
+  assert.equal(unknown.reviewAction, null);
+});
+
+test("#430 Golden #8 production-restore simulation demands Human Gate and a separate resume review", () => {
+  const result = projectRecoveryShowcase("ready", NOW);
+  assert.equal(result.recoveryPlan.evidenceSource, "verified-audit");
+  assert.equal(result.recoveryPlan.steps.filter(s => s.state === "VERIFIED").length, 10);
+  assert.equal(result.recoveryPlan.steps[4]?.requiresHumanGate, true);
+  assert.equal(result.recoveryPlan.steps[10]?.state, "PENDING");
+  assert.equal(result.recoveryPlan.resumeDecision, "HUMAN_REVIEW_REQUIRED");
+  assert.equal(result.recoveryPlan.resumeExecutionAllowed, false);
+  assert.equal(result.restoreExecutionAllowed, false);
+  for (const injection of ["audit_missing", "approval_missing", "audit_stale",
+    "verification_unknown"] as const) {
+    const stopped = projectRecoveryShowcase("ready", NOW, undefined, injection);
+    assert.equal(stopped.recoveryPlan.resumeDecision, "BLOCKED", injection);
+    assert.equal(stopped.resumeExecutionAllowed, false);
   }
 });
