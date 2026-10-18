@@ -88,6 +88,9 @@ export const projectRecoveryCenter = (
   // from backup verification alone; no restore/resume command is exposed here.
   const issue = recoveryPlan.evidenceSource === "verified-audit"
     && recoveryPlan.postRestore === "FAILED"
+    // Preserve established Recovery breach/failure priorities if BOTH are present.
+    && recovery.rpo.status !== "BREACHED"
+    && recovery.postRestoreVerification !== "FAILED"
     ? { id: "recovery_incident_verification_failed",
       summary: "Audited incident post-restore verification failed",
       reason: "incident_verification_failed_requires_human_review" }
