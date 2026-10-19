@@ -1,0 +1,168 @@
+import "./reference-site.css";
+
+/**
+ * #433 static Reference Site first slice. No application AuthProvider, Worker API,
+ * credentials, remote data, or additional documentation source of truth.
+ * Existing GitHub documents, WORKHUB and Showcase remain the canonical targets.
+ */
+const REPO = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template";
+const source = (path: string): string => REPO + "/blob/main/" + path;
+
+interface ReferenceCapability {
+  readonly id: string;
+  readonly domain: string;
+  readonly title: string;
+  readonly purpose: string;
+  readonly implementation: string;
+  readonly verification: string;
+  readonly limitation: string;
+  readonly recipe: string;
+  readonly code: string;
+  readonly test: string;
+  readonly demo: string;
+  readonly demoLabel: string;
+}
+
+const CAPABILITIES: readonly ReferenceCapability[] = [
+  {
+    id: "workflow",
+    domain: "BUSINESS / WORKFLOW",
+    title: "申請と承認",
+    purpose: "出張申請の作成・差戻し・再申請・承認。業務状態と承認状態を分離し、二重実行や競合を防ぐ実装例。",
+    implementation: "IMPLEMENTED",
+    verification: "CI VERIFIED（Repositoryの代表Browserテスト）",
+    limitation: "デモの人物・出張先は架空。外部の業務システムへの本番導入を証明しません。",
+    recipe: "docs/recipes/REFERENCE_TRAVEL_REQUEST.md",
+    code: "src/reference/workhub/travel-request/service.ts",
+    test: "e2e/tests/workhub-travel-request.spec.ts",
+    demo: "/",
+    demoLabel: "WORKHUBで操作する（ログインが必要）",
+  },
+  {
+    id: "authorization",
+    domain: "PLATFORM / SECURITY",
+    title: "認証と認可",
+    purpose: "表示ボタンではなくサーバー側のScope・Role・現在の権限を正本として業務操作を判定する。",
+    implementation: "IMPLEMENTED（代表的な権限境界）",
+    verification: "CI VERIFIED（代表的な認可付き業務E2E）",
+    limitation: "利用者・Scopeはデモ用。実企業のSSO/組織ポリシー適用を保証しません。",
+    recipe: "docs/recipes/AUTHORIZATION_BOUNDARY.md",
+    code: "docs/AUTHORIZATION_DESIGN.md",
+    test: "e2e/tests/workhub-travel-request.spec.ts",
+    demo: "/",
+    demoLabel: "WORKHUBのロール別操作を見る（ログインが必要）",
+  },
+  {
+    id: "recovery",
+    domain: "OPERATIONS / RECOVERY",
+    title: "Backupと復旧判断",
+    purpose: "Backup成功と復旧可能性を分け、検証失敗・監査証跡不足では安全な再開を許可しない判断を見せる。",
+    implementation: "REFERENCE DEMO（架空復旧）",
+    verification: "CI VERIFIED（模擬Golden Recoveryテスト）",
+    limitation: "画面・承認・監査IDは模擬。Production Restore、Remote D1復元、実復旧保証はありません。",
+    recipe: "docs/RECOVERY_OPERATIONS.md",
+    code: "src/shared/recovery/readiness.ts",
+    test: "tests/recovery-showcase.test.ts",
+    demo: "/showcase/#showcase-recovery",
+    demoLabel: "Recovery判断デモを見る（読取専用）",
+  },
+];
+
+function ExternalEvidence({ path, children }: { readonly path: string; readonly children: string }) {
+  return <a href={source(path)} target="_blank" rel="noopener noreferrer">{children} ↗</a>;
+}
+
+export default function ReferenceSite() {
+  return (
+    <div className="reference-site">
+      <a className="reference-skip" href="#reference-main">本文へスキップ</a>
+      <header className="reference-header">
+        <a href="/reference" className="reference-brand" aria-label="Reference Site ホーム">
+          <span className="reference-brand-mark" aria-hidden="true">R</span>
+          <span>WORKHUB <small>DEVELOPER REFERENCE</small></span>
+        </a>
+        <nav aria-label="Reference Site ナビゲーション">
+          <a href="#reference-start">使い始める</a>
+          <a href="#reference-capabilities">実装例を探す</a>
+          <a href="/showcase">3分デモ</a>
+        </nav>
+      </header>
+
+      <main id="reference-main">
+        <section className="reference-hero" aria-labelledby="reference-title">
+          <p className="reference-eyebrow">CODE → RUNNING EXAMPLE → REFERENCE</p>
+          <h1 id="reference-title">業務Webアプリの設計を、<span>動く例とコードで確かめる。</span></h1>
+          <p className="reference-lead">認証・権限・申請・監査・復旧。業務システムで繰り返す判断を、既存の実装・テスト・設計資料へ直接たどれるリファレンスです。</p>
+          <div className="reference-actions">
+            <a className="reference-primary" href="#reference-capabilities">実装と証拠を見る →</a>
+            <a className="reference-secondary" href="/showcase">3分で動きを見る →</a>
+          </div>
+          <p className="reference-hero-note">完成した業務製品ではありません。WORKHUBは架空企業のReference Applicationです。</p>
+        </section>
+
+        <section id="reference-start" className="reference-section" aria-labelledby="reference-start-title">
+          <p className="reference-eyebrow">START / まずはここから</p>
+          <h2 id="reference-start-title">読みたい場所から始める</h2>
+          <div className="reference-entry-grid">
+            <article className="reference-entry">
+              <span className="reference-entry-number">01</span>
+              <h3>ローカルで動かす</h3>
+              <p>既存のREADMEから環境構築と起動方法を確認する。</p>
+              <a href={source("README.md")} target="_blank" rel="noopener noreferrer">Getting Started / README ↗</a>
+            </article>
+            <article className="reference-entry">
+              <span className="reference-entry-number">02</span>
+              <h3>仕事の流れを見る</h3>
+              <p>出張申請・承認と、異常時の復旧判断を架空デモで体験する。</p>
+              <a href="/showcase">公開Showcaseへ →</a>
+            </article>
+            <article className="reference-entry">
+              <span className="reference-entry-number">03</span>
+              <h3>なぜそう作るか読む</h3>
+              <p>設計判断、責務の境界、採用しなかった方法をソースから確認する。</p>
+              <ExternalEvidence path="docs/README.md">設計資料一覧</ExternalEvidence>
+            </article>
+          </div>
+        </section>
+
+        <section id="reference-capabilities" className="reference-section" aria-labelledby="reference-cap-title">
+          <p className="reference-eyebrow">CAPABILITY / RECIPE / EVIDENCE</p>
+          <h2 id="reference-cap-title">代表的な3つの設計判断</h2>
+          <p className="reference-section-lead">機能一覧を増やすのではなく、すでに動いている例と、その根拠を行き来できます。</p>
+          <div className="reference-capability-grid">
+            {CAPABILITIES.map((item) => (
+              <article className="reference-capability" key={item.id} id={"reference-" + item.id}>
+                <p className="reference-eyebrow">{item.domain}</p>
+                <h3>{item.title}</h3>
+                <p>{item.purpose}</p>
+                <dl className="reference-evidence-status">
+                  <div><dt>実装</dt><dd>{item.implementation}</dd></div>
+                  <div><dt>確認</dt><dd>{item.verification}</dd></div>
+                </dl>
+                <div className="reference-links" aria-label={item.title + " の参照先"}>
+                  <a href={item.demo}>{item.demoLabel} →</a>
+                  <ExternalEvidence path={item.recipe}>Recipe / 設計</ExternalEvidence>
+                  <ExternalEvidence path={item.code}>Source / Contract</ExternalEvidence>
+                  <ExternalEvidence path={item.test}>Test / Evidence</ExternalEvidence>
+                </div>
+                <p className="reference-limitation"><strong>適用範囲：</strong>{item.limitation}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="reference-section reference-boundary" id="reference-limits" aria-labelledby="reference-limits-title">
+          <p className="reference-eyebrow">STATUS / RESPONSIBILITY</p>
+          <h2 id="reference-limits-title">実装と、検証の証拠は別です。</h2>
+          <p>Designed（設計済）・Implemented（コードあり）・CI Verified（自動テスト成功）・Preview Verified（実Preview確認）・Production Verified（実本番確認）は、それぞれ異なります。このページの参照情報はGitHubの既存成果に依拠し、現在の本番可用性は証明しません。</p>
+          <p>実際のプロジェクトへの適用には、独自の要件定義・権限設計・試験・リリース承認が必要です。AI Agent、外部SaaS接続、Production Restoreがすべて実装済みであるとは扱いません。</p>
+          <a href={REPO + "/issues/433"} target="_blank" rel="noopener noreferrer">Reference Siteの未完了条件を見る ↗</a>
+        </section>
+      </main>
+      <footer className="reference-footer">
+        <span>WORKHUB · Developer Reference / first slice</span>
+        <div><a href="/showcase">Showcase</a><a href="/">WORKHUB</a><a href={REPO} target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
+      </footer>
+    </div>
+  );
+}

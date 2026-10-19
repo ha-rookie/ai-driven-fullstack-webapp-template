@@ -238,6 +238,7 @@ export default function WorkhubShowcase() {
         <p>デモの操作・実装の読み込み・テストの確認を、そのまま次のステップに。</p>
         <div className="showcase-actions">
           <a href="/" className="showcase-primary">WORKHUBデモへ →</a>
+          <a href="/reference" className="showcase-secondary">設計リファレンス →</a>
           <a href={REPO + "/blob/main/docs/README.md"} className="showcase-secondary" target="_blank" rel="noopener noreferrer">開発・設計資料 ↗</a>
           <a href={REPO} className="showcase-secondary" target="_blank" rel="noopener noreferrer">GitHub Source ↗</a>
         </div>
