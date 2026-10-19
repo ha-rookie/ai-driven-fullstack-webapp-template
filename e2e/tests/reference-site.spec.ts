@@ -34,6 +34,15 @@ test("#433 public Reference provides real Docs → Demo → Source links without
     .toHaveAttribute("href", /tests\/recovery-showcase\.test\.ts$/u);
   await expect(page.getByRole("link", { name: "Reference Siteの未完了条件を見る ↗" }))
     .toHaveAttribute("href", /issues\/433$/u);
+  const status = page.locator("#reference-status");
+  await expect(status.getByRole("heading", { name: "開発状況はGitHubの正本で確認する" })).toBeVisible();
+  await expect(status.getByRole("link", { name: "Reference Siteの受入条件 ↗" }))
+    .toHaveAttribute("href", /issues\/433$/u);
+  await expect(status.getByRole("link", { name: "実装計画・優先順位 ↗" }))
+    .toHaveAttribute("href", /issues\/132$/u);
+  await expect(status.getByRole("link", { name: "正式System Testの状況 ↗" }))
+    .toHaveAttribute("href", /issues\/694$/u);
+  await expect(status.getByText("進捗率や公開状態は固定表示せず", { exact: false })).toBeVisible();
   expect(apiCalls, "public Reference must not request private API, sessions or remote mutations").toEqual([]);
 });
 
