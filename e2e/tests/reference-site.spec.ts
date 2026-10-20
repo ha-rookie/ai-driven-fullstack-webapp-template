@@ -51,6 +51,18 @@ test("#433 public Reference provides real Docs → Demo → Source links without
     .toHaveAttribute("href", /tests\/recovery-showcase\.test\.ts$/u);
   await expect(page.getByRole("link", { name: "Reference Siteの未完了条件を見る ↗" }))
     .toHaveAttribute("href", /issues\/433$/u);
+  const scenarios = page.locator("#reference-scenarios");
+  await expect(scenarios.getByRole("heading", { name: "業務の場面から、実装までたどる" })).toBeVisible();
+  for (const scenario of ["return", "expense", "search"]) {
+    const card = page.locator("#reference-scenario-" + scenario);
+    await expect(card.getByRole("link", { name: "ショーケースの該当場面を見る →" }))
+      .toHaveAttribute("href", "/showcase?scenario=" + scenario + "#showcase-tour");
+    await expect(card.getByRole("link", { name: "Source ↗" }))
+      .toHaveAttribute("href", /\/blob\/main\/src\//u);
+    await expect(card.getByRole("link", { name: "Browser E2E ↗" }))
+      .toHaveAttribute("href", /\/blob\/main\/e2e\/tests\//u);
+  }
+
   const status = page.locator("#reference-status");
   await expect(status.getByRole("heading", { name: "開発状況はGitHubの正本で確認する" })).toBeVisible();
   await expect(status.getByRole("link", { name: "Reference Siteの受入条件 ↗" }))
@@ -72,6 +84,13 @@ test("#433 public Showcase links to Reference on mobile without horizontal overf
   await expect(page.getByRole("navigation", { name: "Reference Site ナビゲーション" })).toBeVisible();
   await expect(page.locator(".reference-capability")).toHaveCount(6);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.getByRole("link", { name: "業務シナリオ" }).click();
+  await page.locator("#reference-scenario-search")
+    .getByRole("link", { name: "ショーケースの該当場面を見る →" }).click();
+  await expect(page).toHaveURL(/\/showcase\?scenario=search#showcase-tour$/u);
+  await expect(page.locator(".showcase-tour-detail").getByRole("heading", { name: "検索・帳票も、現在の権限で確認する" })).toBeVisible();
+  await page.goto("/showcase?scenario=unknown#showcase-tour");
+  await expect(page.locator(".showcase-tour-detail").getByRole("heading", { name: "社員が「出張したい」から始める" })).toBeVisible();
   await page.goto("/reference/");
   await expect(page.getByRole("heading", { level: 1, name: /業務Webアプリの設計を/u })).toBeVisible();
 });
