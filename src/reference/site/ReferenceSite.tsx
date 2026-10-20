@@ -1,3 +1,4 @@
+import { useState } from "react";
 import "./reference-site.css";
 
 /**
@@ -140,6 +141,15 @@ function ExternalEvidence({ path, children }: { readonly path: string; readonly 
 }
 
 export default function ReferenceSite() {
+  const [searchInput, setSearchInput] = useState("");
+  const query = searchInput.normalize("NFKC").trim().toLocaleLowerCase("ja-JP");
+  const contains = (...values: string[]) =>
+    query.length === 0 || values.join(" ").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query);
+  const capabilities = CAPABILITIES.filter((item) =>
+    contains(item.title, item.domain, item.purpose, item.recipe, item.code, item.limitation));
+  const scenarios = SCENARIOS.filter((item) =>
+    contains(item.title, item.capability, item.summary, item.source));
+
   return (
     <div className="reference-site">
       <a className="reference-skip" href="#reference-main">本文へスキップ</a>
@@ -198,8 +208,21 @@ export default function ReferenceSite() {
           <p className="reference-eyebrow">CAPABILITY / RECIPE / EVIDENCE</p>
           <h2 id="reference-cap-title">代表的な6つの実装・設計パターン</h2>
           <p className="reference-section-lead">既存の実装から代表例を選んで紹介しています。ここに掲載した6件は全Capabilityの棚卸し完了を意味しません。</p>
+          <div className="reference-search" role="search">
+            <label htmlFor="reference-search-input">掲載済みの機能・業務シナリオを探す</label>
+            <input
+              id="reference-search-input"
+              type="search"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="例：承認、CSV、検索、差戻し"
+            />
+            <p className="reference-search-count" role="status" aria-live="polite">
+              {capabilities.length}件のCapability・{scenarios.length}件のシナリオが一致
+            </p>
+          </div>
           <div className="reference-capability-grid">
-            {CAPABILITIES.map((item) => (
+            {capabilities.map((item) => (
               <article className="reference-capability" key={item.id} id={"reference-" + item.id}>
                 <p className="reference-eyebrow">{item.domain}</p>
                 <h3>{item.title}</h3>
@@ -219,6 +242,7 @@ export default function ReferenceSite() {
                 <p className="reference-limitation"><strong>適用範囲：</strong>{item.limitation}</p>
               </article>
             ))}
+            {capabilities.length === 0 && <p className="reference-empty">一致するCapabilityはありません。</p>}
           </div>
         </section>
 
@@ -227,7 +251,7 @@ export default function ReferenceSite() {
           <h2 id="reference-scenarios-title">業務の場面から、実装までたどる</h2>
           <p className="reference-section-lead">既存ショーケースの該当ステップへ直接移動します。ツアーは操作手順の案内であり、ログインが必要な実操作やPreview検証の完了を保証しません。ここにある3件は全シナリオの対応付けではありません。</p>
           <div className="reference-entry-grid">
-            {SCENARIOS.map((scenario) => (
+            {scenarios.map((scenario) => (
               <article className="reference-entry" id={"reference-scenario-" + scenario.id} key={scenario.id}>
                 <span className="reference-entry-number">{scenario.capability}</span>
                 <h3>{scenario.title}</h3>
@@ -237,6 +261,7 @@ export default function ReferenceSite() {
                 <p><ExternalEvidence path={scenario.test}>Browser E2E</ExternalEvidence></p>
               </article>
             ))}
+            {scenarios.length === 0 && <p className="reference-empty">一致する業務シナリオはありません。</p>}
           </div>
         </section>
 
