@@ -19,8 +19,8 @@ interface ReferenceCapability {
   readonly recipe: string;
   readonly code: string;
   readonly test: string;
-  readonly demo: string;
-  readonly demoLabel: string;
+  readonly demo?: string;
+  readonly demoLabel?: string;
 }
 
 const CAPABILITIES: readonly ReferenceCapability[] = [
@@ -65,6 +65,44 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
     test: "tests/recovery-showcase.test.ts",
     demo: "/showcase/#showcase-recovery",
     demoLabel: "Recovery判断デモを見る（読取専用）",
+  },
+  {
+    id: "search",
+    domain: "BUSINESS / AUTHORIZED SEARCH",
+    title: "権限付き検索",
+    purpose: "出張申請を検索するとき、検索Indexを権限の正本にせず、取得時点のサーバー側権限で再確認する。",
+    implementation: "IMPLEMENTED（出張申請の対象範囲）",
+    verification: "CI VERIFIED（代表Browserテスト）",
+    limitation: "確認済みなのは出張申請の代表的な検索経路。全業務の横断検索やAI/RAGの本番運用を証明しません。",
+    recipe: "docs/search-foundation.md",
+    code: "src/reference/workhub/travel-search.ts",
+    test: "e2e/tests/workhub-travel-request.spec.ts",
+    demo: "/",
+    demoLabel: "WORKHUBで出張申請を検索する（ログインが必要）",
+  },
+  {
+    id: "report",
+    domain: "BUSINESS / REPORT",
+    title: "PDF帳票の生成",
+    purpose: "承認済み出張の情報と履歴を使い、権限を確認しながら帳票を生成・保存する実装例。",
+    implementation: "IMPLEMENTED（出張承認PDFの例）",
+    verification: "CI VERIFIED（PDFテスト。Browserでの帳票取得は未検証）",
+    limitation: "ここには直接操作できる公開PDFデモはありません。Preview/Productionでの帳票ダウンロードも未検証です。",
+    recipe: "docs/REPORT_GENERATION.md",
+    code: "src/reference/workhub/travel-report.ts",
+    test: "tests/workhub-travel-report-pdf.test.ts",
+  },
+  {
+    id: "csv",
+    domain: "PLATFORM / DATA IMPORT EXPORT",
+    title: "CSV入出力",
+    purpose: "CSVの検証・ドライラン・確定処理と出力を、業務で再利用するための実装例。",
+    implementation: "IMPLEMENTED（共通基盤）",
+    verification: "CI VERIFIED（CSVユニットテスト）",
+    limitation: "公開WORKHUBから操作できるCSVデモはありません。業務画面への組込み・実データ運用は別途必要です。",
+    recipe: "docs/recipes/DATA_IMPORT_EXPORT.md",
+    code: "src/shared/tabular-data/csv-import.ts",
+    test: "tests/tabular-data-csv.test.ts",
   },
 ];
 
@@ -128,8 +166,8 @@ export default function ReferenceSite() {
 
         <section id="reference-capabilities" className="reference-section" aria-labelledby="reference-cap-title">
           <p className="reference-eyebrow">CAPABILITY / RECIPE / EVIDENCE</p>
-          <h2 id="reference-cap-title">代表的な3つの設計判断</h2>
-          <p className="reference-section-lead">機能一覧を増やすのではなく、すでに動いている例と、その根拠を行き来できます。</p>
+          <h2 id="reference-cap-title">代表的な6つの実装・設計パターン</h2>
+          <p className="reference-section-lead">既存の実装から代表例を選んで紹介しています。ここに掲載した6件は全Capabilityの棚卸し完了を意味しません。</p>
           <div className="reference-capability-grid">
             {CAPABILITIES.map((item) => (
               <article className="reference-capability" key={item.id} id={"reference-" + item.id}>
@@ -141,7 +179,9 @@ export default function ReferenceSite() {
                   <div><dt>確認</dt><dd>{item.verification}</dd></div>
                 </dl>
                 <div className="reference-links" aria-label={item.title + " の参照先"}>
-                  <a href={item.demo}>{item.demoLabel} →</a>
+                  {item.demo && item.demoLabel
+                    ? <a href={item.demo}>{item.demoLabel} →</a>
+                    : <span>操作デモなし（設計・ソース・テストを参照）</span>}
                   <ExternalEvidence path={item.recipe}>Recipe / 設計</ExternalEvidence>
                   <ExternalEvidence path={item.code}>Source / Contract</ExternalEvidence>
                   <ExternalEvidence path={item.test}>Test / Evidence</ExternalEvidence>
