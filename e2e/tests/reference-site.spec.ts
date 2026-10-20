@@ -22,7 +22,7 @@ test("#433 Reference documentation and source links resolve to repository files"
 
 test("#433 all 18 original WORKHUB / Admin scenarios have an explicit mapping", () => {
   const map = readFileSync(resolve("docs/reference/WORKHUB_SCENARIO_MAP.md"), "utf8");
-  const rows = map.split("\n").filter((line) => line.startsWith("| S"));
+  const rows = map.split("\n").filter((line) => /^S(?:0[1-9]|1[0-8])$/u.test(line.split("|")[1]?.trim() ?? ""));
   const cells = rows.map((line) => line.split("|").map((cell) => cell.trim()));
   expect(rows).toHaveLength(18);
   expect(new Set(cells.map((row) => row[1])).size).toBe(18);
