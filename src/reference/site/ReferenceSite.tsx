@@ -243,12 +243,12 @@ export default function ReferenceSite() {
         <section id="reference-status" className="reference-section" aria-labelledby="reference-status-title">
           <p className="reference-eyebrow">ROADMAP / STATUS / EVIDENCE</p>
           <h2 id="reference-status-title">開発状況はGitHubの正本で確認する</h2>
-          <p className="reference-section-lead">この画面で見られる範囲と、まだ確認が必要な条件を分けて案内します。進捗率や公開状態は固定表示せず、最新のGitHub記録を参照してください。</p>
+          <p className="reference-section-lead">この画面で見られる範囲と、まだ確認が必要な条件を分けて案内します。下のリンクはGitHubの元受入・全体WBS・正式System Testの正本です。CIの成功は公開環境での動作確認とは別です。進捗率や公開状態は固定表示せず、最新のGitHub記録を参照してください。</p>
           <div className="reference-entry-grid">
             <article className="reference-entry">
               <span className="reference-entry-number">01 / REFERENCE</span>
               <h3>この画面の実装範囲</h3>
-              <p>既存の6つの代表Capabilityと3つの業務シナリオを紹介しています。Reference Site全体の完成を意味しません。</p>
+              <p>既存の6つの代表Capabilityと3つの業務シナリオを紹介しています。Reference Site全体の完成を意味しません。元受入14条件の完了数・未完了条件はIssue本文を確認してください。判定コメントとチェック欄に差がある場合、チェック欄を正本とします。</p>
               <a href={REPO + "/issues/433"} target="_blank" rel="noopener noreferrer">Reference Siteの受入条件 ↗</a>
             </article>
             <article className="reference-entry">
@@ -260,7 +260,7 @@ export default function ReferenceSite() {
             <article className="reference-entry">
               <span className="reference-entry-number">03 / VERIFICATION</span>
               <h3>試験・公開の確認</h3>
-              <p>コードやCIの成功と、正式なシステムテスト・PreviewやProductionの配信確認は別です。</p>
+              <p>コードやCIの成功と、正式なシステムテスト・PreviewやProductionの配信確認は別です。未実施の試験や未承認のデプロイを完了と扱いません。</p>
               <a href={REPO + "/issues/694"} target="_blank" rel="noopener noreferrer">正式System Testの状況 ↗</a>
             </article>
           </div>
