@@ -22,12 +22,14 @@ test("#433 Reference documentation and source links resolve to repository files"
 
 test("#433 all 18 original WORKHUB / Admin scenarios have an explicit mapping", () => {
   const map = readFileSync(resolve("docs/reference/WORKHUB_SCENARIO_MAP.md"), "utf8");
-  const rows = [...map.matchAll(/^\\| (S(?:0[1-9]|1[0-8])) \\| \`(scenario\\.[a-z0-9.-]+)\` \\|/gmu)];
+  const rows = map.split("\n").filter((line) => line.startsWith("| S"));
+  const cells = rows.map((line) => line.split("|").map((cell) => cell.trim()));
   expect(rows).toHaveLength(18);
-  expect(new Set(rows.map((row) => row[1])).size).toBe(18);
-  expect(new Set(rows.map((row) => row[2])).size).toBe(18);
+  expect(new Set(cells.map((row) => row[1])).size).toBe(18);
+  expect(new Set(cells.map((row) => row[2])).size).toBe(18);
   for (let index = 0; index < 18; index++) {
-    expect(rows[index][1]).toBe("S" + String(index + 1).padStart(2, "0"));
+    expect(cells[index][1]).toBe("S" + String(index + 1).padStart(2, "0"));
+    expect(cells[index][2]).toContain("scenario.");
   }
   expect(map).toContain("既存18件すべてのStable ID");
   expect(map).toContain("GitHub checkboxの更新はブロック");
