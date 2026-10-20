@@ -238,6 +238,7 @@ export default function ReferenceSite() {
               </article>
             ))}
           </div>
+          <p className="reference-section-lead"><ExternalEvidence path="docs/reference/WORKHUB_SCENARIO_MAP.md">既存18シナリオの対応表（公開案内・模擬・構想を区別）</ExternalEvidence></p>
         </section>
 
         <section id="reference-status" className="reference-section" aria-labelledby="reference-status-title">

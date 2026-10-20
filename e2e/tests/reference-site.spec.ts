@@ -11,13 +11,28 @@ test("#433 Reference documentation and source links resolve to repository files"
     ...[...siteSource.matchAll(/\bsource\("([^"]+)"\)/gu)].map((match) => match[1]),
     ...[...siteSource.matchAll(/<ExternalEvidence path="([^"]+)"/gu)].map((match) => match[1]),
   ]);
-  expect(pointers.size, "all Reference evidence pointers must be discovered").toBeGreaterThanOrEqual(20);
+  expect(pointers.size, "all Reference evidence pointers must be discovered").toBeGreaterThanOrEqual(21);
   for (const path of pointers) {
     expect(path, "Reference pointer must be repository-relative: " + path)
       .toMatch(/^(?:docs|src|e2e|tests)\/|^README\.md$/u);
     expect(existsSync(resolve(path)), "Broken Reference evidence link: " + path).toBe(true);
   }
   expect(siteSource).not.toContain("申請・承認、認証・認可、架空の復旧判断の3つの代表例です。");
+});
+
+test("#433 all 18 original WORKHUB / Admin scenarios have an explicit mapping", () => {
+  const map = readFileSync(resolve("docs/reference/WORKHUB_SCENARIO_MAP.md"), "utf8");
+  const rows = map.split("\n").filter((line) => /^S(?:0[1-9]|1[0-8])$/u.test(line.split("|")[1]?.trim() ?? ""));
+  const cells = rows.map((line) => line.split("|").map((cell) => cell.trim()));
+  expect(rows).toHaveLength(18);
+  expect(new Set(cells.map((row) => row[1])).size).toBe(18);
+  expect(new Set(cells.map((row) => row[2])).size).toBe(18);
+  for (let index = 0; index < 18; index++) {
+    expect(cells[index][1]).toBe("S" + String(index + 1).padStart(2, "0"));
+    expect(cells[index][2]).toContain("scenario.");
+  }
+  expect(map).toContain("既存18件すべてのStable ID");
+  expect(map).toContain("GitHub checkboxの更新はブロック");
 });
 
 test("#433 public Reference provides real Docs → Demo → Source links without API calls", async ({ page }) => {
@@ -72,6 +87,8 @@ test("#433 public Reference provides real Docs → Demo → Source links without
   await expect(page.getByRole("link", { name: "Reference Siteの未完了条件を見る ↗" }))
     .toHaveAttribute("href", /issues\/433$/u);
   const scenarios = page.locator("#reference-scenarios");
+  await expect(scenarios.getByRole("link", { name: /既存18シナリオの対応表/u }))
+    .toHaveAttribute("href", /docs\/reference\/WORKHUB_SCENARIO_MAP\.md$/u);
   await expect(scenarios.getByRole("heading", { name: "業務の場面から、実装までたどる" })).toBeVisible();
   for (const scenario of ["return", "expense", "search"]) {
     const card = page.locator("#reference-scenario-" + scenario);
@@ -149,7 +166,7 @@ test("#433 published Reference links, anchors and status pointers are not broken
   }
 
   expect(hrefs.length, "public links must be enumerated").toBeGreaterThan(35);
-  expect(paths.size, "all 20 current documentation / source / test pointers remain published").toBe(20);
+  expect(paths.size, "all 20 current documentation / source / test pointers remain published").toBe(21);
   await expect(page.locator(".reference-capability")).toHaveCount(6);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
   await expect(page.locator("#reference-status")).toContainText("既存の6つの代表Capabilityと3つの業務シナリオ");
