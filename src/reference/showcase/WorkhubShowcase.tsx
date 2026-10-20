@@ -18,6 +18,7 @@ const workhubUiSource = REPO + "/blob/main/src/App.tsx";
 
 const tour = [
   {
+    id: "request",
     eyebrow: "01 / REQUEST",
     title: "社員が「出張したい」から始める",
     actor: "Aoi · 一般社員",
@@ -30,6 +31,7 @@ const tour = [
     test: travelTest,
   },
   {
+    id: "return",
     eyebrow: "02 / APPROVAL",
     title: "上長が差し戻し、社員が再申請する",
     actor: "Ren · Manager → Aoi · 一般社員",
@@ -42,6 +44,7 @@ const tour = [
     test: travelTest,
   },
   {
+    id: "trace",
     eyebrow: "03 / TRACE",
     title: "承認後も、何が起きたか追える",
     actor: "Ren · Manager → Aoi · 一般社員",
@@ -54,6 +57,7 @@ const tour = [
     test: travelTest,
   },
   {
+    id: "expense",
     eyebrow: "04 / EXPENSE",
     title: "出張後の経費を申請し、経理が確認する",
     actor: "Aoi · 一般社員 → Mei · 経理担当",
@@ -66,6 +70,7 @@ const tour = [
     test: expenseTest,
   },
   {
+    id: "search",
     eyebrow: "05 / BOUNDARY",
     title: "検索・帳票も、現在の権限で確認する",
     actor: "Aoi · 一般社員 / Ren · Manager",
@@ -107,7 +112,12 @@ const capabilityCards = [
 ] as const;
 
 export default function WorkhubShowcase() {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() => {
+    // Public scenario deep-link. Resolve only known tour IDs; no authentication or API side effects.
+    const requested = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("scenario");
+    const index = tour.findIndex((item) => item.id === requested);
+    return index < 0 ? 0 : index;
+  });
   const current = tour[step];
   return <div className="showcase-page">
     <a className="showcase-skip" href="#showcase-main">本文へスキップ</a>
