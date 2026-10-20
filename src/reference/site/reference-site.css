@@ -29,6 +29,12 @@
 .reference-entry h3,.reference-capability h3{font-size:21px;margin:7px 0 9px}
 .reference-entry p,.reference-capability>p:not(.reference-eyebrow){color:#405b68}
 .reference-entry a{display:inline-block;font-weight:750;margin-top:8px}
+.reference-search{display:grid;gap:8px;max-width:650px;margin:0 0 24px}
+.reference-search label{font-weight:750}
+.reference-search input{width:100%;min-height:44px;padding:10px 14px;border:1px solid #9eb9bf;border-radius:10px;background:#fff;color:var(--ref-ink);font:inherit}
+.reference-search input:focus-visible{outline:3px solid #bd661a;outline-offset:2px}
+.reference-search-count{margin:0;color:var(--ref-muted);font-size:13px}
+.reference-empty{grid-column:1/-1;margin:0;padding:20px;border:1px dashed var(--ref-border);border-radius:12px;color:var(--ref-muted)}
 .reference-capability-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
 .reference-capability{display:flex;flex-direction:column;gap:10px}
 .reference-capability h3{margin:0}
