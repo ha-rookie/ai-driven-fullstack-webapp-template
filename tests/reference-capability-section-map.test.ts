@@ -21,19 +21,38 @@ const regional = map.split("\n")
   .filter(line => /^\| JP\d{2} \|/u.test(line))
   .map(line => line.split("|").map(field => field.trim()));
 
-test("#433 all original 80 inventory candidates map to existing frozen Reference IA sections", () => {
-  assert.equal(inventory.length, 80);
-  assert.equal(new Set(inventory.map(row => row[1])).size, 80);
-  assert.equal(new Set(inventory.map(row => row[3])).size, 80);
+test("#433 all original 86 inventory candidates map to existing frozen Reference IA sections", () => {
+  assert.equal(inventory.length, 86);
+  assert.equal(new Set(inventory.map(row => row[1])).size, 86);
+  assert.equal(new Set(inventory.map(row => row[3])).size, 86);
   const domains = new Set(inventory.map(row => row[4]));
   assert.equal(domains.size, 8);
   for (const [i, row] of inventory.entries()) {
     assert.equal(row[1], "C" + String(i + 1).padStart(2, "0"));
-    assert.match(row[3], /^#\d+$/u);
+    assert.match(row[3], /^#\d+(?:\s*\/\s*#\d+|-#\d+| family)*$/u);
     assert.ok(iaSections.has(row[5]), "Unrecognized frozen IA section for " + row[3]);
   }
   assert.ok(map.includes("Issue ≠ Capability"));
   assert.ok(map.includes("台帳のみ"));
+});
+
+test("#433 six original grouped/family candidate rows are not silently dropped", () => {
+  const grouped = new Map([
+    ["#311 family", "Japan Business Utilities"],
+    ["#21 / #61 / #60", "Performance / Capacity"],
+    ["#93-#97", "Membership / Invitation Administration"],
+    ["#70/#71/#88/#90/#92", "Session Security / Revocation"],
+    ["#47 family", "Web Security Hardening"],
+    ["#48 family", "Supply-chain Security"],
+  ]);
+  assert.equal(grouped.size, 6);
+  for (const [issue, name] of grouped) {
+    const originalRow = inventory.filter(row => row[3] === issue);
+    assert.equal(originalRow.length, 1, "Missing original grouped candidate: " + issue);
+    assert.equal(originalRow[0][2], name);
+    assert.ok(iaSections.has(originalRow[0][5]));
+    assert.equal(originalRow[0][6], "台帳のみ");
+  }
 });
 
 test("#433 six published capability cards and six Japanese regional children are classified without invented routes", () => {
