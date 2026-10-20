@@ -106,6 +106,35 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
   },
 ];
 
+
+/** #433 verified showcase-tour relationships; not the full WORKHUB scenario inventory. */
+const SCENARIOS = [
+  {
+    id: "return",
+    title: "申請の差戻しと再申請",
+    summary: "社員の申請を上長が差し戻し、修正して再提出する。Workflow・認可・通知のつながりを確認する。",
+    capability: "WORKFLOW / AUTHORIZATION",
+    source: "src/reference/workhub/travel-request/service.ts",
+    test: "e2e/tests/workhub-travel-request.spec.ts",
+  },
+  {
+    id: "expense",
+    title: "出張承認から経費精算へ",
+    summary: "出張承認と経費精算は別の業務。経理担当による確認まで、WORKHUBの案内と実装をたどる。",
+    capability: "TRAVEL / EXPENSE",
+    source: "src/reference/workhub/expenses.ts",
+    test: "e2e/tests/workhub-expenses.spec.ts",
+  },
+  {
+    id: "search",
+    title: "現在の権限で出張を検索",
+    summary: "検索結果の表示と参照権限を分け、最新の権限に従って業務データを確認する。",
+    capability: "AUTHORIZED SEARCH",
+    source: "src/reference/workhub/travel-search.ts",
+    test: "e2e/tests/workhub-travel-request.spec.ts",
+  },
+] as const;
+
 function ExternalEvidence({ path, children }: { readonly path: string; readonly children: string }) {
   return <a href={source(path)} target="_blank" rel="noopener noreferrer">{children} ↗</a>;
 }
@@ -122,6 +151,7 @@ export default function ReferenceSite() {
         <nav aria-label="Reference Site ナビゲーション">
           <a href="#reference-start">使い始める</a>
           <a href="#reference-capabilities">実装例を探す</a>
+          <a href="#reference-scenarios">業務シナリオ</a>
           <a href="#reference-status">開発状況</a>
           <a href="/showcase">3分デモ</a>
         </nav>
@@ -187,6 +217,24 @@ export default function ReferenceSite() {
                   <ExternalEvidence path={item.test}>Test / Evidence</ExternalEvidence>
                 </div>
                 <p className="reference-limitation"><strong>適用範囲：</strong>{item.limitation}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="reference-scenarios" className="reference-section" aria-labelledby="reference-scenarios-title">
+          <p className="reference-eyebrow">WORKHUB / GUIDED SCENARIOS</p>
+          <h2 id="reference-scenarios-title">業務の場面から、実装までたどる</h2>
+          <p className="reference-section-lead">既存ショーケースの該当ステップへ直接移動します。ツアーは操作手順の案内であり、ログインが必要な実操作やPreview検証の完了を保証しません。ここにある3件は全シナリオの対応付けではありません。</p>
+          <div className="reference-entry-grid">
+            {SCENARIOS.map((scenario) => (
+              <article className="reference-entry" id={"reference-scenario-" + scenario.id} key={scenario.id}>
+                <span className="reference-entry-number">{scenario.capability}</span>
+                <h3>{scenario.title}</h3>
+                <p>{scenario.summary}</p>
+                <a href={"/showcase?scenario=" + scenario.id + "#showcase-tour"}>ショーケースの該当場面を見る →</a>
+                <p><ExternalEvidence path={scenario.source}>Source</ExternalEvidence></p>
+                <p><ExternalEvidence path={scenario.test}>Browser E2E</ExternalEvidence></p>
               </article>
             ))}
           </div>
