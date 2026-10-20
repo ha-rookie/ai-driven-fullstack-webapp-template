@@ -84,6 +84,7 @@ export default function ReferenceSite() {
         <nav aria-label="Reference Site ナビゲーション">
           <a href="#reference-start">使い始める</a>
           <a href="#reference-capabilities">実装例を探す</a>
+          <a href="#reference-status">開発状況</a>
           <a href="/showcase">3分デモ</a>
         </nav>
       </header>
@@ -148,6 +149,32 @@ export default function ReferenceSite() {
                 <p className="reference-limitation"><strong>適用範囲：</strong>{item.limitation}</p>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section id="reference-status" className="reference-section" aria-labelledby="reference-status-title">
+          <p className="reference-eyebrow">ROADMAP / STATUS / EVIDENCE</p>
+          <h2 id="reference-status-title">開発状況はGitHubの正本で確認する</h2>
+          <p className="reference-section-lead">この画面で見られる範囲と、まだ確認が必要な条件を分けて案内します。進捗率や公開状態は固定表示せず、最新のGitHub記録を参照してください。</p>
+          <div className="reference-entry-grid">
+            <article className="reference-entry">
+              <span className="reference-entry-number">01 / REFERENCE</span>
+              <h3>この画面の実装範囲</h3>
+              <p>申請・承認、認証・認可、架空の復旧判断の3つの代表例です。Reference Site全体の完成を意味しません。</p>
+              <a href={REPO + "/issues/433"} target="_blank" rel="noopener noreferrer">Reference Siteの受入条件 ↗</a>
+            </article>
+            <article className="reference-entry">
+              <span className="reference-entry-number">02 / ROADMAP</span>
+              <h3>残作業と着手順</h3>
+              <p>テンプレート全体の実装計画・優先順位はGitHubのWBSが正本です。ここでは独自の進捗数値を管理しません。</p>
+              <a href={REPO + "/issues/132"} target="_blank" rel="noopener noreferrer">実装計画・優先順位 ↗</a>
+            </article>
+            <article className="reference-entry">
+              <span className="reference-entry-number">03 / VERIFICATION</span>
+              <h3>試験・公開の確認</h3>
+              <p>コードやCIの成功と、正式なシステムテスト・PreviewやProductionの配信確認は別です。</p>
+              <a href={REPO + "/issues/694"} target="_blank" rel="noopener noreferrer">正式System Testの状況 ↗</a>
+            </article>
           </div>
         </section>
 
