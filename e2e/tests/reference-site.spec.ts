@@ -1,4 +1,24 @@
 import { expect, test } from "@playwright/test";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+test("#433 Reference documentation and source links resolve to repository files", () => {
+  const siteSource = readFileSync(resolve("src/reference/site/ReferenceSite.tsx"), "utf8");
+  // Use the same literal pointers that feed the public Reference cards and entry links.
+  // File presence is verifiable without a network request or a new metadata registry.
+  const pointers = new Set([
+    ...[...siteSource.matchAll(/(?:recipe|code|test|source):\s*"([^"]+)"/gu)].map((match) => match[1]),
+    ...[...siteSource.matchAll(/\bsource\("([^"]+)"\)/gu)].map((match) => match[1]),
+    ...[...siteSource.matchAll(/<ExternalEvidence path="([^"]+)"/gu)].map((match) => match[1]),
+  ]);
+  expect(pointers.size, "all Reference evidence pointers must be discovered").toBeGreaterThanOrEqual(20);
+  for (const path of pointers) {
+    expect(path, "Reference pointer must be repository-relative: " + path)
+      .toMatch(/^(?:docs|src|e2e|tests)\/|^README\.md$/u);
+    expect(existsSync(resolve(path)), "Broken Reference evidence link: " + path).toBe(true);
+  }
+  expect(siteSource).not.toContain("申請・承認、認証・認可、架空の復旧判断の3つの代表例です。");
+});
 
 test("#433 public Reference provides real Docs → Demo → Source links without API calls", async ({ page }) => {
   const apiCalls: string[] = [];
@@ -65,6 +85,7 @@ test("#433 public Reference provides real Docs → Demo → Source links without
 
   const status = page.locator("#reference-status");
   await expect(status.getByRole("heading", { name: "開発状況はGitHubの正本で確認する" })).toBeVisible();
+  await expect(status.getByText("既存の6つの代表Capabilityと3つの業務シナリオ", { exact: false })).toBeVisible();
   await expect(status.getByRole("link", { name: "Reference Siteの受入条件 ↗" }))
     .toHaveAttribute("href", /issues\/433$/u);
   await expect(status.getByRole("link", { name: "実装計画・優先順位 ↗" }))

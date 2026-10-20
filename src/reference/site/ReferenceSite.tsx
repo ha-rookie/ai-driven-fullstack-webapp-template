@@ -248,7 +248,7 @@ export default function ReferenceSite() {
             <article className="reference-entry">
               <span className="reference-entry-number">01 / REFERENCE</span>
               <h3>この画面の実装範囲</h3>
-              <p>申請・承認、認証・認可、架空の復旧判断の3つの代表例です。Reference Site全体の完成を意味しません。</p>
+              <p>既存の6つの代表Capabilityと3つの業務シナリオを紹介しています。Reference Site全体の完成を意味しません。</p>
               <a href={REPO + "/issues/433"} target="_blank" rel="noopener noreferrer">Reference Siteの受入条件 ↗</a>
             </article>
             <article className="reference-entry">
