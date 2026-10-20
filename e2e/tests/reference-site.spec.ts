@@ -10,7 +10,24 @@ test("#433 public Reference provides real Docs → Demo → Source links without
   await page.goto("/reference");
   await expect(page.getByRole("heading", { level: 1, name: /業務Webアプリの設計を/u })).toBeVisible();
   await expect(page.getByRole("heading", { name: "読みたい場所から始める" })).toBeVisible();
-  await expect(page.locator(".reference-capability")).toHaveCount(3);
+  await expect(page.locator(".reference-capability")).toHaveCount(6);
+  await expect(page.getByRole("heading", { name: "権限付き検索" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "PDF帳票の生成" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "CSV入出力" })).toBeVisible();
+
+  const search = page.locator("#reference-search");
+  await expect(search.getByRole("link", { name: "WORKHUBで出張申請を検索する（ログインが必要） →" }))
+    .toHaveAttribute("href", "/");
+  await expect(search.getByRole("link", { name: "Test / Evidence ↗" }))
+    .toHaveAttribute("href", /workhub-travel-request\.spec\.ts$/u);
+  for (const id of ["report", "csv"]) {
+    const capability = page.locator("#reference-" + id);
+    await expect(capability.getByText("操作デモなし（設計・ソース・テストを参照）")).toBeVisible();
+    await expect(capability.getByRole("link", { name: "Recipe / 設計 ↗" })).toBeVisible();
+    await expect(capability.getByRole("link", { name: "Source / Contract ↗" })).toBeVisible();
+    await expect(capability.getByRole("link", { name: "Test / Evidence ↗" })).toBeVisible();
+    await expect(capability.getByRole("link", { name: /WORKHUBで/u })).toHaveCount(0);
+  }
   await expect(page.getByRole("heading", { name: "申請と承認" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "認証と認可" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Backupと復旧判断" })).toBeVisible();
@@ -53,6 +70,7 @@ test("#433 public Showcase links to Reference on mobile without horizontal overf
   await expect(page).toHaveURL(/\/reference$/u);
   await expect(page.getByRole("heading", { level: 1, name: /業務Webアプリの設計を/u })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Reference Site ナビゲーション" })).toBeVisible();
+  await expect(page.locator(".reference-capability")).toHaveCount(6);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.goto("/reference/");
   await expect(page.getByRole("heading", { level: 1, name: /業務Webアプリの設計を/u })).toBeVisible();
