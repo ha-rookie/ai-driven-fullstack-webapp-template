@@ -96,6 +96,32 @@ test("#433 public Reference provides real Docs → Demo → Source links without
   expect(apiCalls, "public Reference must not request private API, sessions or remote mutations").toEqual([]);
 });
 
+test("#433 minimum Reference navigation search filters current curated evidence", async ({ page }) => {
+  await page.goto("/reference");
+  const search = page.getByRole("searchbox", { name: "掲載済みの機能・業務シナリオを探す" });
+  await expect(search).toBeVisible();
+
+  await search.fill("ＣＳＶ");
+  await expect(page.locator(".reference-capability")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "CSV入出力" })).toBeVisible();
+  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("1件のCapability・0件のシナリオ");
+
+  await search.fill("差戻し");
+  await expect(page.locator(".reference-capability")).toHaveCount(1);
+  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(1);
+
+  await search.fill("該当しない機能名");
+  await expect(page.locator(".reference-capability")).toHaveCount(0);
+  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(0);
+  await expect(page.getByText("一致するCapabilityはありません。")).toBeVisible();
+  await expect(page.getByText("一致する業務シナリオはありません。")).toBeVisible();
+
+  await search.clear();
+  await expect(page.locator(".reference-capability")).toHaveCount(6);
+  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
+});
+
 test("#433 published Reference links, anchors and status pointers are not broken or stale", async ({ page }) => {
   await page.goto("/reference");
 
