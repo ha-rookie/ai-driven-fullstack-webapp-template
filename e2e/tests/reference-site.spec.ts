@@ -96,6 +96,68 @@ test("#433 public Reference provides real Docs → Demo → Source links without
   expect(apiCalls, "public Reference must not request private API, sessions or remote mutations").toEqual([]);
 });
 
+test("#433 published Reference links, anchors and status pointers are not broken or stale", async ({ page }) => {
+  await page.goto("/reference");
+
+  const repo = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template";
+  const hrefs = await page.locator(".reference-site a[href]").evaluateAll((anchors) =>
+    anchors
+      .map((anchor) => anchor.getAttribute("href"))
+      .filter((href): href is string => href !== null)
+  );
+  const paths = new Set<string>();
+  const issues = new Set(["132", "433", "694"]);
+  const scenarios = new Set(["return", "expense", "search"]);
+
+  for (const href of hrefs) {
+    if (href.startsWith("#")) {
+      const target = decodeURIComponent(href.slice(1));
+      await expect(page.locator(`[id="${target}"]`), "Broken Reference section anchor: " + href).toHaveCount(1);
+      continue;
+    }
+
+    if (href.startsWith("/")) {
+      const url = new URL(href, "http://reference.local");
+      expect(["/", "/reference", "/showcase", "/showcase/"], "Unsupported Reference route: " + href)
+        .toContain(url.pathname);
+      if (url.searchParams.has("scenario")) {
+        expect(scenarios.has(url.searchParams.get("scenario") ?? ""), "Unknown Showcase scenario: " + href)
+          .toBe(true);
+        expect(url.hash).toBe("#showcase-tour");
+      } else if (url.hash) {
+        expect(url.pathname).toMatch(/^\/showcase\/?$/u);
+        expect(url.hash).toBe("#showcase-recovery");
+      }
+      continue;
+    }
+
+    const githubFilePrefix = repo + "/blob/main/";
+    if (href.startsWith(githubFilePrefix)) {
+      const path = decodeURIComponent(href.slice(githubFilePrefix.length));
+      expect(existsSync(resolve(path)), "Broken published Github file: " + href).toBe(true);
+      paths.add(path);
+      continue;
+    }
+
+    const issueMatch = href.match(new RegExp("^" + repo.replace(/[.*+?^${}()|[\]\\]/g, "\\test("#433 public Showcase links to Reference on mobile without horizontal overflow", async ({ page }) => {") + "/issues/([0-9]+)$", "u"));
+    if (issueMatch) {
+      expect(issues.has(issueMatch[1]), "Unverified canonical Issue pointer: " + href).toBe(true);
+      continue;
+    }
+    expect(href, "Unexpected Reference external link").toBe(repo);
+  }
+
+  expect(hrefs.length, "public links must be enumerated").toBeGreaterThan(35);
+  expect(paths.size, "all 20 current documentation / source / test pointers remain published").toBe(20);
+  await expect(page.locator(".reference-capability")).toHaveCount(6);
+  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
+  await expect(page.locator("#reference-status")).toContainText("既存の6つの代表Capabilityと3つの業務シナリオ");
+
+  await page.goto("/showcase");
+  await expect(page.locator("#showcase-tour")).toHaveCount(1);
+  await expect(page.locator("#showcase-recovery")).toHaveCount(1);
+});
+
 test("#433 public Showcase links to Reference on mobile without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/showcase");
