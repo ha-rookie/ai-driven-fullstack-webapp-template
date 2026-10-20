@@ -139,9 +139,10 @@ test("#433 published Reference links, anchors and status pointers are not broken
       continue;
     }
 
-    const issueMatch = href.match(new RegExp("^" + repo.replace(/[.*+?^${}()|[\]\\]/g, "\\test("#433 public Showcase links to Reference on mobile without horizontal overflow", async ({ page }) => {") + "/issues/([0-9]+)$", "u"));
-    if (issueMatch) {
-      expect(issues.has(issueMatch[1]), "Unverified canonical Issue pointer: " + href).toBe(true);
+    const issuePrefix = repo + "/issues/";
+    const issueId = href.startsWith(issuePrefix) ? href.slice(issuePrefix.length) : null;
+    if (issueId && /^[0-9]+$/u.test(issueId)) {
+      expect(issues.has(issueId), "Unverified canonical Issue pointer: " + href).toBe(true);
       continue;
     }
     expect(href, "Unexpected Reference external link").toBe(repo);
