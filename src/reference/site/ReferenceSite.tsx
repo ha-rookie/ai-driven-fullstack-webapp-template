@@ -247,7 +247,7 @@ export default function ReferenceSite() {
         <section id="reference-hero-s01" className="reference-section" aria-labelledby="reference-hero-s01-title">
           <p className="reference-eyebrow">HERO SCENARIO S01 / 出張申請</p>
           <h2 id="reference-hero-s01-title">差戻し・再申請・承認を、動く例から設計までたどる</h2>
-          <p className="reference-section-lead">既存S01 `scenario.workhub.travel-approval` の案内です。公開Showcaseは読取専用の操作ガイドで、認証後WORKHUBの申請成功やPreview/Production検証の証拠ではありません。アプリ固有の出張申請と再利用可能なWorkflowを混同しません。</p>
+          <p className="reference-section-lead">既存S01 <code>scenario.workhub.travel-approval</code> の案内です。公開Showcaseは読取専用の操作ガイドで、認証後WORKHUBの申請成功やPreview/Production検証の証拠ではありません。アプリ固有の出張申請と再利用可能なWorkflowを混同しません。</p>
           <div className="reference-entry-grid">
             <article className="reference-entry">
               <span className="reference-entry-number">01 / 公開ガイド</span>
