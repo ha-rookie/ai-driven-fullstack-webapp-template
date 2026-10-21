@@ -113,6 +113,48 @@ test("#433 public Reference provides real Docs → Demo → Source links without
   expect(apiCalls, "public Reference must not request private API, sessions or remote mutations").toEqual([]);
 });
 
+test("#433 existing PR787 searches all published Reference entry types", async ({ page }) => {
+  const apiCalls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) apiCalls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/reference");
+  const search = page.getByRole("searchbox", { name: "掲載済みの機能・業務シナリオ・Recipe・設計判断を探す" });
+  await expect(search).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("31件一致（分野10・Capability6・Recipe6・設計判断6・シナリオ3）");
+  await search.fill("ＣＳＶ");
+  await expect(page.locator(".reference-capability")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "CSV入出力" })).toBeVisible();
+  await expect(page.locator("#reference-recipes .reference-entry-grid .reference-entry")).toHaveCount(1);
+  await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("2件一致");
+  await search.fill("差戻し");
+  await expect(page.locator(".reference-capability")).toHaveCount(1);
+  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(1);
+  await search.fill("Outbox");
+  await expect(page.locator("#reference-recipes .reference-entry > ul > li")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "外部連携はOutboxでつなぐ ↗" })).toBeVisible();
+  await search.fill("Architecture");
+  await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(1);
+  await search.fill("Status");
+  await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(1);
+  await search.fill("存在しない業務パターン");
+  await expect(page.locator(".reference-capability")).toHaveCount(0);
+  await expect(page.locator("#reference-recipes .reference-entry-grid .reference-entry")).toHaveCount(0);
+  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("0件一致");
+  await expect(page.getByText("掲載範囲に一致する資料はありません。", { exact: false })).toBeVisible();
+  await search.clear();
+  await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(10);
+  await expect(page.locator(".reference-capability")).toHaveCount(6);
+  await expect(page.locator("#reference-recipes .reference-entry-grid .reference-entry")).toHaveCount(6);
+  await expect(page.locator("#reference-recipes .reference-entry > ul > li")).toHaveCount(6);
+  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(apiCalls).toEqual([]);
+});
+
 test("#433 published Reference links, anchors and status pointers are not broken or stale", async ({ page }) => {
   await page.goto("/reference");
 

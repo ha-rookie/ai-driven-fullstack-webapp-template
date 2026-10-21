@@ -1,3 +1,4 @@
+import { useState } from "react";
 import "./reference-site.css";
 
 /**
@@ -174,6 +175,17 @@ function ExternalEvidence({ path, children }: { readonly path: string; readonly 
 }
 
 export default function ReferenceSite() {
+  const [searchInput, setSearchInput] = useState("");
+  const query = searchInput.normalize("NFKC").trim().toLocaleLowerCase("ja-JP");
+  const matches = (...values: string[]) => query.length === 0 ||
+    values.join(" ").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query);
+  const domains = REFERENCE_DOMAINS.filter(item => matches(item.category, item.title, item.summary, item.source));
+  const capabilities = CAPABILITIES.filter(item => matches(item.title, item.domain, item.purpose, item.recipe, item.code, item.limitation));
+  const recipes = QUICK_RECIPES.filter(item => matches(item.task, item.summary, item.status, item.source));
+  const decisions = DESIGN_DECISIONS.filter(item => matches(item.title, item.reason, item.source));
+  const scenarios = SCENARIOS.filter(item => matches(item.title, item.capability, item.summary, item.source));
+  const total = domains.length + capabilities.length + recipes.length + decisions.length + scenarios.length;
+
   return (
     <div className="reference-site">
       <a className="reference-skip" href="#reference-main">本文へスキップ</a>
@@ -230,12 +242,25 @@ export default function ReferenceSite() {
           </div>
         </section>
 
+        <section className="reference-section" aria-label="Reference横断検索">
+          <div className="reference-search" role="search">
+            <label htmlFor="reference-search-input">掲載済みの機能・業務シナリオ・Recipe・設計判断を探す</label>
+            <input id="reference-search-input" type="search" value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="例：承認、CSV、Outbox、復旧" />
+            <p className="reference-search-count" role="status" aria-live="polite">
+              {total}件一致（分野{domains.length}・Capability{capabilities.length}・Recipe{recipes.length}・設計判断{decisions.length}・シナリオ{scenarios.length}）
+            </p>
+            {total === 0 && <p className="reference-empty">掲載範囲に一致する資料はありません。検索語を変えるか、GitHubの資料一覧をご確認ください。</p>}
+          </div>
+        </section>
+
         <section id="reference-domains" className="reference-section" aria-labelledby="reference-domains-title">
           <p className="reference-eyebrow">FIND THE RIGHT REFERENCE / 既存設計資料</p>
           <h2 id="reference-domains-title">目的の分野から、設計の根拠へ進む</h2>
           <p className="reference-section-lead">初版の10分野を、既存の公開GitHub資料へ案内します。各リンクはReference Site内の新規ページや、その分野の全機能が実装済みという意味ではありません。</p>
           <div className="reference-entry-grid">
-            {REFERENCE_DOMAINS.map((item) => (
+            {domains.map((item) => (
               <article className="reference-entry" key={item.category}>
                 <span className="reference-entry-number">{item.category}</span>
                 <h3>{item.title}</h3>
@@ -252,7 +277,7 @@ export default function ReferenceSite() {
           <h2 id="reference-cap-title">代表的な6つの実装・設計パターン</h2>
           <p className="reference-section-lead">既存の実装から代表例を選んで紹介しています。ここに掲載した6件は全Capabilityの棚卸し完了を意味しません。</p>
           <div className="reference-capability-grid">
-            {CAPABILITIES.map((item) => (
+            {capabilities.map((item) => (
               <article className="reference-capability" key={item.id} id={"reference-" + item.id}>
                 <p className="reference-eyebrow">{item.domain}</p>
                 <h3>{item.title}</h3>
@@ -280,7 +305,7 @@ export default function ReferenceSite() {
           <h2 id="reference-recipes-title">業務で使いたい6つのパターンから探す</h2>
           <p className="reference-section-lead">手順の新しいコピーは作らず、既存Recipeや設計の正本へ案内します。実装例・基盤設計・公開デモの有無を区別しています。</p>
           <div className="reference-entry-grid">
-            {QUICK_RECIPES.map((item) => (
+            {recipes.map((item) => (
               <article className="reference-entry" key={item.id}>
                 <span className="reference-entry-number">{item.status}</span>
                 <h3>{item.task}</h3>
@@ -295,7 +320,7 @@ export default function ReferenceSite() {
             <h3>「なぜその設計か」を6つの判断からたどる</h3>
             <p>正式なADR個別ページを新しく作ったのではなく、既存の設計・Recipeから理由を確認できる入口です。</p>
             <ul>
-              {DESIGN_DECISIONS.map((item) => (
+              {decisions.map((item) => (
                 <li key={item.title}>
                   <ExternalEvidence path={item.source}>{item.title}</ExternalEvidence>
                   <span> — {item.reason}</span>
@@ -310,7 +335,7 @@ export default function ReferenceSite() {
           <h2 id="reference-scenarios-title">業務の場面から、実装までたどる</h2>
           <p className="reference-section-lead">既存ショーケースの該当ステップへ直接移動します。ツアーは操作手順の案内であり、ログインが必要な実操作やPreview検証の完了を保証しません。ここにある3件は全シナリオの対応付けではありません。</p>
           <div className="reference-entry-grid">
-            {SCENARIOS.map((scenario) => (
+            {scenarios.map((scenario) => (
               <article className="reference-entry" id={"reference-scenario-" + scenario.id} key={scenario.id}>
                 <span className="reference-entry-number">{scenario.capability}</span>
                 <h3>{scenario.title}</h3>
