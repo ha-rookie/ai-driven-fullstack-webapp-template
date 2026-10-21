@@ -121,6 +121,26 @@ const REFERENCE_DOMAINS = [
   { category: "Status", title: "実装と検証", summary: "CI・Preview・Productionの根拠を区別する", source: "docs/RUNTIME_EVIDENCE_STATUS.md" },
 ] as const;
 
+/** #433 v1 task shortcuts are navigation only; canonical Recipes stay in GitHub. */
+const QUICK_RECIPES = [
+  {"id":"approval","task":"申請・承認を追加したい","summary":"業務データとWorkflowを分離した出張申請のReference例",source: "docs/recipes/REFERENCE_TRAVEL_REQUEST.md","demo":"#reference-workflow","status":"実装例とBrowserテストあり（要ログイン）"},
+  {"id":"file","task":"添付ファイルを安全に扱いたい","summary":"Upload / Downloadの権限・サイズ制限・保存先との境界",source: "docs/recipes/FILE_TRANSFER_HTTP.md","status":"設計Recipe。公開操作デモはありません"},
+  {"id":"csv","task":"CSVを検証して取り込みたい","summary":"検証・ドライランと本登録、権限付きエクスポート",source: "docs/recipes/DATA_IMPORT_EXPORT.md","status":"共通基盤のテストあり。公開操作デモはありません"},
+  {"id":"batch","task":"時間のかかる処理を非同期化したい","summary":"冪等性・失敗・再試行を持つAsync Jobの導入手順",source: "docs/recipes/ASYNC_JOB.md","status":"基盤Recipe。実運用Queueの動作を保証しません"},
+  {"id":"retry","task":"失敗した処理を安全に再試行したい","summary":"期限付きleaseや状態遷移で二重処理を防ぐ設計",source: "docs/ASYNC_JOB.md","status":"基盤設計。Productionでの再試行は別のHuman Gate"},
+  {"id":"auth","task":"業務データを権限で守りたい","summary":"Server側のResource Scope / Role Policy / deny-by-default",source: "docs/recipes/AUTHORIZATION_BOUNDARY.md","status":"設計Recipeと代表的な権限付き業務例"},
+] as const;
+
+/** Existing design references, not newly published formal ADR pages. */
+const DESIGN_DECISIONS = [
+  {"title":"業務データと承認の状態は別",source: "docs/HUMAN_WORKFLOW_APPROVAL.md","reason":"業務の正本と承認作業の正本を混ぜない"},
+  {"title":"検索結果は権限の正本ではない",source: "docs/search-foundation.md","reason":"現在の本人権限をサーバー側で判定し直す"},
+  {"title":"外部連携はOutboxでつなぐ",source: "docs/recipes/INTEGRATION_EVENT_OUTBOX_RECIPE.md","reason":"業務更新と配信成功を同じことにしない"},
+  {"title":"Coreと外部Adapterの境界",source: "docs/FULLSTACK_ARCHITECTURE.md","reason":"Provider固有実装を業務Coreの契約に埋め込まない"},
+  {"title":"Backup成功は復旧可能性の証拠ではない",source: "docs/RECOVERY_OPERATIONS.md","reason":"Restore後の検証と安全な再開判断を分ける"},
+  {"title":"本番への変更は人が承認する",source: "docs/recipes/PRODUCTION_PREFLIGHT.md","reason":"CI成功とProduction操作許可を同一視しない"},
+] as const;
+
 /** #433 verified showcase-tour relationships; not the full WORKHUB scenario inventory. */
 const SCENARIOS = [
   {
@@ -166,6 +186,7 @@ export default function ReferenceSite() {
           <a href="#reference-start">使い始める</a>
           <a href="#reference-domains">分野別に探す</a>
           <a href="#reference-capabilities">実装例を探す</a>
+          <a href="#reference-recipes">作り方・設計判断</a>
           <a href="#reference-scenarios">業務シナリオ</a>
           <a href="#reference-status">開発状況</a>
           <a href="/showcase">3分デモ</a>
@@ -251,6 +272,36 @@ export default function ReferenceSite() {
                 <p className="reference-limitation"><strong>適用範囲：</strong>{item.limitation}</p>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section id="reference-recipes" className="reference-section" aria-labelledby="reference-recipes-title">
+          <p className="reference-eyebrow">QUICK RECIPES / DESIGN RATIONALE</p>
+          <h2 id="reference-recipes-title">業務で使いたい6つのパターンから探す</h2>
+          <p className="reference-section-lead">手順の新しいコピーは作らず、既存Recipeや設計の正本へ案内します。実装例・基盤設計・公開デモの有無を区別しています。</p>
+          <div className="reference-entry-grid">
+            {QUICK_RECIPES.map((item) => (
+              <article className="reference-entry" key={item.id}>
+                <span className="reference-entry-number">{item.status}</span>
+                <h3>{item.task}</h3>
+                <p>{item.summary}</p>
+                <ExternalEvidence path={item.source}>作り方・注意点を読む</ExternalEvidence>
+                {item.id === "approval" && <p><a href={item.demo}>実装例・Source・Testを見る →</a></p>}
+              </article>
+            ))}
+          </div>
+          <div className="reference-entry">
+            <p className="reference-eyebrow">WHY THESE BOUNDARIES</p>
+            <h3>「なぜその設計か」を6つの判断からたどる</h3>
+            <p>正式なADR個別ページを新しく作ったのではなく、既存の設計・Recipeから理由を確認できる入口です。</p>
+            <ul>
+              {DESIGN_DECISIONS.map((item) => (
+                <li key={item.title}>
+                  <ExternalEvidence path={item.source}>{item.title}</ExternalEvidence>
+                  <span> — {item.reason}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 

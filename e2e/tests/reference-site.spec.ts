@@ -166,7 +166,7 @@ test("#433 published Reference links, anchors and status pointers are not broken
   }
 
   expect(hrefs.length, "public links must be enumerated").toBeGreaterThan(35);
-  expect(paths.size, "published Reference documentation / source / test pointers remain complete").toBe(28);
+  expect(paths.size, "published Reference documentation / source / test pointers remain complete").toBe(33);
   await expect(page.locator(".reference-capability")).toHaveCount(6);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
   await expect(page.locator("#reference-status")).toContainText("既存の6つの代表Capabilityと3つの業務シナリオ");
@@ -197,6 +197,39 @@ test("#433 Reference provides ten publication-domain routes into existing eviden
   await expect(domains.getByRole("link", { name: /既存86候補のReference section対応表/u }))
     .toHaveAttribute("href", /docs\/reference\/CAPABILITY_SECTION_MAP\.md$/u);
   await expect(domains.getByText("新規ページや、その分野の全機能が実装済み", { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(calls).toEqual([]);
+});
+
+test("#433 six task Recipes and design rationales navigate to genuine public evidence", async ({ page }) => {
+  const calls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) calls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/reference");
+  await page.getByRole("navigation", { name: "Reference Site ナビゲーション" })
+    .getByRole("link", { name: "作り方・設計判断" }).click();
+  await expect(page).toHaveURL(/#reference-recipes$/u);
+  const recipes = page.locator("#reference-recipes");
+  await expect(recipes.getByRole("heading", { name: "業務で使いたい6つのパターンから探す" })).toBeVisible();
+  await expect(recipes.locator(".reference-entry-grid .reference-entry")).toHaveCount(6);
+  await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" })).toHaveCount(6);
+  await expect(recipes.getByRole("link", { name: "実装例・Source・Testを見る →" }))
+    .toHaveAttribute("href", "#reference-workflow");
+  await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" }).nth(1))
+    .toHaveAttribute("href", /docs\/recipes\/FILE_TRANSFER_HTTP\.md$/u);
+  await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" }).nth(3))
+    .toHaveAttribute("href", /docs\/recipes\/ASYNC_JOB\.md$/u);
+  await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" }).nth(4))
+    .toHaveAttribute("href", /docs\/ASYNC_JOB\.md$/u);
+  await expect(recipes.locator(".reference-entry > ul > li")).toHaveCount(6);
+  await expect(recipes.getByRole("link", { name: "外部連携はOutboxでつなぐ ↗" }))
+    .toHaveAttribute("href", /docs\/recipes\/INTEGRATION_EVENT_OUTBOX_RECIPE\.md$/u);
+  await expect(recipes.getByRole("link", { name: "本番への変更は人が承認する ↗" }))
+    .toHaveAttribute("href", /docs\/recipes\/PRODUCTION_PREFLIGHT\.md$/u);
+  await expect(recipes.getByText("正式なADR個別ページを新しく作ったのではなく", { exact: false })).toBeVisible();
+  await expect(recipes.getByText("公開操作デモはありません", { exact: false })).toHaveCount(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(calls).toEqual([]);
 });
