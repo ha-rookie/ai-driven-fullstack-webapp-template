@@ -108,6 +108,40 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
 ];
 
 
+/** Existing publication domains; links point to real source documents, not new site pages. */
+const REFERENCE_DOMAINS = [
+  { category: "Start", title: "はじめに", summary: "目的・セットアップ・画面例を確認する", source: "README.md" },
+  { category: "Architecture", title: "構造と責務", summary: "React / Worker / D1の境界を読む", source: "docs/FULLSTACK_ARCHITECTURE.md" },
+  { category: "Business", title: "申請・承認", summary: "状態遷移と業務データの分離を読む", source: "docs/HUMAN_WORKFLOW_APPROVAL.md" },
+  { category: "Platform", title: "共通基盤", summary: "Feature Flagと安全な判定を読む", source: "docs/FEATURE_FLAGS.md" },
+  { category: "Security", title: "認証・認可", summary: "現在の権限で何を許可するか確認する", source: "docs/AUTHORIZATION_DESIGN.md" },
+  { category: "Operations", title: "復旧と運用", summary: "BackupとRecoverabilityを区別する", source: "docs/RECOVERY_OPERATIONS.md" },
+  { category: "Reference App", title: "WORKHUBの場面", summary: "既存18シナリオの案内と制限を確認する", source: "docs/reference/WORKHUB_SCENARIO_MAP.md" },
+  { category: "Recipes", title: "実装の手順", summary: "既存の再利用Recipe索引から探す", source: "docs/recipes/README.md" },
+  { category: "Decisions", title: "採用理由", summary: "Reference Siteの技術・Hosting判断を読む", source: "docs/reference/REFERENCE_SITE_TECHNOLOGY_DECISION.md" },
+  { category: "Status", title: "実装と検証", summary: "CI・Preview・Productionの根拠を区別する", source: "docs/RUNTIME_EVIDENCE_STATUS.md" },
+] as const;
+
+/** #433 v1 task shortcuts are navigation only; canonical Recipes stay in GitHub. */
+const QUICK_RECIPES = [
+  {"id":"approval","task":"申請・承認を追加したい","summary":"業務データとWorkflowを分離した出張申請のReference例",source: "docs/recipes/REFERENCE_TRAVEL_REQUEST.md","demo":"#reference-workflow","status":"実装例とBrowserテストあり（要ログイン）"},
+  {"id":"file","task":"添付ファイルを安全に扱いたい","summary":"Upload / Downloadの権限・サイズ制限・保存先との境界",source: "docs/recipes/FILE_TRANSFER_HTTP.md","status":"設計Recipe。公開操作デモはありません"},
+  {"id":"csv","task":"CSVを検証して取り込みたい","summary":"検証・ドライランと本登録、権限付きエクスポート",source: "docs/recipes/DATA_IMPORT_EXPORT.md","status":"共通基盤のテストあり。公開操作デモはありません"},
+  {"id":"batch","task":"時間のかかる処理を非同期化したい","summary":"冪等性・失敗・再試行を持つAsync Jobの導入手順",source: "docs/recipes/ASYNC_JOB.md","status":"基盤Recipe。実運用Queueの動作を保証しません"},
+  {"id":"retry","task":"失敗した処理を安全に再試行したい","summary":"期限付きleaseや状態遷移で二重処理を防ぐ設計",source: "docs/ASYNC_JOB.md","status":"基盤設計。Productionでの再試行は別のHuman Gate"},
+  {"id":"auth","task":"業務データを権限で守りたい","summary":"Server側のResource Scope / Role Policy / deny-by-default",source: "docs/recipes/AUTHORIZATION_BOUNDARY.md","status":"設計Recipeと代表的な権限付き業務例"},
+] as const;
+
+/** Existing design references, not newly published formal ADR pages. */
+const DESIGN_DECISIONS = [
+  {"title":"業務データと承認の状態は別",source: "docs/HUMAN_WORKFLOW_APPROVAL.md","reason":"業務の正本と承認作業の正本を混ぜない"},
+  {"title":"検索結果は権限の正本ではない",source: "docs/search-foundation.md","reason":"現在の本人権限をサーバー側で判定し直す"},
+  {"title":"外部連携はOutboxでつなぐ",source: "docs/recipes/INTEGRATION_EVENT_OUTBOX_RECIPE.md","reason":"業務更新と配信成功を同じことにしない"},
+  {"title":"Coreと外部Adapterの境界",source: "docs/FULLSTACK_ARCHITECTURE.md","reason":"Provider固有実装を業務Coreの契約に埋め込まない"},
+  {"title":"Backup成功は復旧可能性の証拠ではない",source: "docs/RECOVERY_OPERATIONS.md","reason":"Restore後の検証と安全な再開判断を分ける"},
+  {"title":"本番への変更は人が承認する",source: "docs/recipes/PRODUCTION_PREFLIGHT.md","reason":"CI成功とProduction操作許可を同一視しない"},
+] as const;
+
 /** #433 verified showcase-tour relationships; not the full WORKHUB scenario inventory. */
 const SCENARIOS = [
   {
@@ -143,12 +177,14 @@ function ExternalEvidence({ path, children }: { readonly path: string; readonly 
 export default function ReferenceSite() {
   const [searchInput, setSearchInput] = useState("");
   const query = searchInput.normalize("NFKC").trim().toLocaleLowerCase("ja-JP");
-  const contains = (...values: string[]) =>
-    query.length === 0 || values.join(" ").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query);
-  const capabilities = CAPABILITIES.filter((item) =>
-    contains(item.title, item.domain, item.purpose, item.recipe, item.code, item.limitation));
-  const scenarios = SCENARIOS.filter((item) =>
-    contains(item.title, item.capability, item.summary, item.source));
+  const matches = (...values: string[]) => query.length === 0 ||
+    values.join(" ").normalize("NFKC").toLocaleLowerCase("ja-JP").includes(query);
+  const domains = REFERENCE_DOMAINS.filter(item => matches(item.category, item.title, item.summary, item.source));
+  const capabilities = CAPABILITIES.filter(item => matches(item.title, item.domain, item.purpose, item.recipe, item.code, item.limitation));
+  const recipes = QUICK_RECIPES.filter(item => matches(item.task, item.summary, item.status, item.source));
+  const decisions = DESIGN_DECISIONS.filter(item => matches(item.title, item.reason, item.source));
+  const scenarios = SCENARIOS.filter(item => matches(item.title, item.capability, item.summary, item.source));
+  const total = domains.length + capabilities.length + recipes.length + decisions.length + scenarios.length;
 
   return (
     <div className="reference-site">
@@ -160,7 +196,9 @@ export default function ReferenceSite() {
         </a>
         <nav aria-label="Reference Site ナビゲーション">
           <a href="#reference-start">使い始める</a>
+          <a href="#reference-domains">分野別に探す</a>
           <a href="#reference-capabilities">実装例を探す</a>
+          <a href="#reference-recipes">作り方・設計判断</a>
           <a href="#reference-scenarios">業務シナリオ</a>
           <a href="#reference-status">開発状況</a>
           <a href="/showcase">3分デモ</a>
@@ -204,23 +242,40 @@ export default function ReferenceSite() {
           </div>
         </section>
 
+        <section className="reference-section" aria-label="Reference横断検索">
+          <div className="reference-search" role="search">
+            <label htmlFor="reference-search-input">掲載済みの機能・業務シナリオ・Recipe・設計判断を探す</label>
+            <input id="reference-search-input" type="search" value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="例：承認、CSV、Outbox、復旧" />
+            <p className="reference-search-count" role="status" aria-live="polite">
+              {total}件一致（分野{domains.length}・Capability{capabilities.length}・Recipe{recipes.length}・設計判断{decisions.length}・シナリオ{scenarios.length}）
+            </p>
+            {total === 0 && <p className="reference-empty">掲載範囲に一致する資料はありません。検索語を変えるか、GitHubの資料一覧をご確認ください。</p>}
+          </div>
+        </section>
+
+        <section id="reference-domains" className="reference-section" aria-labelledby="reference-domains-title">
+          <p className="reference-eyebrow">FIND THE RIGHT REFERENCE / 既存設計資料</p>
+          <h2 id="reference-domains-title">目的の分野から、設計の根拠へ進む</h2>
+          <p className="reference-section-lead">初版の10分野を、既存の公開GitHub資料へ案内します。各リンクはReference Site内の新規ページや、その分野の全機能が実装済みという意味ではありません。</p>
+          <div className="reference-entry-grid">
+            {domains.map((item) => (
+              <article className="reference-entry" key={item.category}>
+                <span className="reference-entry-number">{item.category}</span>
+                <h3>{item.title}</h3>
+                <p>{item.summary}</p>
+                <ExternalEvidence path={item.source}>設計・根拠を読む</ExternalEvidence>
+              </article>
+            ))}
+          </div>
+          <p className="reference-section-lead"><ExternalEvidence path="docs/reference/CAPABILITY_SECTION_MAP.md">既存86候補のReference section対応表（公開6カードと台帳のみを区別）</ExternalEvidence></p>
+        </section>
+
         <section id="reference-capabilities" className="reference-section" aria-labelledby="reference-cap-title">
           <p className="reference-eyebrow">CAPABILITY / RECIPE / EVIDENCE</p>
           <h2 id="reference-cap-title">代表的な6つの実装・設計パターン</h2>
           <p className="reference-section-lead">既存の実装から代表例を選んで紹介しています。ここに掲載した6件は全Capabilityの棚卸し完了を意味しません。</p>
-          <div className="reference-search" role="search">
-            <label htmlFor="reference-search-input">掲載済みの機能・業務シナリオを探す</label>
-            <input
-              id="reference-search-input"
-              type="search"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="例：承認、CSV、検索、差戻し"
-            />
-            <p className="reference-search-count" role="status" aria-live="polite">
-              {capabilities.length}件のCapability・{scenarios.length}件のシナリオが一致
-            </p>
-          </div>
           <div className="reference-capability-grid">
             {capabilities.map((item) => (
               <article className="reference-capability" key={item.id} id={"reference-" + item.id}>
@@ -242,7 +297,36 @@ export default function ReferenceSite() {
                 <p className="reference-limitation"><strong>適用範囲：</strong>{item.limitation}</p>
               </article>
             ))}
-            {capabilities.length === 0 && <p className="reference-empty">一致するCapabilityはありません。</p>}
+          </div>
+        </section>
+
+        <section id="reference-recipes" className="reference-section" aria-labelledby="reference-recipes-title">
+          <p className="reference-eyebrow">QUICK RECIPES / DESIGN RATIONALE</p>
+          <h2 id="reference-recipes-title">業務で使いたい6つのパターンから探す</h2>
+          <p className="reference-section-lead">手順の新しいコピーは作らず、既存Recipeや設計の正本へ案内します。実装例・基盤設計・公開デモの有無を区別しています。</p>
+          <div className="reference-entry-grid">
+            {recipes.map((item) => (
+              <article className="reference-entry" key={item.id}>
+                <span className="reference-entry-number">{item.status}</span>
+                <h3>{item.task}</h3>
+                <p>{item.summary}</p>
+                <ExternalEvidence path={item.source}>作り方・注意点を読む</ExternalEvidence>
+                {item.id === "approval" && <p><a href={item.demo}>実装例・Source・Testを見る →</a></p>}
+              </article>
+            ))}
+          </div>
+          <div className="reference-entry">
+            <p className="reference-eyebrow">WHY THESE BOUNDARIES</p>
+            <h3>「なぜその設計か」を6つの判断からたどる</h3>
+            <p>正式なADR個別ページを新しく作ったのではなく、既存の設計・Recipeから理由を確認できる入口です。</p>
+            <ul>
+              {decisions.map((item) => (
+                <li key={item.title}>
+                  <ExternalEvidence path={item.source}>{item.title}</ExternalEvidence>
+                  <span> — {item.reason}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
@@ -261,19 +345,19 @@ export default function ReferenceSite() {
                 <p><ExternalEvidence path={scenario.test}>Browser E2E</ExternalEvidence></p>
               </article>
             ))}
-            {scenarios.length === 0 && <p className="reference-empty">一致する業務シナリオはありません。</p>}
           </div>
+          <p className="reference-section-lead"><ExternalEvidence path="docs/reference/WORKHUB_SCENARIO_MAP.md">既存18シナリオの対応表（公開案内・模擬・構想を区別）</ExternalEvidence></p>
         </section>
 
         <section id="reference-status" className="reference-section" aria-labelledby="reference-status-title">
           <p className="reference-eyebrow">ROADMAP / STATUS / EVIDENCE</p>
           <h2 id="reference-status-title">開発状況はGitHubの正本で確認する</h2>
-          <p className="reference-section-lead">この画面で見られる範囲と、まだ確認が必要な条件を分けて案内します。進捗率や公開状態は固定表示せず、最新のGitHub記録を参照してください。</p>
+          <p className="reference-section-lead">この画面で見られる範囲と、まだ確認が必要な条件を分けて案内します。下のリンクはGitHubの元受入・全体WBS・正式System Testの正本です。CIの成功は公開環境での動作確認とは別です。進捗率や公開状態は固定表示せず、最新のGitHub記録を参照してください。</p>
           <div className="reference-entry-grid">
             <article className="reference-entry">
               <span className="reference-entry-number">01 / REFERENCE</span>
               <h3>この画面の実装範囲</h3>
-              <p>既存の6つの代表Capabilityと3つの業務シナリオを紹介しています。Reference Site全体の完成を意味しません。</p>
+              <p>既存の6つの代表Capabilityと3つの業務シナリオを紹介しています。Reference Site全体の完成を意味しません。元受入14条件の完了数・未完了条件はIssue本文を確認してください。判定コメントとチェック欄に差がある場合、チェック欄を正本とします。</p>
               <a href={REPO + "/issues/433"} target="_blank" rel="noopener noreferrer">Reference Siteの受入条件 ↗</a>
             </article>
             <article className="reference-entry">
@@ -285,7 +369,7 @@ export default function ReferenceSite() {
             <article className="reference-entry">
               <span className="reference-entry-number">03 / VERIFICATION</span>
               <h3>試験・公開の確認</h3>
-              <p>コードやCIの成功と、正式なシステムテスト・PreviewやProductionの配信確認は別です。</p>
+              <p>コードやCIの成功と、正式なシステムテスト・PreviewやProductionの配信確認は別です。未実施の試験や未承認のデプロイを完了と扱いません。</p>
               <a href={REPO + "/issues/694"} target="_blank" rel="noopener noreferrer">正式System Testの状況 ↗</a>
             </article>
           </div>

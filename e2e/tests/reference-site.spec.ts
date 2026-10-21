@@ -11,13 +11,28 @@ test("#433 Reference documentation and source links resolve to repository files"
     ...[...siteSource.matchAll(/\bsource\("([^"]+)"\)/gu)].map((match) => match[1]),
     ...[...siteSource.matchAll(/<ExternalEvidence path="([^"]+)"/gu)].map((match) => match[1]),
   ]);
-  expect(pointers.size, "all Reference evidence pointers must be discovered").toBeGreaterThanOrEqual(20);
+  expect(pointers.size, "all Reference evidence pointers must be discovered").toBeGreaterThanOrEqual(21);
   for (const path of pointers) {
     expect(path, "Reference pointer must be repository-relative: " + path)
       .toMatch(/^(?:docs|src|e2e|tests)\/|^README\.md$/u);
     expect(existsSync(resolve(path)), "Broken Reference evidence link: " + path).toBe(true);
   }
   expect(siteSource).not.toContain("申請・承認、認証・認可、架空の復旧判断の3つの代表例です。");
+});
+
+test("#433 all 18 original WORKHUB / Admin scenarios have an explicit mapping", () => {
+  const map = readFileSync(resolve("docs/reference/WORKHUB_SCENARIO_MAP.md"), "utf8");
+  const rows = map.split("\n").filter((line) => /^S(?:0[1-9]|1[0-8])$/u.test(line.split("|")[1]?.trim() ?? ""));
+  const cells = rows.map((line) => line.split("|").map((cell) => cell.trim()));
+  expect(rows).toHaveLength(18);
+  expect(new Set(cells.map((row) => row[1])).size).toBe(18);
+  expect(new Set(cells.map((row) => row[2])).size).toBe(18);
+  for (let index = 0; index < 18; index++) {
+    expect(cells[index][1]).toBe("S" + String(index + 1).padStart(2, "0"));
+    expect(cells[index][2]).toContain("scenario.");
+  }
+  expect(map).toContain("既存18件すべてのStable ID");
+  expect(map).toContain("GitHub checkboxの更新はブロック");
 });
 
 test("#433 public Reference provides real Docs → Demo → Source links without API calls", async ({ page }) => {
@@ -72,6 +87,8 @@ test("#433 public Reference provides real Docs → Demo → Source links without
   await expect(page.getByRole("link", { name: "Reference Siteの未完了条件を見る ↗" }))
     .toHaveAttribute("href", /issues\/433$/u);
   const scenarios = page.locator("#reference-scenarios");
+  await expect(scenarios.getByRole("link", { name: /既存18シナリオの対応表/u }))
+    .toHaveAttribute("href", /docs\/reference\/WORKHUB_SCENARIO_MAP\.md$/u);
   await expect(scenarios.getByRole("heading", { name: "業務の場面から、実装までたどる" })).toBeVisible();
   for (const scenario of ["return", "expense", "search"]) {
     const card = page.locator("#reference-scenario-" + scenario);
@@ -96,30 +113,46 @@ test("#433 public Reference provides real Docs → Demo → Source links without
   expect(apiCalls, "public Reference must not request private API, sessions or remote mutations").toEqual([]);
 });
 
-test("#433 minimum Reference navigation search filters current curated evidence", async ({ page }) => {
+test("#433 existing PR787 searches all published Reference entry types", async ({ page }) => {
+  const apiCalls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) apiCalls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/reference");
-  const search = page.getByRole("searchbox", { name: "掲載済みの機能・業務シナリオを探す" });
+  const search = page.getByRole("searchbox", { name: "掲載済みの機能・業務シナリオ・Recipe・設計判断を探す" });
   await expect(search).toBeVisible();
-
+  await expect(page.getByRole("status")).toContainText("31件一致（分野10・Capability6・Recipe6・設計判断6・シナリオ3）");
   await search.fill("ＣＳＶ");
   await expect(page.locator(".reference-capability")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "CSV入出力" })).toBeVisible();
-  await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(0);
-  await expect(page.getByRole("status")).toContainText("1件のCapability・0件のシナリオ");
-
+  await expect(page.locator("#reference-recipes .reference-entry-grid .reference-entry")).toHaveCount(1);
+  await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("2件一致");
   await search.fill("差戻し");
   await expect(page.locator(".reference-capability")).toHaveCount(1);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(1);
-
-  await search.fill("該当しない機能名");
+  await search.fill("Outbox");
+  await expect(page.locator("#reference-recipes .reference-entry > ul > li")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "外部連携はOutboxでつなぐ ↗" })).toBeVisible();
+  await search.fill("Architecture");
+  await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(1);
+  await search.fill("Status");
+  await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(1);
+  await search.fill("存在しない業務パターン");
   await expect(page.locator(".reference-capability")).toHaveCount(0);
+  await expect(page.locator("#reference-recipes .reference-entry-grid .reference-entry")).toHaveCount(0);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(0);
-  await expect(page.getByText("一致するCapabilityはありません。")).toBeVisible();
-  await expect(page.getByText("一致する業務シナリオはありません。")).toBeVisible();
-
+  await expect(page.getByRole("status")).toContainText("0件一致");
+  await expect(page.getByText("掲載範囲に一致する資料はありません。", { exact: false })).toBeVisible();
   await search.clear();
+  await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(10);
   await expect(page.locator(".reference-capability")).toHaveCount(6);
+  await expect(page.locator("#reference-recipes .reference-entry-grid .reference-entry")).toHaveCount(6);
+  await expect(page.locator("#reference-recipes .reference-entry > ul > li")).toHaveCount(6);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(apiCalls).toEqual([]);
 });
 
 test("#433 published Reference links, anchors and status pointers are not broken or stale", async ({ page }) => {
@@ -175,7 +208,7 @@ test("#433 published Reference links, anchors and status pointers are not broken
   }
 
   expect(hrefs.length, "public links must be enumerated").toBeGreaterThan(35);
-  expect(paths.size, "all 20 current documentation / source / test pointers remain published").toBe(20);
+  expect(paths.size, "published Reference documentation / source / test pointers remain complete").toBe(33);
   await expect(page.locator(".reference-capability")).toHaveCount(6);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
   await expect(page.locator("#reference-status")).toContainText("既存の6つの代表Capabilityと3つの業務シナリオ");
@@ -183,6 +216,64 @@ test("#433 published Reference links, anchors and status pointers are not broken
   await page.goto("/showcase");
   await expect(page.locator("#showcase-tour")).toHaveCount(1);
   await expect(page.locator("#showcase-recovery")).toHaveCount(1);
+});
+
+test("#433 Reference provides ten publication-domain routes into existing evidence without private API", async ({ page }) => {
+  const calls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) calls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/reference");
+  await page.getByRole("navigation", { name: "Reference Site ナビゲーション" })
+    .getByRole("link", { name: "分野別に探す" }).click();
+  await expect(page).toHaveURL(/#reference-domains$/u);
+  const domains = page.locator("#reference-domains");
+  await expect(domains.getByRole("heading", { name: "目的の分野から、設計の根拠へ進む" })).toBeVisible();
+  await expect(domains.locator(".reference-entry")).toHaveCount(10);
+  for (const category of ["Start", "Architecture", "Business", "Platform", "Security",
+    "Operations", "Reference App", "Recipes", "Decisions", "Status"]) {
+    await expect(domains.locator(".reference-entry-number", { hasText: category })).toHaveCount(1);
+  }
+  await expect(domains.getByRole("link", { name: "設計・根拠を読む ↗" })).toHaveCount(10);
+  await expect(domains.getByRole("link", { name: /既存86候補のReference section対応表/u }))
+    .toHaveAttribute("href", /docs\/reference\/CAPABILITY_SECTION_MAP\.md$/u);
+  await expect(domains.getByText("新規ページや、その分野の全機能が実装済み", { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(calls).toEqual([]);
+});
+
+test("#433 six task Recipes and design rationales navigate to genuine public evidence", async ({ page }) => {
+  const calls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) calls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/reference");
+  await page.getByRole("navigation", { name: "Reference Site ナビゲーション" })
+    .getByRole("link", { name: "作り方・設計判断" }).click();
+  await expect(page).toHaveURL(/#reference-recipes$/u);
+  const recipes = page.locator("#reference-recipes");
+  await expect(recipes.getByRole("heading", { name: "業務で使いたい6つのパターンから探す" })).toBeVisible();
+  await expect(recipes.locator(".reference-entry-grid .reference-entry")).toHaveCount(6);
+  await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" })).toHaveCount(6);
+  await expect(recipes.getByRole("link", { name: "実装例・Source・Testを見る →" }))
+    .toHaveAttribute("href", "#reference-workflow");
+  await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" }).nth(1))
+    .toHaveAttribute("href", /docs\/recipes\/FILE_TRANSFER_HTTP\.md$/u);
+  await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" }).nth(3))
+    .toHaveAttribute("href", /docs\/recipes\/ASYNC_JOB\.md$/u);
+  await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" }).nth(4))
+    .toHaveAttribute("href", /docs\/ASYNC_JOB\.md$/u);
+  await expect(recipes.locator(".reference-entry > ul > li")).toHaveCount(6);
+  await expect(recipes.getByRole("link", { name: "外部連携はOutboxでつなぐ ↗" }))
+    .toHaveAttribute("href", /docs\/recipes\/INTEGRATION_EVENT_OUTBOX_RECIPE\.md$/u);
+  await expect(recipes.getByRole("link", { name: "本番への変更は人が承認する ↗" }))
+    .toHaveAttribute("href", /docs\/recipes\/PRODUCTION_PREFLIGHT\.md$/u);
+  await expect(recipes.getByText("正式なADR個別ページを新しく作ったのではなく", { exact: false })).toBeVisible();
+  await expect(recipes.getByText("公開操作デモはありません", { exact: false })).toHaveCount(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(calls).toEqual([]);
 });
 
 test("#433 public Showcase links to Reference on mobile without horizontal overflow", async ({ page }) => {
