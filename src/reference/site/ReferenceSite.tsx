@@ -196,6 +196,7 @@ export default function ReferenceSite() {
         </a>
         <nav aria-label="Reference Site ナビゲーション">
           <a href="#reference-start">使い始める</a>
+          <a href="#reference-hero-s01">S01 出張申請</a>
           <a href="#reference-domains">分野別に探す</a>
           <a href="#reference-capabilities">実装例を探す</a>
           <a href="#reference-recipes">作り方・設計判断</a>
@@ -213,6 +214,7 @@ export default function ReferenceSite() {
           <div className="reference-actions">
             <a className="reference-primary" href="#reference-capabilities">実装と証拠を見る →</a>
             <a className="reference-secondary" href="/showcase">3分で動きを見る →</a>
+            <a className="reference-secondary" href="/">WORKHUBを開く（ログインが必要） →</a>
           </div>
           <p className="reference-hero-note">完成した業務製品ではありません。WORKHUBは架空企業のReference Applicationです。</p>
         </section>
@@ -240,6 +242,50 @@ export default function ReferenceSite() {
               <ExternalEvidence path="docs/README.md">設計資料一覧</ExternalEvidence>
             </article>
           </div>
+        </section>
+
+        <section id="reference-hero-s01" className="reference-section" aria-labelledby="reference-hero-s01-title">
+          <p className="reference-eyebrow">HERO SCENARIO S01 / 出張申請</p>
+          <h2 id="reference-hero-s01-title">差戻し・再申請・承認を、動く例から設計までたどる</h2>
+          <p className="reference-section-lead">既存S01 <code>scenario.workhub.travel-approval</code> の案内です。公開Showcaseは読取専用の操作ガイドで、認証後WORKHUBの申請成功やPreview/Production検証の証拠ではありません。アプリ固有の出張申請と再利用可能なWorkflowを混同しません。</p>
+          <div className="reference-entry-grid">
+            <article className="reference-entry">
+              <span className="reference-entry-number">01 / 公開ガイド</span>
+              <h3>申請から差戻し・再申請へ</h3>
+              <p>利用者と承認者のやり取りを、既存ショーケースのS01に対応する案内で確認します。ガイド表示は実際の操作実行ではありません。</p>
+              <a href="/showcase?scenario=return#showcase-tour">S01のツアーを見る →</a>
+            </article>
+            <article className="reference-entry">
+              <span className="reference-entry-number">02 / 再利用Recipe</span>
+              <h3>何を業務固有に残すか</h3>
+              <p>TravelRequestとWorkflow Instanceの正本を分け、差戻し後の再申請に必要な状態・権限の扱いを追います。</p>
+              <ExternalEvidence path="docs/recipes/REFERENCE_TRAVEL_REQUEST.md">出張申請Recipe</ExternalEvidence>
+              <p><ExternalEvidence path="docs/HUMAN_WORKFLOW_APPROVAL.md">承認の設計判断</ExternalEvidence></p>
+            </article>
+            <article className="reference-entry">
+              <span className="reference-entry-number">03 / Source + Evidence</span>
+              <h3>コードとテストで確かめる</h3>
+              <p>具体的な実装とBrowser E2Eを確認します。CIの成功と現在の公開環境での動作は別の検証です。</p>
+              <ExternalEvidence path="src/reference/workhub/travel-request/service.ts">実装Source</ExternalEvidence>
+              <p><ExternalEvidence path="e2e/tests/workhub-travel-request.spec.ts">Browser E2E根拠</ExternalEvidence></p>
+            </article>
+          </div>
+          <p className="reference-section-lead"><ExternalEvidence path="docs/reference/WORKHUB_SCENARIO_MAP.md">S01を含む既存18シナリオの掲載範囲・制約を見る</ExternalEvidence></p>
+        </section>
+
+        <section id="reference-principles" className="reference-section" aria-labelledby="reference-principles-title">
+          <p className="reference-eyebrow">WHY THIS TEMPLATE / 6 CORE PRINCIPLES</p>
+          <h2 id="reference-principles-title">このTemplateで繰り返し守る6つの考え方</h2>
+          <p className="reference-section-lead">新機能の完成宣言ではなく、既存の初版設計方針です。採用するときの責任境界として読む項目を示します。</p>
+          <div className="reference-entry-grid">
+            <article className="reference-entry"><span className="reference-entry-number">01 / SOURCE OF TRUTH</span><h3>正本はサーバー側</h3><p>画面表示や検索結果を業務データ・権限の正本にしない。</p></article>
+            <article className="reference-entry"><span className="reference-entry-number">02 / SAFE BY DEFAULT</span><h3>迷った操作は安全側に止める</h3><p>失敗・競合・権限不明を成功とみなさない。</p></article>
+            <article className="reference-entry"><span className="reference-entry-number">03 / PROVIDER NEUTRAL</span><h3>Coreに接続先固有の事情を持ち込まない</h3><p>業務の責務と外部Adapterの責務を分ける。</p></article>
+            <article className="reference-entry"><span className="reference-entry-number">04 / OPERATIONS</span><h3>運用・復旧も設計のうち</h3><p>作ることと、安全に運用・復旧できることを分けて検証する。</p></article>
+            <article className="reference-entry"><span className="reference-entry-number">05 / AGENT BOUNDARY</span><h3>Agentも同じアプリ境界を通す</h3><p>AI/Agent Readyは設計方針。未実装のAgent操作を公開デモとして扱わない。</p></article>
+            <article className="reference-entry"><span className="reference-entry-number">06 / REUSE FIRST</span><h3>標準と再利用を自作より先に考える</h3><p>同じ仕組みを増やす前に既存部品・規格・Recipeを確認する。</p></article>
+          </div>
+          <p className="reference-section-lead"><ExternalEvidence path="docs/FULLSTACK_ARCHITECTURE.md">現在のArchitecture境界を読む</ExternalEvidence></p>
         </section>
 
         <section className="reference-section" aria-label="Reference横断検索">
