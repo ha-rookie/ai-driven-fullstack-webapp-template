@@ -155,6 +155,48 @@ test("#433 existing PR787 searches all published Reference entry types", async (
   expect(apiCalls).toEqual([]);
 });
 
+test("#433 S01 initial-publication hero follows Showcase → Recipe → Source → E2E without private API", async ({ page }) => {
+  const calls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) calls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/reference");
+
+  const hero = page.locator("#reference-hero-s01");
+  await expect(page.getByRole("navigation", { name: "Reference Site ナビゲーション" })
+    .getByRole("link", { name: "S01 出張申請" })).toHaveAttribute("href", "#reference-hero-s01");
+  await expect(hero.getByRole("heading", { name: "差戻し・再申請・承認を、動く例から設計までたどる" })).toBeVisible();
+  await expect(hero.locator(".reference-entry")).toHaveCount(3);
+  await expect(hero.getByText("公開Showcaseは読取専用の操作ガイド", { exact: false })).toBeVisible();
+  await expect(hero.getByRole("link", { name: "S01のツアーを見る →" }))
+    .toHaveAttribute("href", "/showcase?scenario=return#showcase-tour");
+  await expect(hero.getByRole("link", { name: "出張申請Recipe ↗" }))
+    .toHaveAttribute("href", /docs\/recipes\/REFERENCE_TRAVEL_REQUEST\.md$/u);
+  await expect(hero.getByRole("link", { name: "承認の設計判断 ↗" }))
+    .toHaveAttribute("href", /docs\/HUMAN_WORKFLOW_APPROVAL\.md$/u);
+  await expect(hero.getByRole("link", { name: "実装Source ↗" }))
+    .toHaveAttribute("href", /src\/reference\/workhub\/travel-request\/service\.ts$/u);
+  await expect(hero.getByRole("link", { name: "Browser E2E根拠 ↗" }))
+    .toHaveAttribute("href", /e2e\/tests\/workhub-travel-request\.spec\.ts$/u);
+  await expect(hero.getByRole("link", { name: /S01を含む既存18シナリオ/u }))
+    .toHaveAttribute("href", /docs\/reference\/WORKHUB_SCENARIO_MAP\.md$/u);
+
+  const principles = page.locator("#reference-principles");
+  await expect(principles.getByRole("heading", { name: "このTemplateで繰り返し守る6つの考え方" })).toBeVisible();
+  await expect(principles.locator(".reference-entry")).toHaveCount(6);
+  await expect(principles.getByText("未実装のAgent操作を公開デモとして扱わない。")).toBeVisible();
+  await expect(principles.getByRole("link", { name: "現在のArchitecture境界を読む ↗" }))
+    .toHaveAttribute("href", /docs\/FULLSTACK_ARCHITECTURE\.md$/u);
+  await expect(page.getByRole("link", { name: "WORKHUBを開く（ログインが必要） →" }))
+    .toHaveAttribute("href", "/");
+
+  await expect(page.locator(".reference-capability")).toHaveCount(6);
+  await expect(page.getByRole("status")).toContainText("31件一致");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(calls).toEqual([]);
+});
+
 test("#433 published Reference links, anchors and status pointers are not broken or stale", async ({ page }) => {
   await page.goto("/reference");
 
