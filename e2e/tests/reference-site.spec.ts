@@ -166,7 +166,7 @@ test("#433 published Reference links, anchors and status pointers are not broken
   }
 
   expect(hrefs.length, "public links must be enumerated").toBeGreaterThan(35);
-  expect(paths.size, "all 20 current documentation / source / test pointers remain published").toBe(21);
+  expect(paths.size, "published Reference documentation / source / test pointers remain complete").toBe(28);
   await expect(page.locator(".reference-capability")).toHaveCount(6);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
   await expect(page.locator("#reference-status")).toContainText("既存の6つの代表Capabilityと3つの業務シナリオ");
@@ -174,6 +174,31 @@ test("#433 published Reference links, anchors and status pointers are not broken
   await page.goto("/showcase");
   await expect(page.locator("#showcase-tour")).toHaveCount(1);
   await expect(page.locator("#showcase-recovery")).toHaveCount(1);
+});
+
+test("#433 Reference provides ten publication-domain routes into existing evidence without private API", async ({ page }) => {
+  const calls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) calls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/reference");
+  await page.getByRole("navigation", { name: "Reference Site ナビゲーション" })
+    .getByRole("link", { name: "分野別に探す" }).click();
+  await expect(page).toHaveURL(/#reference-domains$/u);
+  const domains = page.locator("#reference-domains");
+  await expect(domains.getByRole("heading", { name: "目的の分野から、設計の根拠へ進む" })).toBeVisible();
+  await expect(domains.locator(".reference-entry")).toHaveCount(10);
+  for (const category of ["Start", "Architecture", "Business", "Platform", "Security",
+    "Operations", "Reference App", "Recipes", "Decisions", "Status"]) {
+    await expect(domains.locator(".reference-entry-number", { hasText: category })).toHaveCount(1);
+  }
+  await expect(domains.getByRole("link", { name: "設計・根拠を読む ↗" })).toHaveCount(10);
+  await expect(domains.getByRole("link", { name: /既存86候補のReference section対応表/u }))
+    .toHaveAttribute("href", /docs\/reference\/CAPABILITY_SECTION_MAP\.md$/u);
+  await expect(domains.getByText("新規ページや、その分野の全機能が実装済み", { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(calls).toEqual([]);
 });
 
 test("#433 public Showcase links to Reference on mobile without horizontal overflow", async ({ page }) => {

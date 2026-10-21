@@ -107,6 +107,20 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
 ];
 
 
+/** Existing publication domains; links point to real source documents, not new site pages. */
+const REFERENCE_DOMAINS = [
+  { category: "Start", title: "はじめに", summary: "目的・セットアップ・画面例を確認する", source: "README.md" },
+  { category: "Architecture", title: "構造と責務", summary: "React / Worker / D1の境界を読む", source: "docs/FULLSTACK_ARCHITECTURE.md" },
+  { category: "Business", title: "申請・承認", summary: "状態遷移と業務データの分離を読む", source: "docs/HUMAN_WORKFLOW_APPROVAL.md" },
+  { category: "Platform", title: "共通基盤", summary: "Feature Flagと安全な判定を読む", source: "docs/FEATURE_FLAGS.md" },
+  { category: "Security", title: "認証・認可", summary: "現在の権限で何を許可するか確認する", source: "docs/AUTHORIZATION_DESIGN.md" },
+  { category: "Operations", title: "復旧と運用", summary: "BackupとRecoverabilityを区別する", source: "docs/RECOVERY_OPERATIONS.md" },
+  { category: "Reference App", title: "WORKHUBの場面", summary: "既存18シナリオの案内と制限を確認する", source: "docs/reference/WORKHUB_SCENARIO_MAP.md" },
+  { category: "Recipes", title: "実装の手順", summary: "既存の再利用Recipe索引から探す", source: "docs/recipes/README.md" },
+  { category: "Decisions", title: "採用理由", summary: "Reference Siteの技術・Hosting判断を読む", source: "docs/reference/REFERENCE_SITE_TECHNOLOGY_DECISION.md" },
+  { category: "Status", title: "実装と検証", summary: "CI・Preview・Productionの根拠を区別する", source: "docs/RUNTIME_EVIDENCE_STATUS.md" },
+] as const;
+
 /** #433 verified showcase-tour relationships; not the full WORKHUB scenario inventory. */
 const SCENARIOS = [
   {
@@ -150,6 +164,7 @@ export default function ReferenceSite() {
         </a>
         <nav aria-label="Reference Site ナビゲーション">
           <a href="#reference-start">使い始める</a>
+          <a href="#reference-domains">分野別に探す</a>
           <a href="#reference-capabilities">実装例を探す</a>
           <a href="#reference-scenarios">業務シナリオ</a>
           <a href="#reference-status">開発状況</a>
@@ -192,6 +207,23 @@ export default function ReferenceSite() {
               <ExternalEvidence path="docs/README.md">設計資料一覧</ExternalEvidence>
             </article>
           </div>
+        </section>
+
+        <section id="reference-domains" className="reference-section" aria-labelledby="reference-domains-title">
+          <p className="reference-eyebrow">FIND THE RIGHT REFERENCE / 既存設計資料</p>
+          <h2 id="reference-domains-title">目的の分野から、設計の根拠へ進む</h2>
+          <p className="reference-section-lead">初版の10分野を、既存の公開GitHub資料へ案内します。各リンクはReference Site内の新規ページや、その分野の全機能が実装済みという意味ではありません。</p>
+          <div className="reference-entry-grid">
+            {REFERENCE_DOMAINS.map((item) => (
+              <article className="reference-entry" key={item.category}>
+                <span className="reference-entry-number">{item.category}</span>
+                <h3>{item.title}</h3>
+                <p>{item.summary}</p>
+                <ExternalEvidence path={item.source}>設計・根拠を読む</ExternalEvidence>
+              </article>
+            ))}
+          </div>
+          <p className="reference-section-lead"><ExternalEvidence path="docs/reference/CAPABILITY_SECTION_MAP.md">既存86候補のReference section対応表（公開6カードと台帳のみを区別）</ExternalEvidence></p>
         </section>
 
         <section id="reference-capabilities" className="reference-section" aria-labelledby="reference-cap-title">
