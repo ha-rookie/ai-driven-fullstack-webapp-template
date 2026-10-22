@@ -11,6 +11,8 @@ const source = (path: string): string => REPO + "/blob/main/" + path;
 
 interface ReferenceCapability {
   readonly id: string;
+  /** Canonical #433 v1 semantic ID; distinct from the local card anchor. */
+  readonly stableId: string;
   readonly domain: string;
   readonly title: string;
   readonly purpose: string;
@@ -27,6 +29,7 @@ interface ReferenceCapability {
 const CAPABILITIES: readonly ReferenceCapability[] = [
   {
     id: "workflow",
+    stableId: "cap.business.workflow-approval",
     domain: "BUSINESS / WORKFLOW",
     title: "申請と承認",
     purpose: "出張申請の作成・差戻し・再申請・承認。業務状態と承認状態を分離し、二重実行や競合を防ぐ実装例。",
@@ -41,6 +44,7 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
   },
   {
     id: "authorization",
+    stableId: "cap.identity.authorization",
     domain: "PLATFORM / SECURITY",
     title: "認証と認可",
     purpose: "表示ボタンではなくサーバー側のScope・Role・現在の権限を正本として業務操作を判定する。",
@@ -55,6 +59,7 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
   },
   {
     id: "recovery",
+    stableId: "cap.operations.recovery-readiness",
     domain: "OPERATIONS / RECOVERY",
     title: "Backupと復旧判断",
     purpose: "Backup成功と復旧可能性を分け、検証失敗・監査証跡不足では安全な再開を許可しない判断を見せる。",
@@ -69,6 +74,7 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
   },
   {
     id: "search",
+    stableId: "cap.business.search",
     domain: "BUSINESS / AUTHORIZED SEARCH",
     title: "権限付き検索",
     purpose: "出張申請を検索するとき、検索Indexを権限の正本にせず、取得時点のサーバー側権限で再確認する。",
@@ -83,6 +89,7 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
   },
   {
     id: "report",
+    stableId: "cap.business.report-generation",
     domain: "BUSINESS / REPORT",
     title: "PDF帳票の生成",
     purpose: "承認済み出張の情報と履歴を使い、権限を確認しながら帳票を生成・保存する実装例。",
@@ -95,6 +102,7 @@ const CAPABILITIES: readonly ReferenceCapability[] = [
   },
   {
     id: "csv",
+    stableId: "cap.business.data-import-export",
     domain: "PLATFORM / DATA IMPORT EXPORT",
     title: "CSV入出力",
     purpose: "CSVの検証・ドライラン・確定処理と出力を、業務で再利用するための実装例。",
@@ -124,28 +132,29 @@ const REFERENCE_DOMAINS = [
 
 /** #433 v1 task shortcuts are navigation only; canonical Recipes stay in GitHub. */
 const QUICK_RECIPES = [
-  {"id":"approval","task":"申請・承認を追加したい","summary":"業務データとWorkflowを分離した出張申請のReference例",source: "docs/recipes/REFERENCE_TRAVEL_REQUEST.md","demo":"#reference-workflow","status":"実装例とBrowserテストあり（要ログイン）"},
-  {"id":"file","task":"添付ファイルを安全に扱いたい","summary":"Upload / Downloadの権限・サイズ制限・保存先との境界",source: "docs/recipes/FILE_TRANSFER_HTTP.md","status":"設計Recipe。公開操作デモはありません"},
-  {"id":"csv","task":"CSVを検証して取り込みたい","summary":"検証・ドライランと本登録、権限付きエクスポート",source: "docs/recipes/DATA_IMPORT_EXPORT.md","status":"共通基盤のテストあり。公開操作デモはありません"},
-  {"id":"batch","task":"時間のかかる処理を非同期化したい","summary":"冪等性・失敗・再試行を持つAsync Jobの導入手順",source: "docs/recipes/ASYNC_JOB.md","status":"基盤Recipe。実運用Queueの動作を保証しません"},
-  {"id":"retry","task":"失敗した処理を安全に再試行したい","summary":"期限付きleaseや状態遷移で二重処理を防ぐ設計",source: "docs/ASYNC_JOB.md","status":"基盤設計。Productionでの再試行は別のHuman Gate"},
-  {"id":"auth","task":"業務データを権限で守りたい","summary":"Server側のResource Scope / Role Policy / deny-by-default",source: "docs/recipes/AUTHORIZATION_BOUNDARY.md","status":"設計Recipeと代表的な権限付き業務例"},
+  {"id":"approval","stableId":"recipe.build.single-step-approval","task":"申請・承認を追加したい","summary":"業務データとWorkflowを分離した出張申請のReference例",source: "docs/recipes/REFERENCE_TRAVEL_REQUEST.md","demo":"#reference-workflow","status":"実装例とBrowserテストあり（要ログイン）"},
+  {"id":"file","stableId":"recipe.build.private-file-upload","task":"添付ファイルを安全に扱いたい","summary":"Upload / Downloadの権限・サイズ制限・保存先との境界",source: "docs/recipes/FILE_TRANSFER_HTTP.md","status":"設計Recipe。公開操作デモはありません"},
+  {"id":"csv","stableId":"recipe.build.csv-dry-run-import","task":"CSVを検証して取り込みたい","summary":"検証・ドライランと本登録、権限付きエクスポート",source: "docs/recipes/DATA_IMPORT_EXPORT.md","status":"共通基盤のテストあり。公開操作デモはありません"},
+  {"id":"batch","stableId":"recipe.build.async-job","task":"時間のかかる処理を非同期化したい","summary":"冪等性・失敗・再試行を持つAsync Jobの導入手順",source: "docs/recipes/ASYNC_JOB.md","status":"基盤Recipe。実運用Queueの動作を保証しません"},
+  {"id":"retry","stableId":"recipe.operate.retry-failed-job","task":"失敗した処理を安全に再試行したい","summary":"期限付きleaseや状態遷移で二重処理を防ぐ設計",source: "docs/ASYNC_JOB.md","status":"基盤設計。Productionでの再試行は別のHuman Gate"},
+  {"id":"auth","stableId":"recipe.secure.resource-authorization","task":"業務データを権限で守りたい","summary":"Server側のResource Scope / Role Policy / deny-by-default",source: "docs/recipes/AUTHORIZATION_BOUNDARY.md","status":"設計Recipeと代表的な権限付き業務例"},
 ] as const;
 
 /** Existing design references, not newly published formal ADR pages. */
 const DESIGN_DECISIONS = [
-  {"title":"業務データと承認の状態は別",source: "docs/HUMAN_WORKFLOW_APPROVAL.md","reason":"業務の正本と承認作業の正本を混ぜない"},
-  {"title":"検索結果は権限の正本ではない",source: "docs/search-foundation.md","reason":"現在の本人権限をサーバー側で判定し直す"},
-  {"title":"外部連携はOutboxでつなぐ",source: "docs/recipes/INTEGRATION_EVENT_OUTBOX_RECIPE.md","reason":"業務更新と配信成功を同じことにしない"},
-  {"title":"Coreと外部Adapterの境界",source: "docs/FULLSTACK_ARCHITECTURE.md","reason":"Provider固有実装を業務Coreの契約に埋め込まない"},
-  {"title":"Backup成功は復旧可能性の証拠ではない",source: "docs/RECOVERY_OPERATIONS.md","reason":"Restore後の検証と安全な再開判断を分ける"},
-  {"title":"本番への変更は人が承認する",source: "docs/recipes/PRODUCTION_PREFLIGHT.md","reason":"CI成功とProduction操作許可を同一視しない"},
+  {"stableId":"adr.domain-workflow-separation","title":"業務データと承認の状態は別",source: "docs/HUMAN_WORKFLOW_APPROVAL.md","reason":"業務の正本と承認作業の正本を混ぜない"},
+  {"stableId":"adr.search-rag-shared-authorization","title":"検索結果は権限の正本ではない",source: "docs/search-foundation.md","reason":"現在の本人権限をサーバー側で判定し直す"},
+  {"stableId":"adr.outbox-at-least-once","title":"外部連携はOutboxでつなぐ",source: "docs/recipes/INTEGRATION_EVENT_OUTBOX_RECIPE.md","reason":"業務更新と配信成功を同じことにしない"},
+  {"stableId":"adr.provider-neutral-core","title":"Coreと外部Adapterの境界",source: "docs/FULLSTACK_ARCHITECTURE.md","reason":"Provider固有実装を業務Coreの契約に埋め込まない"},
+  {"stableId":"adr.backup-is-not-recoverability","title":"Backup成功は復旧可能性の証拠ではない",source: "docs/RECOVERY_OPERATIONS.md","reason":"Restore後の検証と安全な再開判断を分ける"},
+  {"stableId":"adr.production-human-gate","title":"本番への変更は人が承認する",source: "docs/recipes/PRODUCTION_PREFLIGHT.md","reason":"CI成功とProduction操作許可を同一視しない"},
 ] as const;
 
 /** #433 verified showcase-tour relationships; not the full WORKHUB scenario inventory. */
 const SCENARIOS = [
   {
     id: "return",
+    stableId: "scenario.workhub.travel-approval",
     title: "申請の差戻しと再申請",
     summary: "社員の申請を上長が差し戻し、修正して再提出する。Workflow・認可・通知のつながりを確認する。",
     capability: "WORKFLOW / AUTHORIZATION",
@@ -154,6 +163,7 @@ const SCENARIOS = [
   },
   {
     id: "expense",
+    stableId: "scenario.workhub.travel-expense",
     title: "出張承認から経費精算へ",
     summary: "出張承認と経費精算は別の業務。経理担当による確認まで、WORKHUBの案内と実装をたどる。",
     capability: "TRAVEL / EXPENSE",
@@ -162,6 +172,7 @@ const SCENARIOS = [
   },
   {
     id: "search",
+    stableId: "scenario.workhub.enterprise-search",
     title: "現在の権限で出張を検索",
     summary: "検索結果の表示と参照権限を分け、最新の権限に従って業務データを確認する。",
     capability: "AUTHORIZED SEARCH",
@@ -185,6 +196,11 @@ export default function ReferenceSite() {
   const decisions = DESIGN_DECISIONS.filter(item => matches(item.title, item.reason, item.source));
   const scenarios = SCENARIOS.filter(item => matches(item.title, item.capability, item.summary, item.source));
   const total = domains.length + capabilities.length + recipes.length + decisions.length + scenarios.length;
+  // A read-only projection from the six existing curated card descriptors,
+  // NOT evidence that the current main SHA is Preview/Production verified.
+  const implementedCount = CAPABILITIES.filter((item) => item.implementation.startsWith("IMPLEMENTED")).length;
+  const simulatedCount = CAPABILITIES.filter((item) => item.implementation.startsWith("REFERENCE DEMO")).length;
+  const recordedCiCount = CAPABILITIES.filter((item) => item.verification.startsWith("CI VERIFIED")).length;
 
   return (
     <div className="reference-site">
@@ -399,6 +415,19 @@ export default function ReferenceSite() {
           <p className="reference-eyebrow">ROADMAP / STATUS / EVIDENCE</p>
           <h2 id="reference-status-title">開発状況はGitHubの正本で確認する</h2>
           <p className="reference-section-lead">この画面で見られる範囲と、まだ確認が必要な条件を分けて案内します。下のリンクはGitHubの元受入・全体WBS・正式System Testの正本です。CIの成功は公開環境での動作確認とは別です。進捗率や公開状態は固定表示せず、最新のGitHub記録を参照してください。</p>
+          <article className="reference-entry" aria-label="公開代表Capabilityの状態スナップショット">
+            <p className="reference-eyebrow">CURATED CAPABILITY STATUS / PUBLIC SCOPE ONLY</p>
+            <h3>掲載中の代表{CAPABILITIES.length}件だけを分類して確認する</h3>
+            <dl className="reference-evidence-status">
+              <div><dt>実装例</dt><dd>{implementedCount}件（既存Capabilityの実装表示による分類）</dd></div>
+              <div><dt>模擬例</dt><dd>{simulatedCount}件（架空デモ。実復旧・本番保証ではありません）</dd></div>
+              <div><dt>CIの記載</dt><dd>{recordedCiCount}件（各カードの既存テスト説明。最新main SHAの検証判定ではありません）</dd></div>
+              <div><dt>Preview / Production</dt><dd>この掲載情報だけでは確認できません（Not Verified ≠ Failed）</dd></div>
+            </dl>
+            <p>採用区分（Core / Standard / Optional / Future）と成熟度（Designed / Implemented / Stable）は別軸です。掲載6件に個別のAdoptionやStableを推定せず、各カードの実装・検証・制約とGitHubの根拠を確認してください。CI Verified ≠ Preview Verified ≠ Production Verified。Designは利用可能の保証ではありません。</p>
+            <p><ExternalEvidence path="docs/RUNTIME_EVIDENCE_STATUS.md">Revisionに結び付くRuntime Evidenceの判定方法</ExternalEvidence></p>
+            <p><a href="#reference-capabilities">代表6件の個別Source / Testを見る →</a></p>
+          </article>
           <div className="reference-entry-grid">
             <article className="reference-entry">
               <span className="reference-entry-number">01 / REFERENCE</span>

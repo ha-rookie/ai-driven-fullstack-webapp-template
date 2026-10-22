@@ -197,6 +197,60 @@ test("#433 S01 initial-publication hero follows Showcase → Recipe → Source �
   expect(calls).toEqual([]);
 });
 
+test("#433 curated Reference IDs match original v1 canonical entities without duplication", () => {
+  const site = readFileSync(resolve("src/reference/site/ReferenceSite.tsx"), "utf8");
+  const ids = [...site.matchAll(/stableId:\s*"([^"]+)"|"stableId":"([^"]+)"/gu)]
+    .map(match => match[1] ?? match[2]);
+  expect(ids).toEqual([
+    "cap.business.workflow-approval",
+    "cap.identity.authorization",
+    "cap.operations.recovery-readiness",
+    "cap.business.search",
+    "cap.business.report-generation",
+    "cap.business.data-import-export",
+    "recipe.build.single-step-approval",
+    "recipe.build.private-file-upload",
+    "recipe.build.csv-dry-run-import",
+    "recipe.build.async-job",
+    "recipe.operate.retry-failed-job",
+    "recipe.secure.resource-authorization",
+    "adr.domain-workflow-separation",
+    "adr.search-rag-shared-authorization",
+    "adr.outbox-at-least-once",
+    "adr.provider-neutral-core",
+    "adr.backup-is-not-recoverability",
+    "adr.production-human-gate",
+    "scenario.workhub.travel-approval",
+    "scenario.workhub.travel-expense",
+    "scenario.workhub.enterprise-search",
+  ]);
+  expect(new Set(ids).size).toBe(ids.length);
+});
+
+test("#433 public status snapshot uses six curated descriptors without claiming Preview verification", async ({ page }) => {
+  const apiCalls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) apiCalls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/reference");
+  const status = page.locator("#reference-status");
+  await expect(status.getByRole("heading", { name: "掲載中の代表6件だけを分類して確認する" })).toBeVisible();
+  await expect(status.getByText("5件（既存Capabilityの実装表示による分類）")).toBeVisible();
+  await expect(status.getByText("1件（架空デモ。実復旧・本番保証ではありません）")).toBeVisible();
+  await expect(status.getByText("6件（各カードの既存テスト説明。最新main SHAの検証判定ではありません）")).toBeVisible();
+  await expect(status.getByText("この掲載情報だけでは確認できません", { exact: false })).toBeVisible();
+  await expect(status.getByText("CI Verified ≠ Preview Verified ≠ Production Verified", { exact: false })).toBeVisible();
+  await expect(status.getByRole("link", { name: "Revisionに結び付くRuntime Evidenceの判定方法 ↗" }))
+    .toHaveAttribute("href", /docs\/RUNTIME_EVIDENCE_STATUS\.md$/u);
+  await expect(status.getByRole("link", { name: "代表6件の個別Source / Testを見る →" }))
+    .toHaveAttribute("href", "#reference-capabilities");
+  await expect(page.getByRole("status")).toContainText("31件一致");
+  await expect(page.locator(".reference-capability")).toHaveCount(6);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(apiCalls).toEqual([]);
+});
+
 test("#433 published Reference links, anchors and status pointers are not broken or stale", async ({ page }) => {
   await page.goto("/reference");
 
