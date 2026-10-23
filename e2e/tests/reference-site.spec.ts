@@ -133,7 +133,7 @@ test("#433 existing PR787 searches all published Reference entry types", async (
   await expect(page.locator(".reference-capability")).toHaveCount(1);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(1);
   await search.fill("Outbox");
-  await expect(page.locator("#reference-recipes .reference-entry > ul > li")).toHaveCount(1);
+  await expect(page.locator("#reference-recipes .reference-entry > ul > li")).toHaveCount(2);
   await expect(page.getByRole("link", { name: "外部連携はOutboxでつなぐ ↗" })).toBeVisible();
   await search.fill("Architecture");
   await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(1);
@@ -268,7 +268,7 @@ test("#433 v1 candidate Recipe and design decision coverage is explicit and scop
 
   await search.fill("Outbox");
   await expect(section.locator(".reference-catalog-list > li")).toHaveCount(2);
-  await expect(section.locator(".reference-entry > ul > li")).toHaveCount(1);
+  await expect(section.locator(".reference-entry > ul > li")).toHaveCount(2);
   await search.fill("Agent");
   await expect(section.locator(".reference-catalog-list > li")).toHaveCount(2);
   await expect(section.getByRole("link", { name: "未公開範囲を確認 ↗" })).toHaveCount(2);
