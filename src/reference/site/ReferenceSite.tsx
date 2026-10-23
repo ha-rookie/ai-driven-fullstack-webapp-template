@@ -401,7 +401,7 @@ export default function ReferenceSite() {
               </article>
             ))}
           </div>
-          <div className="reference-catalog" aria-label="追加の初版Recipe候補12件">
+          <div className="reference-catalog" role="group" aria-label="追加の初版Recipe候補12件">
             <h3>初版目標18件のうち、代表6件以外の12件</h3>
             <p className="reference-section-lead">「既存Recipeあり」「関連設計のみ」「Future」を区別しています。既存の設計文書は実装用の完結したRecipeとは限りません。Agentの2件は将来候補であり、操作デモ・コピー可能な手順を提供しません。</p>
             <ul className="reference-catalog-list">
