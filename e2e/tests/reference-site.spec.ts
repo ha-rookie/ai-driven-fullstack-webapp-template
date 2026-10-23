@@ -267,7 +267,7 @@ test("#433 v1 candidate Recipe and design decision coverage is explicit and scop
   await expect(section.getByText("正式ADR 12本を意味しません", { exact: false })).toBeVisible();
 
   await search.fill("Outbox");
-  await expect(section.locator(".reference-catalog-list > li")).toHaveCount(1);
+  await expect(section.locator(".reference-catalog-list > li")).toHaveCount(2);
   await expect(section.locator(".reference-entry > ul > li")).toHaveCount(1);
   await search.fill("Agent");
   await expect(section.locator(".reference-catalog-list > li")).toHaveCount(2);
