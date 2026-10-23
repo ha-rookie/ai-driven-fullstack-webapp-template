@@ -267,7 +267,7 @@ test("#433 v1 candidate Recipe and design decision coverage is explicit and scop
   await expect(section.getByText("正式ADR 12本を意味しません", { exact: false })).toBeVisible();
 
   await search.fill("Outbox");
-  await expect(section.locator(".reference-catalog-list > li")).toHaveCount(2);
+  await expect(section.locator(".reference-catalog-list > li")).toHaveCount(4);
   await expect(section.locator(".reference-entry > ul > li")).toHaveCount(2);
   await search.fill("Agent");
   await expect(section.locator(".reference-catalog-list > li")).toHaveCount(2);
@@ -356,7 +356,7 @@ test("#433 published Reference links, anchors and status pointers are not broken
   }
 
   expect(hrefs.length, "public links must be enumerated").toBeGreaterThan(35);
-  expect(paths.size, "published Reference documentation / source / test pointers remain complete").toBe(33);
+  expect(paths.size, "published Reference documentation / source / test pointers remain complete").toBe(39);
   await expect(page.locator(".reference-capability")).toHaveCount(6);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
   await expect(page.locator("#reference-status")).toContainText("既存の6つの代表Capabilityと3つの業務シナリオ");
