@@ -122,7 +122,7 @@ test("#433 existing PR787 searches all published Reference entry types", async (
   await page.goto("/reference");
   const search = page.getByRole("searchbox", { name: "掲載済みの機能・業務シナリオ・Recipe・設計判断を探す" });
   await expect(search).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("31件一致（分野10・Capability6・Recipe6・設計判断6・シナリオ3）");
+  await expect(page.getByRole("status")).toContainText("49件一致（分野10・Capability6・Recipe18・設計判断12・シナリオ3）");
   await search.fill("ＣＳＶ");
   await expect(page.locator(".reference-capability")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "CSV入出力" })).toBeVisible();
@@ -149,7 +149,7 @@ test("#433 existing PR787 searches all published Reference entry types", async (
   await expect(page.locator("#reference-domains .reference-entry")).toHaveCount(10);
   await expect(page.locator(".reference-capability")).toHaveCount(6);
   await expect(page.locator("#reference-recipes .reference-entry-grid .reference-entry")).toHaveCount(6);
-  await expect(page.locator("#reference-recipes .reference-entry > ul > li")).toHaveCount(6);
+  await expect(page.locator("#reference-recipes .reference-entry > ul > li")).toHaveCount(12);
   await expect(page.locator("#reference-scenarios .reference-entry")).toHaveCount(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(apiCalls).toEqual([]);
@@ -192,7 +192,7 @@ test("#433 S01 initial-publication hero follows Showcase → Recipe → Source �
     .toHaveAttribute("href", "/");
 
   await expect(page.locator(".reference-capability")).toHaveCount(6);
-  await expect(page.getByRole("status")).toContainText("31件一致");
+  await expect(page.getByRole("status")).toContainText("49件一致");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(calls).toEqual([]);
 });
@@ -214,17 +214,69 @@ test("#433 curated Reference IDs match original v1 canonical entities without du
     "recipe.build.async-job",
     "recipe.operate.retry-failed-job",
     "recipe.secure.resource-authorization",
+    "recipe.build.master-data",
+    "recipe.build.activity-timeline",
+    "recipe.build.transactional-notification",
+    "recipe.build.pdf-report",
+    "recipe.build.searchable-resource",
+    "recipe.build.outbox-event",
+    "recipe.secure.durable-audit",
+    "recipe.secure.authorized-search-rag",
+    "recipe.operate.reconcile-unknown-delivery",
+    "recipe.recover.verify-recovery-readiness",
+    "recipe.agent.expose-read-capability",
+    "recipe.agent.human-confirmed-action",
     "adr.domain-workflow-separation",
     "adr.search-rag-shared-authorization",
     "adr.outbox-at-least-once",
     "adr.provider-neutral-core",
     "adr.backup-is-not-recoverability",
     "adr.production-human-gate",
+    "adr.reuse-before-custom",
+    "adr.work-notification-timeline-audit-separation",
+    "adr.derived-state-not-authority",
+    "adr.report-artifact-vs-screen-print",
+    "adr.controlled-operations-plane",
+    "adr.human-service-agent-shared-boundary",
     "scenario.workhub.travel-approval",
     "scenario.workhub.travel-expense",
     "scenario.workhub.enterprise-search",
   ]);
   expect(new Set(ids).size).toBe(ids.length);
+});
+
+test("#433 v1 candidate Recipe and design decision coverage is explicit and scope-honest", async ({ page }) => {
+  const apiCalls: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) apiCalls.push(request.method());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/reference");
+  const section = page.locator("#reference-recipes");
+  const search = page.getByRole("searchbox", { name: "掲載済みの機能・業務シナリオ・Recipe・設計判断を探す" });
+  await expect(page.getByRole("status")).toContainText("49件一致（分野10・Capability6・Recipe18・設計判断12・シナリオ3）");
+
+  await expect(section.locator(".reference-entry-grid .reference-entry")).toHaveCount(6);
+  const catalog = section.getByRole("group", { name: "追加の初版Recipe候補12件" });
+  await expect(catalog.locator("ul > li")).toHaveCount(12);
+  await expect(catalog.getByText("関連設計のみ／専用Recipe未整備")).toHaveCount(2);
+  await expect(catalog.getByText("Future／実装と公開Recipe未提供")).toHaveCount(2);
+  await expect(catalog.getByRole("link", { name: "未公開範囲を確認 ↗" })).toHaveCount(2);
+  await expect(catalog.getByRole("link", { name: "既存資料を確認 ↗" })).toHaveCount(10);
+  await expect(section.locator(".reference-entry > ul > li")).toHaveCount(12);
+  await expect(section.getByText("正式ADR 12本を意味しません", { exact: false })).toBeVisible();
+
+  await search.fill("Outbox");
+  await expect(section.locator(".reference-catalog-list > li")).toHaveCount(1);
+  await expect(section.locator(".reference-entry > ul > li")).toHaveCount(1);
+  await search.fill("Agent");
+  await expect(section.locator(".reference-catalog-list > li")).toHaveCount(2);
+  await expect(section.getByRole("link", { name: "未公開範囲を確認 ↗" })).toHaveCount(2);
+  await search.clear();
+  await expect(section.locator(".reference-catalog-list > li")).toHaveCount(12);
+  await expect(page.getByRole("status")).toContainText("49件一致");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(apiCalls).toEqual([]);
 });
 
 test("#433 public status snapshot uses six curated descriptors without claiming Preview verification", async ({ page }) => {
@@ -245,7 +297,7 @@ test("#433 public status snapshot uses six curated descriptors without claiming 
     .toHaveAttribute("href", /docs\/RUNTIME_EVIDENCE_STATUS\.md$/u);
   await expect(status.getByRole("link", { name: "代表6件の個別Source / Testを見る →" }))
     .toHaveAttribute("href", "#reference-capabilities");
-  await expect(page.getByRole("status")).toContainText("31件一致");
+  await expect(page.getByRole("status")).toContainText("49件一致");
   await expect(page.locator(".reference-capability")).toHaveCount(6);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(apiCalls).toEqual([]);
@@ -361,12 +413,12 @@ test("#433 six task Recipes and design rationales navigate to genuine public evi
     .toHaveAttribute("href", /docs\/recipes\/ASYNC_JOB\.md$/u);
   await expect(recipes.getByRole("link", { name: "作り方・注意点を読む ↗" }).nth(4))
     .toHaveAttribute("href", /docs\/ASYNC_JOB\.md$/u);
-  await expect(recipes.locator(".reference-entry > ul > li")).toHaveCount(6);
+  await expect(recipes.locator(".reference-entry > ul > li")).toHaveCount(12);
   await expect(recipes.getByRole("link", { name: "外部連携はOutboxでつなぐ ↗" }))
     .toHaveAttribute("href", /docs\/recipes\/INTEGRATION_EVENT_OUTBOX_RECIPE\.md$/u);
   await expect(recipes.getByRole("link", { name: "本番への変更は人が承認する ↗" }))
     .toHaveAttribute("href", /docs\/recipes\/PRODUCTION_PREFLIGHT\.md$/u);
-  await expect(recipes.getByText("正式なADR個別ページを新しく作ったのではなく", { exact: false })).toBeVisible();
+  await expect(recipes.getByText("個別に採択・公開された正式ADR 12本を意味しません", { exact: false })).toBeVisible();
   await expect(recipes.getByText("公開操作デモはありません", { exact: false })).toHaveCount(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(calls).toEqual([]);
