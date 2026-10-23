@@ -140,6 +140,23 @@ const QUICK_RECIPES = [
   {"id":"auth","stableId":"recipe.secure.resource-authorization","task":"業務データを権限で守りたい","summary":"Server側のResource Scope / Role Policy / deny-by-default",source: "docs/recipes/AUTHORIZATION_BOUNDARY.md","status":"設計Recipeと代表的な権限付き業務例"},
 ] as const;
 
+/** #433 Frozen 18-recipe candidate inventory minus the six Quick Recipes above.
+ * An existing design pointer is not automatically an executable Recipe. */
+const ADDITIONAL_RECIPES = [
+  { stableId: "recipe.build.master-data", task: "マスタデータを追加したい", status: "関連設計のみ／専用Recipe未レビュー", source: "docs/MASTER_DATA.md" },
+  { stableId: "recipe.build.activity-timeline", task: "業務履歴をTimelineへ残したい", status: "関連設計のみ／専用Recipe未整備", source: "docs/INTEGRATION_EVENT_OUTBOX.md" },
+  { stableId: "recipe.build.transactional-notification", task: "業務通知を組み込みたい", status: "関連設計のみ／専用Recipe未整備", source: "docs/INTEGRATION_EVENT_OUTBOX.md" },
+  { stableId: "recipe.build.pdf-report", task: "正式なPDF帳票を作成したい", status: "関連設計のみ／専用Recipe未レビュー", source: "docs/REPORT_GENERATION.md" },
+  { stableId: "recipe.build.searchable-resource", task: "権限付き検索対象を追加したい", status: "関連設計のみ／専用Recipe未レビュー", source: "docs/search-foundation.md" },
+  { stableId: "recipe.build.outbox-event", task: "Outboxから外部連携したい", status: "既存Recipeあり／本番配信は別検証", source: "docs/recipes/INTEGRATION_EVENT_OUTBOX_RECIPE.md" },
+  { stableId: "recipe.secure.durable-audit", task: "監査証跡を永続化したい", status: "既存Recipeあり／実運用は別検証", source: "docs/recipes/DURABLE_AUDIT_STORAGE.md" },
+  { stableId: "recipe.secure.authorized-search-rag", task: "AI/RAGでも同じ認可を守りたい", status: "関連設計のみ／AI連携の実装例ではない", source: "docs/search-foundation.md" },
+  { stableId: "recipe.operate.reconcile-unknown-delivery", task: "外部連携の配信結果不明を照合したい", status: "関連設計のみ／運用Recipe未整備", source: "docs/INTEGRATION_EVENT_OUTBOX.md" },
+  { stableId: "recipe.recover.verify-recovery-readiness", task: "復旧準備を安全に検証したい", status: "既存Preview手順あり／Remote操作は別承認", source: "docs/recipes/PREVIEW_RECOVERY_REHEARSAL.md" },
+  { stableId: "recipe.agent.expose-read-capability", task: "Agentへ読取能力を提供したい", status: "Future／実装と公開Recipe未提供", source: null },
+  { stableId: "recipe.agent.human-confirmed-action", task: "Agent操作を人が確認したい", status: "Future／実装と公開Recipe未提供", source: null },
+] as const;
+
 /** Existing design references, not newly published formal ADR pages. */
 const DESIGN_DECISIONS = [
   {"stableId":"adr.domain-workflow-separation","title":"業務データと承認の状態は別",source: "docs/HUMAN_WORKFLOW_APPROVAL.md","reason":"業務の正本と承認作業の正本を混ぜない"},
@@ -148,6 +165,12 @@ const DESIGN_DECISIONS = [
   {"stableId":"adr.provider-neutral-core","title":"Coreと外部Adapterの境界",source: "docs/FULLSTACK_ARCHITECTURE.md","reason":"Provider固有実装を業務Coreの契約に埋め込まない"},
   {"stableId":"adr.backup-is-not-recoverability","title":"Backup成功は復旧可能性の証拠ではない",source: "docs/RECOVERY_OPERATIONS.md","reason":"Restore後の検証と安全な再開判断を分ける"},
   {"stableId":"adr.production-human-gate","title":"本番への変更は人が承認する",source: "docs/recipes/PRODUCTION_PREFLIGHT.md","reason":"CI成功とProduction操作許可を同一視しない"},
+  {"stableId":"adr.reuse-before-custom","title":"標準・既存部品を自作より優先する",source: "docs/UPSTREAM_TEMPLATE.md","reason":"実装の重複と責任の二重化を避ける"},
+  {"stableId":"adr.work-notification-timeline-audit-separation","title":"Work・通知・Timeline・Auditを分ける",source: "docs/INTEGRATION_EVENT_OUTBOX.md","reason":"誰の作業か／知らせるか／履歴か／証跡かは役割が違う"},
+  {"stableId":"adr.derived-state-not-authority","title":"Projectionを業務の正本にしない",source: "docs/search-foundation.md","reason":"検索候補・投影の内容より最新Resourceと認可を優先する"},
+  {"stableId":"adr.report-artifact-vs-screen-print","title":"正式帳票は画面印刷と分ける",source: "docs/REPORT_GENERATION.md","reason":"永続的な出力物はVersion・Source Snapshotを持つ"},
+  {"stableId":"adr.controlled-operations-plane","title":"運用操作を制御された手順に限定する",source: "docs/operations-core.md","reason":"無制限なDB編集ではなくRisk・承認・Verify・Auditを通す"},
+  {"stableId":"adr.human-service-agent-shared-boundary","title":"人・Service・Agentの操作境界を共通化する",source: "docs/operations-core.md","reason":"AI Agentの制御操作もHuman Gateを回避させない"},
 ] as const;
 
 /** #433 verified showcase-tour relationships; not the full WORKHUB scenario inventory. */
@@ -193,9 +216,10 @@ export default function ReferenceSite() {
   const domains = REFERENCE_DOMAINS.filter(item => matches(item.category, item.title, item.summary, item.source));
   const capabilities = CAPABILITIES.filter(item => matches(item.title, item.domain, item.purpose, item.recipe, item.code, item.limitation));
   const recipes = QUICK_RECIPES.filter(item => matches(item.task, item.summary, item.status, item.source));
+  const additionalRecipes = ADDITIONAL_RECIPES.filter(item => matches(item.task, item.status, item.stableId, item.source ?? ""));
   const decisions = DESIGN_DECISIONS.filter(item => matches(item.title, item.reason, item.source));
   const scenarios = SCENARIOS.filter(item => matches(item.title, item.capability, item.summary, item.source));
-  const total = domains.length + capabilities.length + recipes.length + decisions.length + scenarios.length;
+  const total = domains.length + capabilities.length + recipes.length + additionalRecipes.length + decisions.length + scenarios.length;
   // A read-only projection from the six existing curated card descriptors,
   // NOT evidence that the current main SHA is Preview/Production verified.
   const implementedCount = CAPABILITIES.filter((item) => item.implementation.startsWith("IMPLEMENTED")).length;
@@ -311,7 +335,7 @@ export default function ReferenceSite() {
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="例：承認、CSV、Outbox、復旧" />
             <p className="reference-search-count" role="status" aria-live="polite">
-              {total}件一致（分野{domains.length}・Capability{capabilities.length}・Recipe{recipes.length}・設計判断{decisions.length}・シナリオ{scenarios.length}）
+              {total}件一致（分野{domains.length}・Capability{capabilities.length}・Recipe{recipes.length + additionalRecipes.length}・設計判断{decisions.length}・シナリオ{scenarios.length}）
             </p>
             {total === 0 && <p className="reference-empty">掲載範囲に一致する資料はありません。検索語を変えるか、GitHubの資料一覧をご確認ください。</p>}
           </div>
@@ -377,10 +401,25 @@ export default function ReferenceSite() {
               </article>
             ))}
           </div>
+          <div className="reference-catalog" aria-label="追加の初版Recipe候補12件">
+            <h3>初版目標18件のうち、代表6件以外の12件</h3>
+            <p className="reference-section-lead">「既存Recipeあり」「関連設計のみ」「Future」を区別しています。既存の設計文書は実装用の完結したRecipeとは限りません。Agentの2件は将来候補であり、操作デモ・コピー可能な手順を提供しません。</p>
+            <ul className="reference-catalog-list">
+              {additionalRecipes.map((item) => (
+                <li key={item.stableId}>
+                  <strong>{item.task}</strong> — {item.status}
+                  {item.source
+                    ? <>：<ExternalEvidence path={item.source}>既存資料を確認</ExternalEvidence></>
+                    : <>：<a href={REPO + "/issues/433"} target="_blank" rel="noopener noreferrer">未公開範囲を確認 ↗</a></>}
+                </li>
+              ))}
+              {additionalRecipes.length === 0 && <li className="reference-empty">追加Recipe候補に一致する項目はありません。</li>}
+            </ul>
+          </div>
           <div className="reference-entry">
             <p className="reference-eyebrow">WHY THESE BOUNDARIES</p>
-            <h3>「なぜその設計か」を6つの判断からたどる</h3>
-            <p>正式なADR個別ページを新しく作ったのではなく、既存の設計・Recipeから理由を確認できる入口です。</p>
+            <h3>「なぜその設計か」を主要12件の判断からたどる</h3>
+            <p>初版の主要12決定を、関連する既存設計・Recipeへ案内します。これは個別に採択・公開された正式ADR 12本を意味しません。根拠資料の個別レビューは引き続き必要です。</p>
             <ul>
               {decisions.map((item) => (
                 <li key={item.title}>
