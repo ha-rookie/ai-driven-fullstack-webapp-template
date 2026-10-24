@@ -102,3 +102,81 @@ test("public WORKHUB Showcase opens at pinned Preview origin on desktop and mobi
   });
   expect(unexpected, "public Showcase must remain read-only, same-origin, API-free").toEqual([]);
 });
+
+/**
+ * #431: live Preview interaction acceptance for the already deployed, fully
+ * fictional Recovery Decision Lab. Block ALL non-public, non-read-only traffic
+ * before it leaves the browser; buttons/selects only change local React state.
+ */
+test("#431 public Preview Recovery Lab changes decisions without private API or mutations", async ({ page }) => {
+  const rejected: string[] = [];
+  await page.route("**/*", async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== PREVIEW_ORIGIN
+      || !["GET", "HEAD", "OPTIONS"].includes(request.method())
+      || url.pathname.startsWith("/api/")) {
+      rejected.push(request.method() + " " + url.origin + url.pathname);
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+
+  const response = await page.goto("/showcase#showcase-recovery", { waitUntil: "networkidle" });
+  expect(response?.status(), "deployed public Preview /showcase").toBe(200);
+  expect(new URL(page.url()).origin).toBe(PREVIEW_ORIGIN);
+  await expect(page).toHaveURL(/#showcase-recovery$/u);
+
+  const lab = page.getByTestId("public-recovery-lab");
+  await expect(lab.getByRole("heading", { name: /バックアップできた/u })).toBeVisible();
+  await expect(lab.getByRole("note")).toContainText("架空の復旧データ");
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await expect(lab.getByTestId("public-recovery-resume")).toHaveText("HUMAN_REVIEW_REQUIRED");
+
+  const steps = lab.locator(".showcase-recovery-runbook li");
+  await expect(steps).toHaveCount(11);
+  await expect(steps.nth(4)).toContainText("Restore — Human Gate");
+  await expect(steps.nth(10)).toContainText("Resume Service — Human Review");
+  await expect(steps.nth(4)).toContainText("人による確認が必須");
+  await expect(steps.nth(10)).toContainText("人による確認が必須");
+
+  // All six existing scenarios are selectable; failed/unverified evidence never authorizes resume.
+  for (const [label, readiness] of [
+    ["復旧検証OK", "READY"],
+    ["RPO超過", "NOT_READY"],
+    ["復元テスト失敗", "NOT_READY"],
+    ["テスト期限切れ", "NOT_READY"],
+    ["復元記録なし", "UNKNOWN"],
+    ["実証跡未接続", "UNKNOWN"],
+  ] as const) {
+    await lab.getByRole("button", { name: label, exact: true }).click();
+    await expect(lab.getByTestId("public-recovery-readiness")).toContainText(readiness);
+    await expect(lab.getByTestId("public-recovery-resume")).toHaveText(
+      readiness === "READY" ? "HUMAN_REVIEW_REQUIRED" : "BLOCKED",
+    );
+  }
+  await expect(steps).toHaveCount(11);
+  await expect(steps.filter({ hasText: "未実施" })).toHaveCount(11);
+
+  await lab.getByRole("button", { name: "RPO超過", exact: true }).click();
+  await expect(lab.getByTestId("public-recovery-rpo")).toHaveText("目標超過");
+  await expect(lab.getByTestId("public-recovery-action")).toBeVisible();
+  await lab.getByRole("button", { name: "復元テスト失敗", exact: true }).click();
+  await expect(lab.getByTestId("public-recovery-freshness")).toHaveText("失敗");
+  await expect(lab.locator(".showcase-recovery-runbook li[data-state=FAILED]")).toHaveCount(1);
+
+  await lab.getByRole("button", { name: "目標値を変える" }).click();
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await lab.getByRole("combobox", { name: "RPO目標" }).selectOption("15");
+  await expect(lab.getByTestId("public-recovery-rpo")).toHaveText("目標超過");
+  await expect(lab.getByTestId("public-recovery-resume")).toHaveText("BLOCKED");
+  await lab.getByRole("combobox", { name: "RPO目標" }).selectOption("60");
+  await lab.getByRole("combobox", { name: "RTO目標" }).selectOption("10");
+  await expect(lab.getByTestId("public-recovery-rto")).toHaveText("目標超過");
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("NOT_READY");
+  await lab.getByRole("button", { name: "目標値を初期状態に戻す" }).click();
+  await expect(lab.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await expect(lab.getByTestId("public-recovery-resume")).toHaveText("HUMAN_REVIEW_REQUIRED");
+  expect(rejected, "no private API, external requests, or writes permitted").toEqual([]);
+});
