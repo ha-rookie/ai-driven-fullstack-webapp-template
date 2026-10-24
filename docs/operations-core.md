@@ -1,6 +1,6 @@
 # Operations Core & Risk Policy
 
-Operations Core is the provider- and business-neutral control-plane model shared by future Job, Data Correction, Integration and Recovery operations.
+Operations Core is the provider- and business-neutral control-plane model reused by Job, Data Correction, Integration and Recovery reference operations. Their implementation/acceptance states remain in their respective Issues; this design overview does not assert actual Production execution.
 
 ## Flow
 

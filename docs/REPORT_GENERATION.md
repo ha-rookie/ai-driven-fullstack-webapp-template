@@ -1,6 +1,6 @@
 # Report / Document Generation Foundation
 
-Stage 1 defines the provider-neutral boundary for formal generated documents.
+Stage 1 originally defined the provider-neutral boundary for formal generated documents. Subsequent #306 stages added durable GeneratedArtifact, private storage/download and PDF/XLSX adapters. This document retains Stage 1 design context while recording later scoped integrations; it does not claim an automatic WORKHUB report download or Production verification.
 
 ```text
 Domain / persisted fact
@@ -8,7 +8,7 @@ Domain / persisted fact
   -> validated ReportViewModel
   -> ReportRenderer
   -> RenderedReport
-  -> later stages: GeneratedArtifact metadata + #52 private Object Storage + #261 safe download
+  -> subsequent #306 stages: GeneratedArtifact metadata + #52 private Object Storage + #261 safe download
 ```
 
 ## Rules
@@ -20,7 +20,7 @@ Domain / persisted fact
 - Reports are projections, never the source of current business/workflow state.
 - The HTML reference renderer rejects active HTML and arbitrary external assets. Business text must be escaped with `escapeReportHtml`.
 - PDF/XLSX are adapter interfaces, not fixed libraries in Core.
-- CSV reuses #262. Binary persistence/download reuse #52/#261. Heavy generation will reuse #51.
+- CSV reuses #262. Binary persistence/download reuse #52/#261. Async generation can reuse #51; wiring and end-to-end availability remain scenario-specific.
 - Production/Remote artifact generation is not part of Stage 1.
 
 ## WORKHUB #350 G — Generation failure is not approval failure
@@ -32,8 +32,8 @@ Report generation is a **secondary projection** of an already-persisted business
 - Once an original artifact is terminally `failed`, a repeat request for that same historical original must **not publish another job** under the same deterministic identity or suggest that the failed report has become ready. Operator-controlled reconciliation/new generation policy is a separate decision; no blind re-approval or reissue.
 - Under #350, the WORKHUB TravelRequest **owner-authorized detail GET** now reads the latest historical original approval report status from D1 only after `TravelRequestService.get` authorizes access. The response contains only `reportStatus.state`; it contains no private storage identifiers, failure codes, or downloadable object link. The UI displays approval from the persisted Workflow **separately** from report status, and provides a GET-only refresh. This is an informational status surface, not an API for scheduling reports or re-approving a business request.
 - If no artifact exists, the status is `not_generated` (not silently `ready`). If the artifact read fails, it is `unavailable` (not a false 0). `pending`, `generating`, `ready`, `failed` and `expired` remain distinct. The existing WORKHUB browser print/PDF-save is still **not** a historical generated report; no report job scheduling or actual download link is added.
-- This is a thin read-only integration. Until a real report generation trigger, persistent async execution wiring and end-to-end authenticated tests are complete, do **not** claim that an approved request automatically generates a downloadable report, or close #350.
+- This is a thin read-only integration. Do **not** infer that an approved request automatically generates a downloadable report from this status projection. Issue #350 has since been **Closed under its scoped implementation acceptance**; that closure is not evidence of automatic report generation, end-to-end authorized download or Production verification. Formal system testing is tracked separately by #694.
 
-Regression: `tests/report-artifact-async.test.ts` checks terminal failure, non-republication, the unchanged approved input snapshot, and the hidden download. The unit regression does not exercise a persisted TravelRequest/Workflow write or the browser UI. Formal authenticated Preview business System Test and end-user accessible/mobile recovery UI remain deferred under #350.
+Regression: `tests/report-artifact-async.test.ts` checks terminal failure, non-republication, the unchanged approved input snapshot, and the hidden download. The unit regression does not exercise a persisted TravelRequest/Workflow write or the browser UI. Formal authenticated Preview business System Test and physical-device/accessibility acceptance remain deferred under independent #694; #350's scoped implementation acceptance was already completed.
 
 Added scoped status and UI checks: `tests/workhub-report-status.test.ts`, `tests/report-artifact-d1.test.ts` and `e2e/tests/workhub-report-status-recovery.spec.ts`. The browser test injects a simulated failed/ready report projection after a real owner-authorized local GET; it does not prove live generation. Android/iOS physical device and assistive technology validation remains in consolidated formal System Test.
