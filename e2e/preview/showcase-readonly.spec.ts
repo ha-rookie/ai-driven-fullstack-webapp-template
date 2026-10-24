@@ -89,6 +89,47 @@ test("public WORKHUB Showcase opens at pinned Preview origin on desktop and mobi
   await expect(page.locator("#showcase-feedback")).toContainText("公開Issue");
   await expect(page.locator("#showcase-feedback")).toContainText("機密情報や個人情報は入力しないでください");
 
+
+  // #431: verify the deployed Recovery lab via local-only UI controls.
+  // No authentication, private API, backup, restore, or service-resume requests.
+  await page.goto("/showcase#showcase-recovery", { waitUntil: "networkidle" });
+  await expect(page).toHaveURL(/#showcase-recovery$/u);
+  const recovery = page.getByTestId("public-recovery-lab");
+  await expect(recovery.getByRole("heading", { name: /バックアップできた/u })).toBeVisible();
+  await expect(recovery.getByRole("note")).toContainText("架空の復旧データ");
+  await expect(recovery.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await expect(recovery.getByTestId("public-recovery-resume")).toHaveText("HUMAN_REVIEW_REQUIRED");
+  await expect(recovery.locator(".showcase-recovery-runbook li")).toHaveCount(11);
+  await expect(recovery.locator(".showcase-recovery-runbook")).toContainText("人による確認が必須");
+
+  await recovery.getByRole("button", { name: "RPO超過" }).click();
+  await expect(recovery.getByTestId("public-recovery-rpo")).toHaveText("目標超過");
+  await expect(recovery.getByTestId("public-recovery-readiness")).toContainText("NOT_READY");
+  await expect(recovery.getByTestId("public-recovery-resume")).toHaveText("BLOCKED");
+
+  await recovery.getByRole("button", { name: "復元テスト失敗" }).click();
+  await expect(recovery.getByTestId("public-recovery-freshness")).toHaveText("失敗");
+  await expect(recovery.locator(".showcase-recovery-runbook li[data-state=FAILED]")).toHaveCount(1);
+  await expect(recovery.getByTestId("public-recovery-resume")).toHaveText("BLOCKED");
+
+  await recovery.getByRole("button", { name: "実証跡未接続" }).click();
+  await expect(recovery.getByTestId("public-recovery-readiness")).toContainText("UNKNOWN");
+  await expect(recovery.locator(".showcase-recovery-runbook li[data-state=PENDING]")).toHaveCount(11);
+  await expect(recovery.getByTestId("public-recovery-resume")).toHaveText("BLOCKED");
+
+  await recovery.getByRole("button", { name: "目標値を変える" }).click();
+  await expect(recovery.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await recovery.getByRole("combobox", { name: "RPO目標" }).selectOption("15");
+  await expect(recovery.getByTestId("public-recovery-rpo")).toHaveText("目標超過");
+  await expect(recovery.getByTestId("public-recovery-resume")).toHaveText("BLOCKED");
+  await recovery.getByRole("combobox", { name: "RPO目標" }).selectOption("60");
+  await recovery.getByRole("combobox", { name: "RTO目標" }).selectOption("10");
+  await expect(recovery.getByTestId("public-recovery-rto")).toHaveText("目標超過");
+  await expect(recovery.getByTestId("public-recovery-readiness")).toContainText("NOT_READY");
+  await recovery.getByRole("button", { name: "目標値を初期状態に戻す" }).click();
+  await expect(recovery.getByTestId("public-recovery-readiness")).toContainText("READY");
+  await expect(recovery.getByTestId("public-recovery-resume")).toHaveText("HUMAN_REVIEW_REQUIRED");
+
   const overflow = await page.evaluate(() => ({
     content: document.documentElement.scrollWidth,
     viewport: document.documentElement.clientWidth,
