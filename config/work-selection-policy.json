@@ -4,7 +4,7 @@
   "roadmapIssue": 132,
   "enforceFromPrNumber": 598,
   "focusIssues": [
-    433
+    475
   ],
   "approvedExceptions": [
     {
@@ -16,5 +16,5 @@
     597,
     521
   ],
-  "notes": "2026-10-19 Governance-only proposal: user requested the next existing WBS #132 work-selection decision after all 11 Admin/Operations Portal Stage0–9 plan items were checked and Stage9 #431 was Closed with original showcase-level 9/9. Next existing WBS finalization track is #433 Reference Site / Developer & Architecture Reference (Open, P3), completing Code + Running WORKHUB Reference Application + Reference Site. The already-existing public WORKHUB Showcase (#402 design-only) and staged documentation are reused; no new Stage or feature is inserted. #433 begins with its existing outstanding technology/framework/hosting decision and documented completion criteria; this one-file governance PR does not choose a stack or build/deploy the site. #430 remains an Open cross-cutting Failure Safety acceptance, #694 formal ST/physical-device acceptance remains Not Run and separately gated; Preview read-only safety #609 and remote D1 governance #599/#632 remain independent Open, without being silently waived. #475 external validation depends on Reference readiness. Until this PR is separately approved and Squash-merged, main focus remains [431] and #433 implementation is not authorized. WBS original order/priority, milestones, issue acceptance conditions, security/Human Gate and governance lists remain unchanged. Production/Preview deploy, remote D1, Migration, Secrets and Cloudflare resource changes are not authorized. Historical policy decisions remain in Git history."
+  "notes": "2026-10-24 Governance-only work-selection transition proposal after original WBS #132 Reference Site #433 completed its 14/14 acceptance and was Closed. Existing #471 Product Positioning & Adoption sequence #472 → #473 → #474 → #475 → #476 makes #475 External Adoption / Usability Validation (Open, P2) the next focused, evidence-driven showcase evaluation task. The three-part deliverable Code + Running WORKHUB + Reference Site now has its initial source/content review, but current main is not confirmed deployed to Preview/Production; public evaluator access, external human evidence, dogfooding and independent blind AI reviews must be verified individually under #475, not invented or treated as done. #402 Showcase design is reused, not rewritten. Cross-cutting #430 P1 Failure-Safety and #694 formal system/device testing stay independent and Open; #475 focus does not waive or reprioritize them. Existing WBS Stage/order/Milestone/Priority, all Issue acceptance criteria, approvedExceptions, governanceChangeIssues, and Human Gates remain unchanged. This one-file policy-only PR must pass current required/related CI, must receive a separate latest-HEAD Squash-merge approval, and authorizes no Preview/Production deploy, Remote D1, Migration, Secrets, Cloudflare resource change, external mutation or collection of real user data. Historical decisions remain in Git history."
 }
