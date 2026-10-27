@@ -62,6 +62,54 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
         <div><dt>Timezone</dt><dd>{preference.resolved.timezone} ({preference.resolved.source.timezone})</dd></div>
         <div><dt>Theme / Color scheme</dt><dd>{preference.resolved.theme} / {preference.resolved.colorScheme} ({preference.resolved.source.theme})</dd></div>
       </dl>
+      <fieldset className="workhub-preference-preview-fields">
+        <legend>{locale === "ja-JP" ? "設定プレビュー（この画面内だけ・未保存）" : "Settings preview (this session only; not saved)"}</legend>
+        <label htmlFor="workhub-preference-preview-locale">
+          {locale === "ja-JP" ? "言語" : "Language"}
+          <select id="workhub-preference-preview-locale" value={preference.preview.locale ?? ""}
+            onChange={event => preference.setPreview("locale", event.target.value || null)}>
+            <option value="">{locale === "ja-JP" ? "端末・既定値" : "Device / default"}</option>
+            <option value="ja-JP">日本語 (ja-JP)</option>
+            <option value="en-US">English (en-US)</option>
+          </select>
+        </label>
+        <label htmlFor="workhub-preference-preview-timezone">
+          {locale === "ja-JP" ? "タイムゾーン" : "Timezone"}
+          <select id="workhub-preference-preview-timezone" value={preference.preview.timezone ?? ""}
+            onChange={event => preference.setPreview("timezone", event.target.value || null)}>
+            <option value="">{locale === "ja-JP" ? "端末・既定値" : "Device / default"}</option>
+            <option value="Asia/Tokyo">Asia/Tokyo</option>
+            <option value="UTC">UTC</option>
+            <option value="America/New_York">America/New_York</option>
+          </select>
+        </label>
+        <label htmlFor="workhub-preference-preview-theme">
+          {locale === "ja-JP" ? "配色" : "Appearance"}
+          <select id="workhub-preference-preview-theme" value={preference.preview.theme ?? ""}
+            onChange={event => preference.setPreview("theme", event.target.value || null)}>
+            <option value="">{locale === "ja-JP" ? "端末・既定値" : "Device / default"}</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="system">{locale === "ja-JP" ? "OSに追従 (system)" : "Follow OS (system)"}</option>
+          </select>
+        </label>
+      </fieldset>
+      <div className="workhub-preference-preview-action">
+        <button type="button" className="workhub-secondary-button"
+          disabled={!preference.previewActive}
+          onClick={preference.resetPreview}>{locale === "ja-JP" ? "プレビューを初期化" : "Reset preview"}</button>
+        <small role="status">{preference.previewActive
+          ? (locale === "ja-JP" ? "一時プレビュー中・保存されません" : "Session preview only — not saved")
+          : (locale === "ja-JP" ? "端末・既定値を表示中" : "Device / defaults shown")}</small>
+      </div>
+      <div className="workhub-preference-preview-example"
+        data-preview-scheme={preference.resolved.colorScheme} aria-live="polite">
+        <strong>{locale === "ja-JP" ? "表示例（このカード内だけ）" : "Sample display (this card only)"}</strong>
+        <span>{new Intl.DateTimeFormat(preference.resolved.locale, {
+          timeZone: preference.resolved.timezone, dateStyle: "medium", timeStyle: "short",
+        }).format(new Date("2026-10-28T12:00:00.000Z"))}</span>
+        <small>{preference.resolved.locale} · {preference.resolved.timezone} · {preference.resolved.colorScheme}</small>
+      </div>
     </section>
     <section aria-labelledby="workhub-developer-architecture-heading">
       <h4 id="workhub-developer-architecture-heading">{labels.architecture}</h4>
