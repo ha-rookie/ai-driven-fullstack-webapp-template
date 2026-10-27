@@ -5,6 +5,7 @@ import WorkhubShowcase from "./reference/showcase/WorkhubShowcase";
 import ReferenceSite from "./reference/site/ReferenceSite";
 import WorkhubNotFound from "./reference/workhub/WorkhubNotFound";
 import { AuthProvider } from "./frontend/auth";
+import { UserPreferencesProvider } from "./frontend/preferences/context";
 import "./workhub-business.css";
 
 const root = document.getElementById("root");
@@ -27,7 +28,7 @@ createRoot(root).render(
       : isReference
         ? <ReferenceSite />
       : isWorkhubEntry
-        ? <AuthProvider><App /></AuthProvider>
+        ? <AuthProvider><UserPreferencesProvider><App /></UserPreferencesProvider></AuthProvider>
         : <WorkhubNotFound />}
   </StrictMode>,
 );
