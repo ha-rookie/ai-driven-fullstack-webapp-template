@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement, Fragment } from "react";
+import DeveloperGuideOverview from "../src/reference/workhub/DeveloperGuideOverview";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { AuthProvider } from "../src/frontend/auth/context";
 import { createAuthApiLoader, createAuthController, type AuthController } from "../src/frontend/auth/state";
 import {
   readWorkhubDeviceSignals,
+  resolveWorkhubPreferencePreview,
   UserPreferencesProvider,
   useUserPreferences,
 } from "../src/frontend/preferences/context";
@@ -82,4 +84,66 @@ test("browser signal reading is optional and uses supported bounded values", () 
 test("reading preference context without a shell provider fails explicitly", () => {
   assert.throws(() => renderToStaticMarkup(createElement(PreferenceConsumer)),
     /useUserPreferences must be used within UserPreferencesProvider/);
+});
+
+
+test("unsaved locale/timezone/theme preview uses the shared resolver and reports its user-layer provenance", () => {
+  const resolved = resolveWorkhubPreferencePreview(
+    "demo-aoi",
+    { userId: "demo-aoi", values: { locale: "en-US", timezone: "UTC", theme: "dark" } },
+    { locale: "ja-JP", timezone: "Asia/Tokyo", prefersDark: false },
+  );
+  assert.equal(resolved.locale, "en-US");
+  assert.equal(resolved.timezone, "UTC");
+  assert.equal(resolved.theme, "dark");
+  assert.equal(resolved.colorScheme, "dark");
+  assert.deepEqual(resolved.source, { locale: "user", timezone: "user", theme: "user" });
+});
+
+test("a session preview cannot carry over to a different authenticated user or logged-out state", () => {
+  const preview = { userId: "demo-aoi", values: { theme: "dark" as const } };
+  const device = { locale: "ja-JP", timezone: "Asia/Tokyo", prefersDark: false };
+  const own = resolveWorkhubPreferencePreview("demo-aoi", preview, device);
+  const other = resolveWorkhubPreferencePreview("demo-ren", preview, device);
+  const loggedOut = resolveWorkhubPreferencePreview(null, preview, device);
+  assert.equal(own.theme, "dark");
+  assert.equal(other.theme, "light");
+  assert.equal(loggedOut.theme, "light");
+  assert.equal(other.source.theme, "device");
+  assert.equal(loggedOut.source.theme, "device");
+});
+
+test("unset preview falls back to OS; explicit system follows OS but remains a user-layer choice", () => {
+  const light = { locale: "ja-JP", timezone: "Asia/Tokyo", prefersDark: false };
+  const dark = { ...light, prefersDark: true };
+  const unset = resolveWorkhubPreferencePreview("demo-aoi", { userId: "demo-aoi", values: { theme: null } }, dark);
+  assert.equal(unset.theme, "dark");
+  assert.equal(unset.source.theme, "device");
+  const osLight = resolveWorkhubPreferencePreview("demo-aoi", { userId: "demo-aoi", values: { theme: "system" } }, light);
+  const osDark = resolveWorkhubPreferencePreview("demo-aoi", { userId: "demo-aoi", values: { theme: "system" } }, dark);
+  assert.equal(osLight.theme, "system");
+  assert.equal(osLight.colorScheme, "light");
+  assert.equal(osDark.colorScheme, "dark");
+  assert.equal(osDark.source.theme, "user");
+});
+
+test("WORKHUB Developer Guide exposes labeled selectors, reset action and a local-only sample", async () => {
+  const controller = createAuthController(async () => ({ id: "demo-aoi", displayName: "Demo" }));
+  await controller.bootstrap();
+  const html = renderToStaticMarkup(createElement(
+    AuthProvider, { controller },
+    createElement(UserPreferencesProvider, null,
+      createElement(DeveloperGuideOverview, { locale: "ja-JP", onOpenScreen: () => {} }),
+    ),
+  ));
+  for (const id of ["workhub-preference-preview-locale", "workhub-preference-preview-timezone", "workhub-preference-preview-theme"]) {
+    assert.ok(html.includes(`id="${id}"`), `missing selector ${id}`);
+    assert.ok(html.includes(`htmlFor="${id}"`) || html.includes(`for="${id}"`));
+  }
+  assert.match(html, /設定プレビュー/);
+  assert.match(html, /保存されません/);
+  assert.match(html, /プレビューを初期化/);
+  assert.match(html, /data-preview-scheme="(?:light|dark)"/);
+  assert.match(html, /2026/);
+  assert.doesNotMatch(html, /localStorage|シークレット保存/);
 });
