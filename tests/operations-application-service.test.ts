@@ -137,3 +137,78 @@ test("guard rejection prevents handler execution for all actor kinds", async () 
     assert.equal(called, false);
   }
 });
+
+test("#430 Golden #6: privileged operation is rejected before side effects if admission audit fails", async () => {
+  let executed = 0;
+  const handler: OperationHandler = {
+    definition,
+    async execute() { executed += 1; return { result: "SUCCESS" }; },
+  };
+  const audit: AuditLogger = {
+    write() { throw new Error("audit unavailable"); },
+  };
+  const service = new OperationsApplicationService(new OperationRegistry([handler]), audit);
+  const privilegedRequest = { ...request, affectedCount: 101 };
+  const preview = service.preview({ allowed: true }, privilegedRequest);
+  assert.equal(preview.risk, "PRIVILEGED");
+  const result = await service.execute(privilegedRequest, preview, {
+    ...context,
+    evidence: { confirmed: true, reason: "approved manual recovery", stepUpVerified: true },
+  });
+
+  assert.equal(result.execution.result, "REJECTED");
+  assert.equal(result.verification.status, "NOT_APPLICABLE");
+  assert.equal(executed, 0);
+});
+
+test("#430 privileged admission and outcome audits are distinct, with metadata-only projections", async () => {
+  const audit = new MemoryAuditLogger();
+  const handler: OperationHandler = {
+    definition,
+    async execute() { return { result: "SUCCESS" }; },
+  };
+  const service = new OperationsApplicationService(new OperationRegistry([handler]), audit);
+  const privilegedRequest = { ...request, affectedCount: 101 };
+  const preview = service.preview({ allowed: true }, privilegedRequest);
+  const result = await service.execute(privilegedRequest, preview, {
+    ...context,
+    evidence: { confirmed: true, reason: "manual review", stepUpVerified: true },
+  });
+
+  assert.equal(result.execution.result, "SUCCESS");
+  assert.deepEqual(audit.events.map((event) => event.action), [
+    "operation.job.retry.admitted",
+    "operation.job.retry",
+  ]);
+  assert.equal(audit.events[0]?.requestId, "req-1");
+  assert.equal(audit.events[1]?.requestId, "req-1");
+  assert.equal(JSON.stringify(audit.events).includes("manual review"), false);
+});
+
+test("#430 failure after side effect is UNKNOWN, never safe-to-retry REJECTED", async () => {
+  let executed = 0;
+  let auditWrites = 0;
+  const audit: AuditLogger = {
+    write() {
+      auditWrites += 1;
+      if (auditWrites === 2) throw new Error("audit unavailable after execution");
+    },
+  };
+  const handler: OperationHandler = {
+    definition,
+    async execute() { executed += 1; return { result: "SUCCESS" }; },
+    async verify() { return { status: "PASSED" }; },
+  };
+  const service = new OperationsApplicationService(new OperationRegistry([handler]), audit);
+  const privilegedRequest = { ...request, affectedCount: 101 };
+  const preview = service.preview({ allowed: true }, privilegedRequest);
+  const result = await service.execute(privilegedRequest, preview, {
+    ...context,
+    evidence: { confirmed: true, reason: "manual review", stepUpVerified: true },
+  });
+
+  assert.equal(result.execution.result, "UNKNOWN");
+  assert.equal(result.verification.status, "UNKNOWN");
+  assert.equal(executed, 1);
+  assert.equal(auditWrites, 2);
+});

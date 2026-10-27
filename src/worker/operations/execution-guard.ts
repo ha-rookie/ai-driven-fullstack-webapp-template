@@ -108,6 +108,17 @@ export const writeOperationAudit = (
   logger.write(createOperationAuditEvent(metadata, outcome, reason));
 };
 
+/** Records admission before an elevated operation may cause side effects. */
+export const writeOperationAdmissionAudit = (
+  logger: AuditLogger,
+  metadata: OperationAuditMetadata,
+): void => {
+  logger.write({
+    ...createOperationAuditEvent(metadata, "success"),
+    action: `operation.${metadata.operationId}.admitted`,
+  });
+};
+
 export const createOperationExecution = (input: {
   readonly executionId: string;
   readonly preview: OperationPreview;
