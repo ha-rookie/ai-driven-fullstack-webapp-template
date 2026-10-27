@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUserPreferences } from "../../frontend/preferences/context";
 import {
   developerArchitectureLayers, developerCapabilityMap, developerGuideScenarios, developerAdapterMap,
 } from "./developer-guide";
@@ -39,6 +40,7 @@ const guideText = {
 } as const;
 
 export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) {
+  const preference = useUserPreferences();
   const [scenarioId, setScenarioId] = useState(developerGuideScenarios[0].id);
   const labels = guideText[locale];
   const scenario = developerGuideScenarios.find(item => item.id === scenarioId) ?? developerGuideScenarios[0];
@@ -50,6 +52,17 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
   return <div className="workhub-developer-overview">
     <h3>{labels.title}</h3>
     <p>{labels.overview} — {labels.intro}</p>
+    <section aria-label="User Preferences Reference">
+      <h4>User Preferences / Resolved Experience</h4>
+      <p>{locale === "ja-JP"
+        ? "端末情報とProject既定値から共通Resolverで解決した表示候補です。ログイン利用者の保存設定は未接続で、この値は保存されません。画面全体の翻訳・配色変更も未実装です。"
+        : "Reference values resolved from device signals and project defaults. Saved user preferences are not connected or persisted; full-app translation and theme changes are not implemented."}</p>
+      <dl>
+        <div><dt>Locale</dt><dd>{preference.resolved.locale} ({preference.resolved.source.locale})</dd></div>
+        <div><dt>Timezone</dt><dd>{preference.resolved.timezone} ({preference.resolved.source.timezone})</dd></div>
+        <div><dt>Theme / Color scheme</dt><dd>{preference.resolved.theme} / {preference.resolved.colorScheme} ({preference.resolved.source.theme})</dd></div>
+      </dl>
+    </section>
     <section aria-labelledby="workhub-developer-architecture-heading">
       <h4 id="workhub-developer-architecture-heading">{labels.architecture}</h4>
       <p>{labels.flow}</p>
