@@ -2,6 +2,7 @@ import type { AuditLogger, RequestContext } from "../audit";
 import {
   createOperationExecution,
   guardOperationExecution,
+  writeOperationAdmissionAudit,
   writeOperationAudit,
   type OperationSafeguardEvidence,
 } from "./execution-guard";
@@ -141,6 +142,21 @@ export class OperationsApplicationService {
       return { execution, verification: this.notApplicable(execution.executionId) };
     }
 
+    // Privileged operations must not execute when even the admission audit is unavailable.
+    // A successful admission record does not assert that the operation itself succeeded.
+    if (preview.risk === "PRIVILEGED") {
+      try {
+        writeOperationAdmissionAudit(this.auditLogger, auditMetadata);
+      } catch {
+        const execution = createOperationExecution({
+          executionId: context.executionId,
+          preview,
+          result: "REJECTED",
+        });
+        return { execution, verification: this.notApplicable(execution.executionId) };
+      }
+    }
+
     let result: OperationExecutionResult;
     try {
       result = (await handler.execute(request)).result;
@@ -170,12 +186,26 @@ export class OperationsApplicationService {
       }
     }
 
-    writeOperationAudit(
-      this.auditLogger,
-      auditMetadata,
-      result === "SUCCESS" ? "success" : "failure",
-      result === "SUCCESS" ? undefined : `execution_${result.toLowerCase()}`,
-    );
+    try {
+      writeOperationAudit(
+        this.auditLogger,
+        auditMetadata,
+        result === "SUCCESS" ? "success" : "failure",
+        result === "SUCCESS" ? undefined : `execution_${result.toLowerCase()}`,
+      );
+    } catch {
+      // Side effects may already have happened. UNKNOWN requires reconciliation;
+      // do not return a retryable failure or incorrectly claim rejection.
+      const unknown = createOperationExecution({
+        executionId: context.executionId,
+        preview,
+        result: "UNKNOWN",
+      });
+      return {
+        execution: unknown,
+        verification: { executionId: unknown.executionId, status: "UNKNOWN" },
+      };
+    }
     return { execution, verification };
   }
 
