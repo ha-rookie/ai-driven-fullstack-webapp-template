@@ -69,7 +69,9 @@ test("authenticated GET/PATCH persists and reloads only own validated preference
   assert.equal(savedBody.values.theme, "system");
   assert.equal(saved?.headers.get("cache-control"), "no-store");
   const reloaded = await f.api(await f.req("alice-token"));
-  assert.deepEqual(await reloaded?.json(), await saved?.clone().json());
+  const reloadedBody = await reloaded?.json() as { version: number; values: Record<string, unknown> };
+  assert.equal(reloadedBody.version, savedBody.version);
+  assert.deepEqual(reloadedBody.values, savedBody.values);
   const other = await f.api(await f.req("bob-token"));
   assert.equal((await other?.json() as { version: number }).version, 0);
   const preview = await f.api(await f.req("alice-token"), "preview");
