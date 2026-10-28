@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   type PropsWithChildren,
   useContext,
   useEffect,
@@ -9,7 +10,10 @@ import {
 import { useAuth } from "../auth";
 import {
   resolveUserPreferences,
+  validateUserPreferencePatch,
   type PreferenceDeviceSignals,
+  type PreferenceField,
+  type UserPreferenceValues,
   type ResolvedUserPreferences,
   type UserPreferencePolicy,
 } from "../../shared/user-preferences";
@@ -58,11 +62,35 @@ export const readWorkhubDeviceSignals = (): PreferenceDeviceSignals => {
   return { locale: deviceLocale(), timezone, prefersDark };
 };
 
+export interface WorkhubPreferencePreview {
+  readonly userId: string;
+  readonly values: UserPreferenceValues;
+}
+
+/**
+ * Reuse the shared resolver for an explicitly unsaved, current-user-only preview.
+ * Never present preview values for a different user or an unauthenticated session.
+ */
+export const resolveWorkhubPreferencePreview = (
+  authenticatedUserId: string | null,
+  preview: WorkhubPreferencePreview | null,
+  device: PreferenceDeviceSignals,
+): ResolvedUserPreferences => resolveUserPreferences({
+  policy: workhubPreferencePolicy,
+  authenticated: authenticatedUserId !== null,
+  user: authenticatedUserId !== null && preview?.userId === authenticatedUserId ? preview.values : null,
+  device,
+});
+
 export interface UserPreferencesContextValue {
   readonly resolved: ResolvedUserPreferences;
-  /** This slice has NO authenticated server-side preference loader or saved values. */
-  readonly sourceOfTruth: "device-and-project-defaults-only";
+  /** "user" provenance inside a preview means a simulated user-layer value, NEVER persisted. */
+  readonly sourceOfTruth: "device-and-project-defaults-only" | "unsaved-session-preview";
   readonly authenticated: boolean;
+  readonly preview: UserPreferenceValues;
+  readonly previewActive: boolean;
+  readonly setPreview: (field: PreferenceField, value: string | null) => void;
+  readonly resetPreview: () => void;
 }
 
 const UserPreferencesContext = createContext<UserPreferencesContextValue | null>(null);
@@ -74,6 +102,8 @@ const UserPreferencesContext = createContext<UserPreferencesContextValue | null>
 export const UserPreferencesProvider = ({ children }: PropsWithChildren) => {
   const auth = useAuth();
   const [device, setDevice] = useState(readWorkhubDeviceSignals);
+  // Transient in-memory settings for demo only. No localStorage, API or saved-user profile.
+  const [previewState, setPreviewState] = useState<WorkhubPreferencePreview | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -88,17 +118,33 @@ export const UserPreferencesProvider = ({ children }: PropsWithChildren) => {
     };
   }, []);
 
-  const authenticated = auth.status === "authenticated" && auth.user !== null;
+  const userId = auth.status === "authenticated" ? auth.user?.id ?? null : null;
+  const authenticated = userId !== null;
+  const currentPreview = userId !== null && previewState?.userId === userId ? previewState : null;
+
+  // Identity changes must clear the old simulation; the render gate above also
+  // prevents even one frame of another account's preview before this effect runs.
+  useEffect(() => { setPreviewState(null); }, [userId]);
+
+  const setPreview = useCallback((field: PreferenceField, input: string | null) => {
+    if (userId === null) return;
+    const validated = validateUserPreferencePatch({ [field]: input }, workhubPreferencePolicy);
+    setPreviewState(previous => ({
+      userId,
+      values: { ...(previous?.userId === userId ? previous.values : {}), ...validated },
+    }));
+  }, [userId]);
+  const resetPreview = useCallback(() => setPreviewState(null), []);
+
   const value = useMemo<UserPreferencesContextValue>(() => ({
-    resolved: resolveUserPreferences({
-      policy: workhubPreferencePolicy,
-      authenticated,
-      device,
-      // Do not synthesize persisted preferences from user ID or browser storage.
-    }),
-    sourceOfTruth: "device-and-project-defaults-only",
+    resolved: resolveWorkhubPreferencePreview(userId, currentPreview, device),
+    sourceOfTruth: currentPreview ? "unsaved-session-preview" : "device-and-project-defaults-only",
     authenticated,
-  }), [authenticated, device]);
+    preview: currentPreview?.values ?? {},
+    previewActive: currentPreview !== null,
+    setPreview,
+    resetPreview,
+  }), [userId, currentPreview, device, authenticated, setPreview, resetPreview]);
 
   return <UserPreferencesContext.Provider value={value}>{children}</UserPreferencesContext.Provider>;
 };

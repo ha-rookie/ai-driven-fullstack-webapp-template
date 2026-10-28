@@ -70,3 +70,32 @@
   .workhub-developer-architecture li, .workhub-developer-capability-list > li { border-color: #678da9; }
   .workhub-developer-scenario { background: #223b52; }
 }
+
+
+/* #288: clearly local, unsaved settings preview; never apply scheme to the app shell. */
+.workhub-preference-preview-fields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px; margin: 14px 0 8px; padding: 12px;
+  border: 1px solid #8ca9bc; border-radius: 10px; min-width: 0;
+}
+.workhub-preference-preview-fields legend { padding: 0 6px; font-weight: 700; }
+.workhub-preference-preview-fields label {
+  display: grid; gap: 6px; min-width: 0; font-size: .9rem; font-weight: 650;
+}
+.workhub-preference-preview-fields select {
+  width: 100%; min-width: 0; min-height: 42px; padding: 8px;
+  font: inherit; color: inherit; background: inherit;
+  border: 1px solid #8ca9bc; border-radius: 7px;
+}
+.workhub-preference-preview-action {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 8px 0;
+}
+.workhub-preference-preview-example {
+  display: grid; gap: 4px; margin: 10px 0; padding: 14px;
+  border: 1px solid #9bb6c8; border-radius: 9px;
+  background: #f4f8fb; color: #172e41;
+}
+.workhub-preference-preview-example[data-preview-scheme="dark"] {
+  border-color: #547996; background: #1b2c3c; color: #f1f6ff;
+}
+.workhub-preference-preview-example small { opacity: .85; }
