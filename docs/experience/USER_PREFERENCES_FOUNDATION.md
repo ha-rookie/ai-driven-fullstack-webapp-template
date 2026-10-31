@@ -93,3 +93,35 @@ behavior. The #288 server-side Source of Truth remains environment-gated:
 without explicit separate approval to migrate the new table to remote D1 and
 deploy the code, Preview/Production persistence is not asserted. Formal ST #694
 remains a later activity. A PR's green CI is not deployment or formal acceptance.
+
+
+## #288 Remote Preview D1 read-only evidence path (incremental)
+
+The remaining original #288 server-side Source of Truth criterion requires
+a real Preview D1 migration state and authenticated persistence test, not
+another implementation framework. The sole initial blocker is that the ChatGPT
+GitHub connection cannot directly call Cloudflare D1. Existing guarded
+Preview migration dispatch is **not** an inspection command: it proceeds
+to `migrations apply` when its owner-approved pending plan matches.
+
+The narrowly scoped `.github/workflows/preview-d1-readonly-inspect.yml`
+gives the repository owner a non-mutating evidence path:
+a WBS #132 owner comment
+`/inspect-preview-d1-migrations <exact-current-main-sha>`
+on the trusted default branch triggers only a read-only job. It checks
+owner association and actor, current main SHA, the existing pinned Preview
+DB binding/name/UUID, and Cloudflare resource identity with a GET using
+the preexisting dedicated D1 migration credential. It then runs only
+`wrangler d1 migrations list DB --remote --preview` and schema/history
+SELECTs. It publishes pending names in order and presence of the
+`user_preferences` table / migration name as safe GitHub job evidence.
+It never dispatches the migration workflow, runs an apply/deploy/seed,
+alters database resources, logs secrets or reads user preference rows.
+
+This is **diagnostic-only**, and must not be mistaken for proof that
+preferences persist across sessions or devices. If owner, secret,
+Cloudflare identity, exact SHA or list/query fails, the result is UNKNOWN,
+not proof of an unapplied migration. A separate owner-approved migration
+with the exact observed pending list is required if a migration is
+needed; a separate Preview code deploy and limited authenticated
+save/reload acceptance follow. Production remains out of scope.
