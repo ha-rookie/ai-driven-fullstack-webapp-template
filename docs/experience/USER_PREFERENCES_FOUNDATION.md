@@ -63,3 +63,33 @@ Full browser/system/multi-device remote verification remains separate under
 the existing WBS and Issue #694. The original #288 completion checklist is
 unchanged; distinguish local tested implementation from confirmed production
 or formal acceptance.
+
+
+## #288 existing Frontend Foundation reuse (focus #288 / PR pending)
+
+This incremental change deliberately **reuses** the prior Foundations rather than
+introducing another state machine or making theme/i18n product-wide:
+
+- **#49 Browser E2E / Accessibility:** the WORKHUB reference retains native
+  label-associated selectors, keyboard-operable buttons and an `aria-live`
+  status. While persisted preferences are loading, selectors are disabled;
+  during mutation, `aria-busy` communicates progress and duplicate/conflicting
+  saves are disabled. No new global theme or full physical-device ST is claimed.
+- **#60 Frontend Performance:** one authenticated `UserPreferencesProvider`
+  performs a single GET at shell bootstrap/reload, shares its result via Context,
+  and never creates requests per consumer or persists preferences in localStorage.
+- **#126 Frontend Auth Context:** the provider continues using `useAuth` for
+  verified identity and logout/user-switch isolation. A mutation HTTP 401 asks
+  the existing Auth Context to synchronize; no independent token/session state.
+- **#155 Frontend Mutation State:** editing calls the existing
+  `createMutationState` + `runSafeMutation`. The common clean/dirty/submitting/
+  success/conflict/failed phases provide normalization of unchanged values,
+  duplicate suppression, expectedVersion submission, 409 latest-read retaining
+  the user draft, failed-request retry and an explicit reload-to-clean path.
+  No new state framework is introduced.
+
+**Evidence boundary:** focused unit/component tests and required CI show Local
+behavior. The #288 server-side Source of Truth remains environment-gated:
+without explicit separate approval to migrate the new table to remote D1 and
+deploy the code, Preview/Production persistence is not asserted. Formal ST #694
+remains a later activity. A PR's green CI is not deployment or formal acceptance.
