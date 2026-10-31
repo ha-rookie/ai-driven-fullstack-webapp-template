@@ -63,7 +63,7 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
         <div><dt>Theme / Color scheme</dt><dd>{preference.resolved.theme} / {preference.resolved.colorScheme} ({preference.resolved.source.theme})</dd></div>
       </dl>
       <fieldset className="workhub-preference-preview-fields">
-        <legend>{locale === "ja-JP" ? "利用者設定（保存前は一時プレビュー）" : "Account preferences (preview before save)"}</legend>
+        <legend>{locale === "ja-JP" ? "利用者設定（保存前は設定プレビュー・未保存）" : "Account preferences (preview before save)"}</legend>
         <label htmlFor="workhub-preference-preview-locale">
           {locale === "ja-JP" ? "言語" : "Language"}
           <select id="workhub-preference-preview-locale" value={preference.preview.locale ?? ""}
