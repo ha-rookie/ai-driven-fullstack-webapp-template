@@ -1,8 +1,10 @@
 import {
-  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
   type PropsWithChildren,
 } from "react";
 import { useAuth } from "../auth";
+import { ApiClientError } from "../api";
+import { createMutationState, runSafeMutation, type MutationStateController } from "../mutation";
 import {
   resolveUserPreferences, validateUserPreferencePatch, workhubUserPreferencePolicy,
   type PreferenceDeviceSignals, type PreferenceField, type UserPreferenceValues,
@@ -50,9 +52,41 @@ export const resolveWorkhubPreferencePreview = (
 type LoadStatus = "loading" | "ready" | "error";
 type SaveStatus = "idle" | "saving" | "saved" | "conflict" | "error";
 
+interface SavedPreferences {
+  readonly version: number;
+  readonly values: UserPreferenceValues;
+}
+
+/** Reuse #155's shared clean/dirty/submitting/conflict/failed state and version gate. */
+export const createWorkhubPreferenceMutation = (
+  persisted: SavedPreferences,
+): MutationStateController<SavedPreferences> => createMutationState(persisted, {
+  normalize: entry => JSON.stringify([
+    entry.values.locale ?? null, entry.values.timezone ?? null, entry.values.theme ?? null,
+  ]),
+  expectedVersion: entry => entry.version,
+});
+
+const fetchSavedPreferences = async (): Promise<SavedPreferences> => {
+  const response = await fetch("/api/me/preferences", {
+    method: "GET", credentials: "same-origin", cache: "no-store",
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("Preference read unavailable");
+  const payload: unknown = await response.json();
+  if (!payload || typeof payload !== "object") throw new Error("Invalid preference response");
+  const record = payload as { schemaVersion?: unknown; version?: unknown; values?: unknown };
+  if (record.schemaVersion !== 1 || !Number.isSafeInteger(record.version) ||
+      (record.version as number) < 0) throw new Error("Invalid preference version");
+  return {
+    version: record.version as number,
+    values: validateUserPreferencePatch(record.values, workhubUserPreferencePolicy),
+  };
+};
+
 export interface UserPreferencesContextValue {
   readonly resolved: ResolvedUserPreferences;
-  /** Values in a pending draft are not persistent until the server confirms PATCH. */
+  /** Drafts are never the persisted source of truth until PATCH succeeds. */
   readonly sourceOfTruth: "device-and-project-defaults-only" | "unsaved-session-preview" | "server-saved-user-preferences";
   readonly authenticated: boolean;
   readonly preview: UserPreferenceValues;
@@ -67,16 +101,14 @@ export interface UserPreferencesContextValue {
 
 const UserPreferencesContext = createContext<UserPreferencesContextValue | null>(null);
 
-/** One server GET per authenticated shell/refresh, never per consumer component. */
+/** #60: one GET per authenticated shell, shared by all consumers; no localStorage. */
 export const UserPreferencesProvider = ({ children }: PropsWithChildren) => {
-  const auth = useAuth();
+  const auth = useAuth(); // #126: consume authenticated identity, never store raw tokens.
   const [device, setDevice] = useState(readWorkhubDeviceSignals);
-  const [previewState, setPreviewState] = useState<WorkhubPreferencePreview | null>(null);
-  const [serverState, setServerState] = useState<{
-    userId: string; version: number; values: UserPreferenceValues;
+  const [controllerState, setControllerState] = useState<{
+    userId: string; controller: MutationStateController<SavedPreferences>;
   } | null>(null);
   const [loadState, setLoadState] = useState<{ userId: string; status: LoadStatus } | null>(null);
-  const [saveState, setSaveState] = useState<{ userId: string; status: SaveStatus } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -96,34 +128,36 @@ export const UserPreferencesProvider = ({ children }: PropsWithChildren) => {
   const authenticated = userId !== null;
   const activeUserRef = useRef(userId);
   activeUserRef.current = userId;
-  const currentPreview = userId !== null && previewState?.userId === userId ? previewState : null;
-  const currentServer = userId !== null && serverState?.userId === userId ? serverState : null;
-  const loadStatus: LoadStatus = userId !== null && loadState?.userId === userId ? loadState.status : "loading";
-  const saveStatus: SaveStatus = userId !== null && saveState?.userId === userId ? saveState.status : "idle";
+
+  // Both the identity gate and subscription are shared across consumers (#126/#155).
+  const currentController = userId !== null && controllerState?.userId === userId
+    ? controllerState.controller : null;
+  const subscribe = useCallback((listener: () => void) =>
+    currentController?.subscribe(listener) ?? (() => {}), [currentController]);
+  const getSnapshot = useCallback(() => currentController?.getSnapshot() ?? null, [currentController]);
+  const mutation = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const loadStatus: LoadStatus = userId !== null && loadState?.userId === userId
+    ? loadState.status : "loading";
+  const phase = mutation?.phase;
+  const previewActive = phase === "dirty" || phase === "submitting" ||
+    phase === "conflict" || phase === "failed";
+  const saveStatus: SaveStatus = phase === "submitting" ? "saving"
+    : phase === "success" ? "saved"
+      : phase === "conflict" ? "conflict"
+        : phase === "failed" ? "error" : "idle";
 
   useEffect(() => {
     if (userId === null) {
-      setServerState(null);
+      setControllerState(null);
       setLoadState(null);
-      setSaveState(null);
       return;
     }
     let active = true;
+    setControllerState(null);
     setLoadState({ userId, status: "loading" });
-    setSaveState({ userId, status: "idle" });
-    void fetch("/api/me/preferences", {
-      method: "GET", credentials: "same-origin", cache: "no-store",
-      headers: { accept: "application/json" },
-    }).then(async response => {
-      if (!response.ok) throw new Error("Preference read unavailable");
-      const payload: unknown = await response.json();
-      if (!payload || typeof payload !== "object") throw new Error("Invalid preference response");
-      const record = payload as { schemaVersion?: unknown; version?: unknown; values?: unknown };
-      if (record.schemaVersion !== 1 || !Number.isSafeInteger(record.version) ||
-          (record.version as number) < 0) throw new Error("Invalid preference version");
-      const values = validateUserPreferencePatch(record.values, workhubUserPreferencePolicy);
+    void fetchSavedPreferences().then(saved => {
       if (active && activeUserRef.current === userId) {
-        setServerState({ userId, version: record.version as number, values });
+        setControllerState({ userId, controller: createWorkhubPreferenceMutation(saved) });
         setLoadState({ userId, status: "ready" });
       }
     }).catch(() => {
@@ -132,37 +166,30 @@ export const UserPreferencesProvider = ({ children }: PropsWithChildren) => {
     return () => { active = false; };
   }, [userId, reloadKey]);
 
-  useEffect(() => { setPreviewState(null); }, [userId]);
-
   const setPreview = useCallback((field: PreferenceField, input: string | null) => {
-    if (userId === null) return;
+    if (!currentController || !mutation || loadStatus !== "ready") return;
     const validated = validateUserPreferencePatch({ [field]: input }, workhubUserPreferencePolicy);
-    setPreviewState(previous => ({
-      userId,
-      values: {
-        ...(previous?.userId === userId ? previous.values :
-          serverState?.userId === userId ? serverState.values : {}),
-        ...validated,
-      },
-    }));
-    setSaveState({ userId, status: "idle" });
-  }, [userId, serverState]);
+    currentController.setDraft({
+      version: mutation.persisted.version,
+      values: { ...mutation.draft.values, ...validated },
+    });
+  }, [currentController, mutation, loadStatus]);
 
   const resetPreview = useCallback(() => {
-    setPreviewState(null);
-    if (userId) setSaveState({ userId, status: "idle" });
-  }, [userId]);
+    if (currentController && mutation && phase !== "submitting") {
+      currentController.acceptLatest(mutation.persisted);
+    }
+  }, [currentController, mutation, phase]);
+
   const reloadSaved = useCallback(() => {
-    setPreviewState(null);
+    setControllerState(null);
     setReloadKey(previous => previous + 1);
   }, []);
 
   const savePreview = useCallback(async () => {
-    if (userId === null || !currentPreview || !currentServer || loadStatus !== "ready" ||
-        saveStatus === "saving") return;
-    const id = userId;
-    setSaveState({ userId: id, status: "saving" });
-    try {
+    if (!currentController || !mutation || userId === null || loadStatus !== "ready") return;
+    const submittingUserId = userId;
+    await runSafeMutation(currentController, async ({ draft, expectedVersion }) => {
       const csrf = await fetch("/api/auth/csrf", {
         method: "GET", credentials: "same-origin", cache: "no-store",
       });
@@ -172,40 +199,46 @@ export const UserPreferencesProvider = ({ children }: PropsWithChildren) => {
       const response = await fetch("/api/me/preferences", {
         method: "PATCH", credentials: "same-origin", cache: "no-store",
         headers: { "content-type": "application/json", "x-csrf-token": csrfBody.csrfToken },
-        body: JSON.stringify({ expectedVersion: currentServer.version, patch: currentPreview.values }),
+        body: JSON.stringify({ expectedVersion, patch: draft.values }),
       });
       if (response.status === 409) {
-        if (activeUserRef.current === id) setSaveState({ userId: id, status: "conflict" });
-        return;
+        throw new ApiClientError("http", "Preference conflict", { status: 409 });
+      }
+      if (response.status === 401) {
+        throw new ApiClientError("http", "Authentication required", { status: 401 });
       }
       if (!response.ok) throw new Error("Preference save unavailable");
-      const payload = await response.json() as { version: number; values: UserPreferenceValues };
-      if (!Number.isSafeInteger(payload.version) || !payload.values) throw new Error("Invalid preference response");
-      const values = validateUserPreferencePatch(payload.values, workhubUserPreferencePolicy);
-      if (activeUserRef.current === id) {
-        setServerState({ userId: id, version: payload.version, values });
-        setPreviewState(null);
-        setSaveState({ userId: id, status: "saved" });
+      const payload: unknown = await response.json();
+      if (!payload || typeof payload !== "object") throw new Error("Invalid preference response");
+      const record = payload as { version?: unknown; values?: unknown };
+      if (!Number.isSafeInteger(record.version) || (record.version as number) < 1) {
+        throw new Error("Invalid preference response");
       }
-    } catch {
-      if (activeUserRef.current === id) setSaveState({ userId: id, status: "error" });
-    }
-  }, [userId, currentPreview, currentServer, loadStatus, saveStatus]);
+      return {
+        version: record.version as number,
+        values: validateUserPreferencePatch(record.values, workhubUserPreferencePolicy),
+      };
+    }, {
+      loadLatest: fetchSavedPreferences, // #155: refresh latest without discarding a conflicting draft.
+      onAuthenticationRequired: async () => {
+        if (activeUserRef.current === submittingUserId) await auth.synchronize();
+      },
+    });
+  }, [currentController, mutation, userId, loadStatus, auth]);
 
+  const resolvedCandidate: WorkhubPreferencePreview | null = userId !== null && mutation
+    ? { userId, values: (previewActive ? mutation.draft : mutation.persisted).values } : null;
   const value = useMemo<UserPreferencesContextValue>(() => ({
-    resolved: resolveWorkhubPreferencePreview(
-      userId, currentPreview ?? (loadStatus === "ready" && currentServer
-        ? { userId: currentServer.userId, values: currentServer.values } : null), device,
-    ),
-    sourceOfTruth: currentPreview ? "unsaved-session-preview"
-      : loadStatus === "ready" && currentServer ? "server-saved-user-preferences"
-      : "device-and-project-defaults-only",
+    resolved: resolveWorkhubPreferencePreview(userId, resolvedCandidate, device),
+    sourceOfTruth: previewActive ? "unsaved-session-preview"
+      : loadStatus === "ready" && mutation ? "server-saved-user-preferences"
+        : "device-and-project-defaults-only",
     authenticated,
-    preview: currentPreview?.values ?? (loadStatus === "ready" ? currentServer?.values ?? {} : {}),
-    previewActive: currentPreview !== null,
+    preview: mutation?.draft.values ?? {},
+    previewActive,
     loadStatus, saveStatus, savePreview, reloadSaved, setPreview, resetPreview,
-  }), [userId, currentPreview, currentServer, device, authenticated, loadStatus, saveStatus,
-    savePreview, reloadSaved, setPreview, resetPreview]);
+  }), [userId, resolvedCandidate, device, previewActive, loadStatus, mutation, authenticated,
+    saveStatus, savePreview, reloadSaved, setPreview, resetPreview]);
 
   return <UserPreferencesContext.Provider value={value}>{children}</UserPreferencesContext.Provider>;
 };
