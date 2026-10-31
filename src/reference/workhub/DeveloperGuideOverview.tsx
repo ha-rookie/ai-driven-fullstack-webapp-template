@@ -55,15 +55,15 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
     <section aria-label="User Preferences Reference">
       <h4>User Preferences / Resolved Experience</h4>
       <p>{locale === "ja-JP"
-        ? "端末情報とProject既定値から共通Resolverで解決した表示候補です。ログイン利用者の保存設定は未接続で、この値は保存されません。画面全体の翻訳・配色変更も未実装です。"
-        : "Reference values resolved from device signals and project defaults. Saved user preferences are not connected or persisted; full-app translation and theme changes are not implemented."}</p>
+        ? "ログイン利用者の保存設定を優先し、未設定時は端末・Project既定値で解決します。変更は「設定を保存」を押すまで保存されません。画面全体の翻訳・配色変更は後続Issueです。"
+        : "Saved account preferences take precedence over device/project defaults. Edits are not saved until you select Save. Full-app translation and appearance are later work."}</p>
       <dl>
         <div><dt>Locale</dt><dd>{preference.resolved.locale} ({preference.resolved.source.locale})</dd></div>
         <div><dt>Timezone</dt><dd>{preference.resolved.timezone} ({preference.resolved.source.timezone})</dd></div>
         <div><dt>Theme / Color scheme</dt><dd>{preference.resolved.theme} / {preference.resolved.colorScheme} ({preference.resolved.source.theme})</dd></div>
       </dl>
       <fieldset className="workhub-preference-preview-fields">
-        <legend>{locale === "ja-JP" ? "設定プレビュー（この画面内だけ・未保存）" : "Settings preview (this session only; not saved)"}</legend>
+        <legend>{locale === "ja-JP" ? "利用者設定（保存前は一時プレビュー）" : "Account preferences (preview before save)"}</legend>
         <label htmlFor="workhub-preference-preview-locale">
           {locale === "ja-JP" ? "言語" : "Language"}
           <select id="workhub-preference-preview-locale" value={preference.preview.locale ?? ""}
@@ -98,9 +98,29 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
         <button type="button" className="workhub-secondary-button"
           disabled={!preference.previewActive}
           onClick={preference.resetPreview}>{locale === "ja-JP" ? "プレビューを初期化" : "Reset preview"}</button>
-        <small role="status">{preference.previewActive
-          ? (locale === "ja-JP" ? "一時プレビュー中・保存されません" : "Session preview only — not saved")
-          : (locale === "ja-JP" ? "端末・既定値を表示中" : "Device / defaults shown")}</small>
+        <button type="button" className="workhub-secondary-button"
+          disabled={!preference.previewActive || preference.loadStatus !== "ready" || preference.saveStatus === "saving"}
+          onClick={() => { void preference.savePreview(); }}>{locale === "ja-JP" ? "設定を保存" : "Save preferences"}</button>
+        <button type="button" className="workhub-secondary-button"
+          disabled={preference.saveStatus === "saving"}
+          onClick={preference.reloadSaved}>{locale === "ja-JP" ? "保存済み設定を再取得" : "Reload saved"}</button>
+        <small role="status" aria-live="polite">
+          {preference.saveStatus === "conflict"
+            ? (locale === "ja-JP" ? "別端末の更新と競合しました。再取得してから編集してください。" : "Another update won. Reload before editing.")
+            : preference.saveStatus === "error"
+              ? (locale === "ja-JP" ? "保存に失敗しました。再試行できます。" : "Save failed. You can retry.")
+              : preference.saveStatus === "saving"
+                ? (locale === "ja-JP" ? "保存中…" : "Saving…")
+                : preference.saveStatus === "saved"
+                  ? (locale === "ja-JP" ? "保存しました" : "Saved")
+                  : preference.loadStatus === "error"
+                    ? (locale === "ja-JP" ? "保存済み設定を取得できません（保存不可）" : "Saved preferences unavailable (save disabled)")
+                    : preference.loadStatus === "loading"
+                      ? (locale === "ja-JP" ? "保存済み設定を取得中…" : "Loading saved preferences…")
+                      : preference.previewActive
+                        ? (locale === "ja-JP" ? "一時プレビュー中・まだ保存されません" : "Unsaved draft")
+                        : (locale === "ja-JP" ? "保存済み設定または既定値を表示中" : "Showing saved settings or defaults")}
+        </small>
       </div>
       <div className="workhub-preference-preview-example"
         data-preview-scheme={preference.resolved.colorScheme} aria-live="polite">
