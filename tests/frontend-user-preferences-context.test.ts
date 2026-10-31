@@ -6,7 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { AuthProvider } from "../src/frontend/auth/context";
 import { createAuthApiLoader, createAuthController, type AuthController } from "../src/frontend/auth/state";
+import { ApiClientError } from "../src/frontend/api";
+import { runSafeMutation } from "../src/frontend/mutation";
 import {
+  createWorkhubPreferenceMutation,
   readWorkhubDeviceSignals,
   resolveWorkhubPreferencePreview,
   UserPreferencesProvider,
@@ -146,4 +149,105 @@ test("WORKHUB Developer Guide exposes labeled selectors, reset action and a loca
   assert.match(html, /data-preview-scheme="(?:light|dark)"/);
   assert.match(html, /2026/);
   assert.doesNotMatch(html, /localStorage|シークレット保存/);
+});
+
+
+test("WORKHUB preference editing reuses #155 clean/dirty/version and skips unchanged submissions", async () => {
+  const mutation = createWorkhubPreferenceMutation({
+    version: 3, values: { locale: "ja-JP", timezone: "Asia/Tokyo", theme: "system" },
+  });
+  const snapshot = mutation.getSnapshot();
+  assert.equal(snapshot.phase, "clean");
+  assert.deepEqual(await runSafeMutation(mutation, async () => {
+    throw new Error("clean must not submit");
+  }), { status: "skipped", reason: "clean" });
+
+  mutation.setDraft({
+    version: snapshot.persisted.version,
+    values: { ...snapshot.draft.values, theme: "dark" },
+  });
+  assert.equal(mutation.getSnapshot().phase, "dirty");
+  let sentVersion: string | number | undefined;
+  let sentTheme: string | null | undefined;
+  let finish!: (saved: { version: number; values: typeof snapshot.persisted.values }) => void;
+  const pending = runSafeMutation(mutation, async ({ draft, expectedVersion }) => {
+    sentVersion = expectedVersion;
+    sentTheme = draft.values.theme;
+    return new Promise<{ version: number; values: typeof snapshot.persisted.values }>(resolve => { finish = resolve; });
+  });
+  assert.equal(mutation.getSnapshot().phase, "submitting");
+  assert.deepEqual(await runSafeMutation(mutation, async () => {
+    throw new Error("duplicate must not submit");
+  }), { status: "skipped", reason: "submitting" });
+  assert.equal(sentVersion, 3);
+  assert.equal(sentTheme, "dark");
+  finish({ version: 4, values: { ...snapshot.persisted.values, theme: "dark" } });
+  assert.equal((await pending).status, "success");
+  assert.equal(mutation.getSnapshot().phase, "success");
+  assert.equal(mutation.getSnapshot().persisted.version, 4);
+
+  mutation.setDraft({ ...mutation.getSnapshot().persisted, values: {
+    locale: "ja-JP", timezone: "Asia/Tokyo", theme: "dark",
+  } });
+  assert.equal(mutation.getSnapshot().phase, "clean");
+});
+
+test("WORKHUB preference conflict keeps the draft and shared #155 state permits reload/re-edit", async () => {
+  const mutation = createWorkhubPreferenceMutation({
+    version: 7, values: { locale: "ja-JP", timezone: "Asia/Tokyo", theme: "light" },
+  });
+  mutation.setDraft({
+    version: 7, values: { locale: "en-US", timezone: "Asia/Tokyo", theme: "light" },
+  });
+  const conflict = await runSafeMutation(mutation, async () => {
+    throw new ApiClientError("http", "Conflict", { status: 409 });
+  }, { loadLatest: async () => ({
+    version: 8, values: { locale: "ja-JP", timezone: "UTC", theme: "dark" as const },
+  }) });
+  assert.equal(conflict.status, "conflict");
+  assert.equal(mutation.getSnapshot().phase, "conflict");
+  assert.equal(mutation.getSnapshot().persisted.version, 8);
+  assert.equal(mutation.getSnapshot().draft.values.locale, "en-US");
+  assert.deepEqual(await runSafeMutation(mutation, async () => {
+    throw new Error("conflicting draft must not auto-submit");
+  }), { status: "skipped", reason: "conflict" });
+  mutation.acceptLatest(mutation.getSnapshot().persisted);
+  assert.equal(mutation.getSnapshot().phase, "clean");
+  assert.equal(mutation.getSnapshot().draft.values.timezone, "UTC");
+  mutation.setDraft({ version: 8, values: {
+    locale: "en-US", timezone: "UTC", theme: "dark",
+  } });
+  assert.equal(mutation.getSnapshot().phase, "dirty");
+});
+
+test("WORKHUB preference failed request retains draft for explicit retry", async () => {
+  const mutation = createWorkhubPreferenceMutation({
+    version: 1, values: { locale: null, timezone: null, theme: null },
+  });
+  mutation.setDraft({ version: 1, values: { locale: "en-US", timezone: null, theme: null } });
+  assert.equal((await runSafeMutation(mutation, async () => {
+    throw new Error("Local D1 unavailable");
+  })).status, "failed");
+  assert.equal(mutation.getSnapshot().phase, "failed");
+  assert.equal(mutation.getSnapshot().draft.values.locale, "en-US");
+  assert.equal((await runSafeMutation(mutation, async ({ expectedVersion, draft }) => {
+    assert.equal(expectedVersion, 1);
+    return { version: 2, values: draft.values };
+  })).status, "success");
+  assert.equal(mutation.getSnapshot().phase, "success");
+});
+
+test("WORKHUB preference selectors are labeled and block saving while loading", async () => {
+  const controller = createAuthController(async () => ({ id: "demo-aoi", displayName: "Demo" }));
+  await controller.bootstrap();
+  const html = renderToStaticMarkup(createElement(
+    AuthProvider, { controller },
+    createElement(UserPreferencesProvider, null,
+      createElement(DeveloperGuideOverview, { locale: "ja-JP", onOpenScreen: () => {} }),
+    ),
+  ));
+  assert.equal((html.match(/<select[^>]*disabled=""/g) ?? []).length, 3);
+  assert.match(html, /role="status"/);
+  assert.match(html, /aria-live="polite"/);
+  assert.match(html, /設定を保存/);
 });
