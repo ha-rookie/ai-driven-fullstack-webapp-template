@@ -1,4 +1,5 @@
-import { isRuntimeEnvironment } from "../shared/runtime/environment";
+import type { RuntimeEnvironment } from "../shared/runtime/environment";
+import { resolveWorkhubRuntimeEnvironment } from "./workhub-login";
 import {
   UserPreferenceValidationError,
   validateUserPreferencePatch,
@@ -61,8 +62,11 @@ export const handleMyPreferencesApi = async (
   if (request.method !== "GET" && request.method !== "PATCH") {
     return failure(requestId, 405, "method_not_allowed", "Method not allowed");
   }
-  const environment = env.RUNTIME_ENVIRONMENT;
-  if (!isRuntimeEnvironment(environment)) {
+  let environment: RuntimeEnvironment;
+  try {
+    // Reuse the existing localhost-only fallback; never infer a remote environment.
+    environment = resolveWorkhubRuntimeEnvironment(request, env.RUNTIME_ENVIRONMENT);
+  } catch {
     return failure(requestId, 503, "runtime_environment_required", "Runtime environment is unavailable");
   }
   // No fallback to a process-global Map or a different-purpose D1 table.

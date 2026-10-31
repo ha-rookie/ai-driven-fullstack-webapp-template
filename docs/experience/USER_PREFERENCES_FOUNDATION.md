@@ -33,3 +33,33 @@ This PR is a **partial** foundation. It supplies tested policy resolution, `unse
 - Impact: new shared pure code and in-memory reference adapter only. No existing API, UI, schema, migration, session, R2, Cloudflare setting or runtime wiring changes.
 - Selected tests: new `tests/user-preferences-foundation.test.ts` through existing unit compilation / targeted Node test and required CI `validate`; Secret detection if triggered.
 - Stop if additional paths, dependencies, a schema change, live provider, API mutation, deployment or remote resource operation would be required. No acceptance checklist edits until the full original gate has verifiable evidence.
+
+## #288 durable Local D1 vertical slice (PR pending, not deployed)
+
+This additional slice builds on the pure resolver / existing API contract. The new ordered
+`migrations/0038_user_preferences.sql` creates a dedicated `user_preferences`
+table keyed by `(environment, user_id)`, with user FK cascade, positive
+version and an allowlisted theme. It does not mutate existing identity columns.
+The durable D1 adapter validates each patch and enforces optimistic concurrency
+through a **single conditional SQL UPDATE** (or conflict-checked INSERT at version 0).
+A stale write returns 409 and never quietly overwrites another device.
+
+The existing `/api/me/preferences` GET/PATCH contract is wired to the Worker.
+It retains active session authentication, same-origin CSRF for PATCH, server-owned
+user ID, a strict allowed-field policy, no-store responses and environment separation.
+The WORKHUB React Preferences Provider performs one GET per authenticated shell,
+shares the resolved values with consumers, previews unsaved edits, obtains CSRF
+through `/api/auth/csrf` and sends expectedVersion with PATCH. A conflict preserves
+an explicit error and offers reload; logout/identity changes do not reuse prior
+user values. Device defaults apply only when server preferences are not available.
+The three selectors and card demonstration do not translate/theme the whole app.
+
+**Deployment / acceptance boundary:** This change can be validated with Local D1
+and required PR CI. No Preview/Production Migration, remote D1 operation,
+deployment, Cloudflare resource changes, secrets or PR merge are authorized.
+Until the new ordered migration is deliberately applied in each environment,
+the API may return a fail-closed 503. An unmerged PR is **not** end-user delivery.
+Full browser/system/multi-device remote verification remains separate under
+the existing WBS and Issue #694. The original #288 completion checklist is
+unchanged; distinguish local tested implementation from confirmed production
+or formal acceptance.

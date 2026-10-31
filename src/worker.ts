@@ -14,6 +14,9 @@ import {
   type AuditEvent,
 } from "./worker/audit";
 import { handleExampleResourceApi } from "./worker/example-resource-api";
+import { handleMyPreferencesApi } from "./worker/user-preferences-api";
+import { D1UserPreferencesStore } from "./worker/d1-user-preferences-store";
+import { workhubUserPreferencePolicy } from "./shared/user-preferences";
 import { createWorkhubJobRecoveryRegistry } from "./reference/workhub/job-recovery";
 import {
   handleAuditLogViewerApi, handleDataCorrectionApi, handleJobOperationsApi, handleIntegrationOperationsApi,
@@ -250,6 +253,13 @@ export default {
       audit,
     );
     if (loginResponse) return api(loginResponse);
+
+    const preferencesResponse = await handleMyPreferencesApi(
+      request, env, requestContext.requestId, {
+        policy: workhubUserPreferencePolicy, store: new D1UserPreferencesStore(env.DB),
+      },
+    );
+    if (preferencesResponse) return api(preferencesResponse);
 
     const operationsOverviewResponse = await handleWorkhubOperationsOverviewApi(
       request, env, requestContext.requestId, { masterViewer: workhubMasterViewerOptions },
