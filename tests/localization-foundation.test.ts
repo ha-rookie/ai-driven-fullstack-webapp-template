@@ -80,7 +80,7 @@ test("resolved timezone is separate from locale; ISO UTC formats match local clo
   const ja = localizer("ja-JP");
   const en = localizer("en-US", "America/New_York");
   const timestamp = "2026-01-15T00:00:00Z";
-  assert.equal(ja.formatDateTime(timestamp, { hour: "2-digit", hour12: false }), "09");
+  assert.equal(ja.formatDateTime(timestamp, { hour: "2-digit", hour12: false }), "09時");
   assert.equal(en.formatDateTime(timestamp, { hour: "2-digit", hour12: true }), "07 PM");
   assert.equal(en.formatDateTime(timestamp, { hour: "2-digit", hour12: true, timeZone: "UTC" }),
     "07 PM", "caller options cannot override #288 resolved timezone");
