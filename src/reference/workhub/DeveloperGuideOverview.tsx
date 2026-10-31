@@ -62,11 +62,12 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
         <div><dt>Timezone</dt><dd>{preference.resolved.timezone} ({preference.resolved.source.timezone})</dd></div>
         <div><dt>Theme / Color scheme</dt><dd>{preference.resolved.theme} / {preference.resolved.colorScheme} ({preference.resolved.source.theme})</dd></div>
       </dl>
-      <fieldset className="workhub-preference-preview-fields">
+      <fieldset className="workhub-preference-preview-fields" aria-busy={preference.saveStatus === "saving"}>
         <legend>{locale === "ja-JP" ? "利用者設定（保存前は設定プレビュー・未保存）" : "Account preferences (preview before save)"}</legend>
         <label htmlFor="workhub-preference-preview-locale">
           {locale === "ja-JP" ? "言語" : "Language"}
           <select id="workhub-preference-preview-locale" value={preference.preview.locale ?? ""}
+            disabled={preference.loadStatus !== "ready"}
             onChange={event => preference.setPreview("locale", event.target.value || null)}>
             <option value="">{locale === "ja-JP" ? "端末・既定値" : "Device / default"}</option>
             <option value="ja-JP">日本語 (ja-JP)</option>
@@ -76,6 +77,7 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
         <label htmlFor="workhub-preference-preview-timezone">
           {locale === "ja-JP" ? "タイムゾーン" : "Timezone"}
           <select id="workhub-preference-preview-timezone" value={preference.preview.timezone ?? ""}
+            disabled={preference.loadStatus !== "ready"}
             onChange={event => preference.setPreview("timezone", event.target.value || null)}>
             <option value="">{locale === "ja-JP" ? "端末・既定値" : "Device / default"}</option>
             <option value="Asia/Tokyo">Asia/Tokyo</option>
@@ -86,6 +88,7 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
         <label htmlFor="workhub-preference-preview-theme">
           {locale === "ja-JP" ? "配色" : "Appearance"}
           <select id="workhub-preference-preview-theme" value={preference.preview.theme ?? ""}
+            disabled={preference.loadStatus !== "ready"}
             onChange={event => preference.setPreview("theme", event.target.value || null)}>
             <option value="">{locale === "ja-JP" ? "端末・既定値" : "Device / default"}</option>
             <option value="light">Light</option>
@@ -96,10 +99,11 @@ export default function DeveloperGuideOverview({ locale, onOpenScreen }: Props) 
       </fieldset>
       <div className="workhub-preference-preview-action">
         <button type="button" className="workhub-secondary-button"
-          disabled={!preference.previewActive}
+          disabled={!preference.previewActive || preference.saveStatus === "saving"}
           onClick={preference.resetPreview}>{locale === "ja-JP" ? "プレビューを初期化" : "Reset preview"}</button>
         <button type="button" className="workhub-secondary-button"
-          disabled={!preference.previewActive || preference.loadStatus !== "ready" || preference.saveStatus === "saving"}
+          disabled={!preference.previewActive || preference.loadStatus !== "ready" ||
+            preference.saveStatus === "saving" || preference.saveStatus === "conflict"}
           onClick={() => { void preference.savePreview(); }}>{locale === "ja-JP" ? "設定を保存" : "Save preferences"}</button>
         <button type="button" className="workhub-secondary-button"
           disabled={preference.saveStatus === "saving"}
