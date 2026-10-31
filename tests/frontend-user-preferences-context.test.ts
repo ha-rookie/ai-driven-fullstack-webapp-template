@@ -173,7 +173,7 @@ test("WORKHUB preference editing reuses #155 clean/dirty/version and skips uncha
   const pending = runSafeMutation(mutation, async ({ draft, expectedVersion }) => {
     sentVersion = expectedVersion;
     sentTheme = draft.values.theme;
-    return new Promise(resolve => { finish = resolve; });
+    return new Promise<{ version: number; values: typeof snapshot.persisted.values }>(resolve => { finish = resolve; });
   });
   assert.equal(mutation.getSnapshot().phase, "submitting");
   assert.deepEqual(await runSafeMutation(mutation, async () => {
