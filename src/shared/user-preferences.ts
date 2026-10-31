@@ -23,6 +23,16 @@ export interface UserPreferencePolicy {
   readonly theme: PreferenceValuePolicy<ThemePreference>;
 }
 
+/** WORKHUB reference policy; generic consumers may provide their own policy. */
+export const workhubUserPreferencePolicy: UserPreferencePolicy = {
+  locale: { allowed: ["ja-JP", "en-US"], projectDefault: "ja-JP", systemDefault: "ja-JP" },
+  timezone: {
+    allowed: ["Asia/Tokyo", "UTC", "America/New_York"],
+    projectDefault: "Asia/Tokyo", systemDefault: "UTC",
+  },
+  theme: { allowed: ["light", "dark", "system"], projectDefault: "system", systemDefault: "light" },
+};
+
 export interface PreferenceDeviceSignals {
   readonly locale?: string;
   readonly timezone?: string;
