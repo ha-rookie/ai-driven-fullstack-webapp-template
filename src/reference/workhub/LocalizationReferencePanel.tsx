@@ -29,7 +29,7 @@ const catalogs = {
     "error.request_id": "リクエストID: {id}",
   },
   "en-US": {
-    "reference.title": "Language reference",
+    "reference.title": "Localization example",
     "reference.description": "Changing language keeps your route, session and unfinished request form.",
     "reference.language": "Display language",
     "reference.save": "Save language preference",

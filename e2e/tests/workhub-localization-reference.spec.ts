@@ -13,7 +13,7 @@ test("#289 locale preview changes only the reference UI, keeping auth, route, di
   const panel = page.locator("#workhub-locale-reference");
   const language = page.locator("#workhub-language-choice");
   await expect(language).toBeEnabled();
-  const purpose = page.getByRole("textbox", { name: "目的" });
+  const purpose = page.getByRole("textbox", { name: "目的", exact: true });
   await expect(purpose).toBeVisible();
   await purpose.fill("draft-must-survive-i18n-switch");
   const originalUrl = page.url();
@@ -24,7 +24,7 @@ test("#289 locale preview changes only the reference UI, keeping auth, route, di
 
   await language.selectOption("en-US");
   await expect(panel).toHaveAttribute("lang", "en-US");
-  await expect(panel.getByRole("heading", { name: "Language reference" })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Localization example" })).toBeVisible();
   await expect(panel.getByRole("combobox", { name: "Display language" })).toBeVisible();
   await expect(panel.getByText("English display")).toBeVisible();
   await expect(purpose).toHaveValue("draft-must-survive-i18n-switch");
