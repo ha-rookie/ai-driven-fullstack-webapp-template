@@ -13,6 +13,7 @@ import { TravelReportRecovery } from "./reference/workhub/TravelReportRecovery";
 import type { WorkhubTravelReportStatus } from "./reference/workhub/report-status";
 import { listActionRequiredMyRequests } from "./reference/workhub/my-requests";
 import WorkhubAppLauncher from "./reference/workhub/WorkhubAppLauncher";
+import LocalizationReferencePanel from "./reference/workhub/LocalizationReferencePanel";
 import "./workhub.css";
 
 interface DemoPersona { readonly key: string; readonly userId: string; readonly displayName: string; readonly roleLabel: string; readonly homeHint: string; }
@@ -812,6 +813,7 @@ function TravelWorkspace() {
             <p>仕事の入口を、ひとつに。今日やることから始めましょう。</p>
           </div>
         </section>
+        <LocalizationReferencePanel />
         {operationModeBlocked && <aside className="workhub-operation-mode-notice" role="alert" aria-label="業務の運用状態">
           <strong>{operationModeBlocked === "operation_read_only" ? "読み取り専用モード" :
             operationModeBlocked === "service_in_maintenance" ? "メンテナンス中" : "運用状態を確認できません"}</strong>
