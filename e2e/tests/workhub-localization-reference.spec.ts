@@ -57,7 +57,6 @@ test("#289 saved locale switches Home without re-login or draft loss; #49/#60 re
   await expect(select).toBeEnabled();
   await purpose.fill("unsaved-trip-must-survive");
   const originalUrl = page.url();
-  await page.waitForLoadState("networkidle");
 
   const requests: string[] = [];
   page.on("request", request => {
