@@ -13,7 +13,8 @@ import { TravelReportRecovery } from "./reference/workhub/TravelReportRecovery";
 import type { WorkhubTravelReportStatus } from "./reference/workhub/report-status";
 import { listActionRequiredMyRequests } from "./reference/workhub/my-requests";
 import WorkhubAppLauncher from "./reference/workhub/WorkhubAppLauncher";
-import LocalizationReferencePanel from "./reference/workhub/LocalizationReferencePanel";
+import LocalizationReferencePanel, { createWorkhubReferenceLocalization } from "./reference/workhub/LocalizationReferencePanel";
+import { useUserPreferences } from "./frontend/preferences/context";
 import "./workhub.css";
 
 interface DemoPersona { readonly key: string; readonly userId: string; readonly displayName: string; readonly roleLabel: string; readonly homeHint: string; }
@@ -218,7 +219,10 @@ function LoginScreen() {
 }
 
 function TravelWorkspace() {
-  const auth = useAuth(); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const isMei = user?.id === "workhub-demo-mei"; const canReviewTravel = isRen || isMei; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
+  const auth = useAuth();
+  const { resolved: homePreferences } = useUserPreferences();
+  const homeLocalization = useMemo(() => createWorkhubReferenceLocalization(homePreferences),
+    [homePreferences.locale, homePreferences.timezone]); const user = auth.user; const isAoi = user?.id === "workhub-demo-aoi"; const isRen = user?.id === "workhub-demo-ren"; const isMei = user?.id === "workhub-demo-mei"; const canReviewTravel = isRen || isMei; const canPublishAnnouncements = user?.id === "workhub-demo-sora"; const reference = user ? HOME_HINTS[user.id] : undefined;
   const [offices, setOffices] = useState<OfficeOption[]>([]); const [myWork, setMyWork] = useState<MyWorkEntry[]>([]); const [myWorkState, setMyWorkState] = useState<"loading" | "ready" | "error">("loading"); const [returnReasons, setReturnReasons] = useState<Record<string, string>>({}); const [myRequests, setMyRequests] = useState<UnifiedMyRequest[]>([]); const [journeyTravelId, setJourneyTravelId] = useState<string | null>(null); const [expenseSelection, setExpenseSelection] = useState<{ readonly id: string; readonly edit: boolean; readonly sequence: number } | null>(null); const [announcements, setAnnouncements] = useState<CompanyAnnouncement[]>([]); const [announcementLoad, setAnnouncementLoad] = useState<"loading" | "ready" | "error">("loading"); const [showAllAnnouncements, setShowAllAnnouncements] = useState(false); const [announcementTitle, setAnnouncementTitle] = useState(""); const [announcementBody, setAnnouncementBody] = useState(""); const [announcementImportance, setAnnouncementImportance] = useState<CompanyAnnouncement["importance"]>("normal"); const [announcementAudience, setAnnouncementAudience] = useState("all"); const [announcementDepartment, setAnnouncementDepartment] = useState("all"); const [announcementFrom, setAnnouncementFrom] = useState(""); const [announcementUntil, setAnnouncementUntil] = useState(""); const [myRequestsState, setMyRequestsState] = useState<"loading" | "ready" | "error">("loading"); const [notifications, setNotifications] = useState<NotificationRecord[]>([]); const [unreadCount, setUnreadCount] = useState(0); const [notificationState, setNotificationState] = useState<"loading" | "ready" | "error">("loading"); const [selectedRequest, setSelectedRequest] = useState<TravelRequestRecord | null>(null); const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRecord | null>(null); const [reportStatus, setReportStatus] = useState<WorkhubTravelReportStatus | null>(null); const [returnComment, setReturnComment] = useState<string | null>(null); const [timeline, setTimeline] = useState<TimelineActivity[]>([]); const [destinationOfficeItemId, setDestinationOfficeItemId] = useState(""); const [startDate, setStartDate] = useState("2026-10-12"); const [endDate, setEndDate] = useState("2026-10-13"); const [purpose, setPurpose] = useState("東京での顧客打ち合わせ"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [searchText, setSearchText] = useState(""); const [searchResults, setSearchResults] = useState<SearchResultRecord[]>([]); const [searching, setSearching] = useState(false);
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [showAskCecil, setShowAskCecil] = useState(false);
@@ -807,10 +811,10 @@ function TravelWorkspace() {
         </aside>}
         <section className="workhub-home-hero" aria-labelledby="workhub-home-title">
           <img src="/images/workhub/workhub-top-hero.jpg" alt="WORKHUB Digital Workplaceのトップビジュアル" />
-          <div className="workhub-home-hero-copy">
+          <div className="workhub-home-hero-copy" lang={homePreferences.locale}>
             <p className="workhub-eyebrow">CECIL WORKS DIGITAL WORKPLACE</p>
-            <h1 id="workhub-home-title">おはようございます、{user?.displayName ?? "ユーザー"}さん</h1>
-            <p>仕事の入口を、ひとつに。今日やることから始めましょう。</p>
+            <h1 id="workhub-home-title">{homeLocalization.t("reference.home_greeting", { name: user?.displayName ?? "ユーザー" })}</h1>
+            <p>{homeLocalization.t("reference.home_lead")}</p>
           </div>
         </section>
         <LocalizationReferencePanel />
