@@ -89,3 +89,21 @@ test("safe fallback never leaks a missing catalog's internal translation key", (
   assert.equal(l10n.t("reference.title"), "Localization example");
   assert.equal(l10n.t("missing.secret"), "Message unavailable");
 });
+
+test("#289 Home labels resolve with #288 locale and safe interpolation", () => {
+  const jaCopy = createWorkhubReferenceLocalization(ja);
+  const enCopy = createWorkhubReferenceLocalization(en);
+  assert.equal(jaCopy.t("reference.home_greeting", { name: "Aoi" }), "おはようございます、Aoiさん");
+  assert.equal(enCopy.t("reference.home_greeting", { name: "Aoi" }), "Good morning, Aoi");
+  assert.match(enCopy.t("reference.home_lead"), /today/);
+});
+
+test("#289 catalog load/unavailable locale falls back safely, without network or raw keys", () => {
+  const fallback = createLocalization({
+    preferences: en,
+    catalogs: { "ja-JP": { "reference.home_greeting": "おはようございます、{name}さん" } },
+    fallbackLocale: "ja-JP",
+  });
+  assert.equal(fallback.t("reference.home_greeting", { name: "Aoi" }), "おはようございます、Aoiさん");
+  assert.equal(fallback.t("error.private"), "Message unavailable");
+});
