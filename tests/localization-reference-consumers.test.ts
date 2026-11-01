@@ -86,6 +86,6 @@ test("WORKHUB reference re-renders ja/en texts, preserves IANA timezone and acce
 
 test("safe fallback never leaks a missing catalog's internal translation key", () => {
   const l10n = createWorkhubReferenceLocalization({ locale: "en-US", timezone: "UTC" });
-  assert.equal(l10n.t("reference.title"), "Language reference");
+  assert.equal(l10n.t("reference.title"), "Localization example");
   assert.equal(l10n.t("missing.secret"), "Message unavailable");
 });
