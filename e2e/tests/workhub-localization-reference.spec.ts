@@ -28,8 +28,8 @@ test("#289 locale preview changes only the reference UI, keeping auth, route, di
   await expect(panel.getByRole("combobox", { name: "Display language" })).toBeVisible();
   await expect(panel.getByText("English display")).toBeVisible();
   await expect(purpose).toHaveValue("draft-must-survive-i18n-switch");
-  await expect(page.getByRole("heading", { name: "Good morning, Aoi Employee" })).toBeVisible();
-  await expect(page.locator(".workhub-home-hero-copy")).toHaveAttribute("lang", "en-US");
+  await expect(page.getByRole("heading", { name: "おはようございます、Aoi Employeeさん" })).toBeVisible();
+  await expect(page.locator(".workhub-home-hero-copy")).toHaveAttribute("lang", "ja-JP");
   expect(page.url()).toBe(originalUrl);
 
   await panel.getByText("Validation example (not a real request error)").click();
@@ -73,8 +73,8 @@ test("#289 saved locale switches Home without re-login or draft loss; #49/#60 re
   await expect(select).toBeFocused();
   await select.selectOption("en-US");
   await expect(panel.getByRole("combobox", { name: "Display language" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Good morning, Aoi Employee" })).toBeVisible();
-  await expect(page.locator(".workhub-home-hero-copy")).toHaveAttribute("lang", "en-US");
+  await expect(page.getByRole("heading", { name: "おはようございます、Aoi Employeeさん" })).toBeVisible();
+  await expect(page.locator(".workhub-home-hero-copy")).toHaveAttribute("lang", "ja-JP");
   await expect(purpose).toHaveValue("unsaved-trip-must-survive");
   expect(page.url()).toBe(originalUrl);
   expect(requests).toEqual([]); // #60: no extra data fetch, page navigation or business mutation on preview.
