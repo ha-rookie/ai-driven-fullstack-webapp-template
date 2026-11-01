@@ -32,3 +32,13 @@ Example: resolveUserPreferences({policy, authenticated: true, user, device}) and
 - Stop if schema, runtime auth, network, source dependencies, unplanned files, Preview/Production, Remote D1/Migration or Cloudflare resources become necessary. This PR stays unmerged until separate approval of its complete HEAD.
 - No original completion box is checked merely because this PR exists or its CI passed. Evaluate original criteria again after delivery evidence reaches the agreed boundary.
 
+
+## 2026-11-01 — #289 slice 2 (proposed PR; **not merged**)
+
+- Base main: `a24b3bd4dd66b75c16b38f95a4d8b5ffaa39afbe`; focus `[289]`; original completion 7/11 Open. Stage, milestones and priorities unchanged.
+- A compact WORKHUB *reference panel* consumes the existing #288 context. Its language selector previews `ja-JP`/`en-US`, explicitly saves through #288's CSRF/versioned user preference flow, and leaves other route/session/dirty business form state owned by their existing components. This is **not** full WORKHUB UI translation or a verified live browser journey.
+- #63's existing `ApiClientError` → `toErrorViewModel` mapping can now use an allowlisted code-to-catalog adapter and localized `ErrorPresentation` actions and request IDs. Only text nodes; no backend message, raw stack, raw HTML, credential or authorization decisions.
+- Email's recipient, Announcement's viewer chrome and Report's existing view-model locale/timezone now have explicit, *pure* `create*Localization` adapters. Email sending, announcement authored business content and PDF/report renderer output stay unchanged.
+- Tests cover Japanese/English SSR display, localized error-code/field presentation, safe fallback, Intl timezone, and isolated audience-specific content adapters. CI is the evidence source; accessibility *browser* smoke and frontend load/runtime state preservation remain separate, until independently proven.
+- Change contract: `src/App.tsx`, `src/reference/workhub/LocalizationReferencePanel.tsx`, `src/frontend/errors/{localized,presentation,index}.ts`, `src/shared/localization-consumers.ts`, `tests/localization-reference-consumers.test.ts`, this document = **8 files**. No API/worker/D1/schema/provider, dependency, auth policy, external provider or Cloudflare resource changes; no locale store or retranslation of business data.
+- Completion remains **7/11 while this PR is unmerged**. A merged PR would still need independent evidence before any original checkbox is changed. Formal ST #694 Not Run; Preview and Production untouched. Separate exact-HEAD human approval needed to merge.
