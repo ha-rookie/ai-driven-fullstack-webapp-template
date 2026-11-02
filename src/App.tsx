@@ -14,6 +14,7 @@ import type { WorkhubTravelReportStatus } from "./reference/workhub/report-statu
 import { listActionRequiredMyRequests } from "./reference/workhub/my-requests";
 import WorkhubAppLauncher from "./reference/workhub/WorkhubAppLauncher";
 import LocalizationReferencePanel, { createWorkhubReferenceLocalization } from "./reference/workhub/LocalizationReferencePanel";
+import ThemeReferencePanel, { WorkhubThemeSurface } from "./reference/workhub/ThemeReferencePanel";
 import { useUserPreferences } from "./frontend/preferences/context";
 import "./workhub.css";
 
@@ -823,6 +824,7 @@ function TravelWorkspace() {
           </div>
         </section>
         <LocalizationReferencePanel />
+        <ThemeReferencePanel />
         {operationModeBlocked && <aside className="workhub-operation-mode-notice" role="alert" aria-label="業務の運用状態">
           <strong>{operationModeBlocked === "operation_read_only" ? "読み取り専用モード" :
             operationModeBlocked === "service_in_maintenance" ? "メンテナンス中" : "運用状態を確認できません"}</strong>
@@ -1109,10 +1111,20 @@ function TravelWorkspace() {
 
 export default function App() {
   const auth = useAuth();
+  const { resolved: themePreferences } = useUserPreferences();
   useEffect(() => {
     if (auth.status !== "authenticated") return;
     const recheck = () => { void auth.synchronize(); };
     window.addEventListener("workhub:session-check", recheck);
     return () => window.removeEventListener("workhub:session-check", recheck);
   }, [auth.status, auth.synchronize]);
-  if (auth.status === "loading") return <main className="workhub-loading" aria-live="polite"><Brand /><span className="workhub-loading-bar" aria-hidden="true" /><p>ログイン状態を確認しています…</p></main>; if (auth.status === "authenticated") return window.location.pathname.startsWith("/admin") ? <AdminPortal /> : <TravelWorkspace />; if (auth.status === "error") return <main className="workhub-loading"><Brand /><h1>ログイン状態を確認できません</h1><p>通信状態を確認してから、もう一度お試しください。</p><button className="workhub-primary-button workhub-retry-button" type="button" onClick={() => void auth.synchronize()}>再試行</button></main>; return <LoginScreen />; }
+  const screen = auth.status === "loading"
+    ? <main className="workhub-loading" aria-live="polite"><Brand /><span className="workhub-loading-bar" aria-hidden="true" /><p>ログイン状態を確認しています…</p></main>
+    : auth.status === "authenticated"
+      ? window.location.pathname.startsWith("/admin") ? <AdminPortal /> : <TravelWorkspace />
+      : auth.status === "error"
+        ? <main className="workhub-loading"><Brand /><h1>ログイン状態を確認できません</h1><p>通信状態を確認してから、もう一度お試しください。</p><button className="workhub-primary-button workhub-retry-button" type="button" onClick={() => void auth.synchronize()}>再試行</button></main>
+        : <LoginScreen />;
+  // Only protected WORKHUB routes use this surface; public Showcase/Reference bypass App.
+  return <WorkhubThemeSurface resolved={themePreferences}>{screen}</WorkhubThemeSurface>;
+}
