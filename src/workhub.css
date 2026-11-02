@@ -1730,3 +1730,14 @@ input:disabled {
 .workhub-theme-control [role="alert"] {
   color: var(--workhub-danger);
 }
+
+/* #290 Slice A: prevent the new screen-only theme wrapper from creating a
+   phantom A4 page. The existing printable travel sheet stays authoritative. */
+@media print {
+  .workhub-theme-scope {
+    min-height: 0 !important;
+    height: auto !important;
+    background: #fff !important;
+    color-scheme: light;
+  }
+}
