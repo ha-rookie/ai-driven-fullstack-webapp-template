@@ -1595,3 +1595,149 @@ input:disabled {
   .workhub-developer-user-menu-content { background: #1a2d40; border-color: #8aa5bd; }
   .workhub-developer-user-menu-content .workhub-developer-entry { color: #eef6ff; }
 }
+
+/* #290 Slice A: scoped semantic themes. Public /showcase and /reference do not
+   mount this surface; the brand gradient remains a distinct project token. */
+.workhub-theme-scope {
+  --workhub-page: #f2f5f6;
+  --workhub-surface: #ffffff;
+  --workhub-surface-muted: #f8fafb;
+  --workhub-text: #173243;
+  --workhub-text-muted: #526b77;
+  --workhub-border: #dbe3e5;
+  --workhub-primary: #176f74;
+  --workhub-focus: #187278;
+  --workhub-danger: #a43c3c;
+  --workhub-brand-gradient: linear-gradient(140deg, #173b54, #176d72);
+  min-height: 100vh;
+  color: var(--workhub-text);
+  background: var(--workhub-page);
+  color-scheme: light;
+}
+.workhub-theme-scope[data-theme="dark"] {
+  --workhub-page: #101a25;
+  --workhub-surface: #1d2c3b;
+  --workhub-surface-muted: #243544;
+  --workhub-text: #eef4f8;
+  --workhub-text-muted: #c0d0d9;
+  --workhub-border: #44586a;
+  --workhub-primary: #78d1ca;
+  --workhub-focus: #a4ece2;
+  --workhub-danger: #ffacac;
+  color-scheme: dark;
+}
+.workhub-theme-scope .workhub-home-shell,
+.workhub-theme-scope .workhub-loading {
+  color: var(--workhub-text);
+  background: var(--workhub-page);
+}
+.workhub-theme-scope .workhub-home-header,
+.workhub-theme-scope .workhub-side-nav,
+.workhub-theme-scope .workhub-login-panel {
+  border-color: var(--workhub-border);
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope .workhub-home-header .workhub-brand-name,
+.workhub-theme-scope .workhub-home-header .workhub-brand-subtitle,
+.workhub-theme-scope .workhub-user-chip,
+.workhub-theme-scope .workhub-side-nav a,
+.workhub-theme-scope .workhub-home-lead,
+.workhub-theme-scope .workhub-reference-note {
+  color: var(--workhub-text-muted);
+}
+.workhub-theme-scope .workhub-home-card:not(.workhub-home-card-primary),
+.workhub-theme-scope .workhub-dashboard-card,
+.workhub-theme-scope .workhub-quick-actions,
+.workhub-theme-scope .workhub-showcase-strip,
+.workhub-theme-scope .workhub-card,
+.workhub-theme-scope .workhub-login-card {
+  border-color: var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope .workhub-home-card:not(.workhub-home-card-primary) p,
+.workhub-theme-scope .workhub-home-card:not(.workhub-home-card-primary) .workhub-card-label,
+.workhub-theme-scope .workhub-card-label,
+.workhub-theme-scope .workhub-empty-state {
+  color: var(--workhub-text-muted);
+}
+.workhub-theme-scope .workhub-section-heading h2,
+.workhub-theme-scope .workhub-dashboard-card h2,
+.workhub-theme-scope .workhub-quick-actions h2,
+.workhub-theme-scope .workhub-showcase-strip h2,
+.workhub-theme-scope .workhub-home-card:not(.workhub-home-card-primary) h2 {
+  color: var(--workhub-text);
+}
+.workhub-theme-scope .workhub-side-nav a:hover,
+.workhub-theme-scope .workhub-side-nav a.is-active {
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope .workhub-secondary-button,
+.workhub-theme-scope .workhub-header-action {
+  border-color: var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope .workhub-secondary-button:not(:disabled):hover {
+  border-color: var(--workhub-primary);
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope .workhub-primary-button {
+  border-color: var(--workhub-primary);
+  background: var(--workhub-brand-gradient);
+  color: #fff;
+}
+.workhub-theme-scope .workhub-global-search,
+.workhub-theme-scope .workhub-search-category {
+  border-color: var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope .workhub-global-search input,
+.workhub-theme-scope .workhub-global-search button {
+  color: var(--workhub-text);
+}
+.workhub-theme-scope :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--workhub-focus);
+  outline-offset: 2px;
+}
+.workhub-theme-control {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+  max-width: 340px;
+}
+.workhub-theme-control label {
+  color: var(--workhub-text);
+  font-weight: 700;
+}
+.workhub-theme-control select {
+  min-height: 44px;
+  border: 1px solid var(--workhub-border);
+  border-radius: 9px;
+  padding: 8px 12px;
+  color: var(--workhub-text);
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-control .workhub-secondary-button {
+  justify-self: start;
+}
+.workhub-theme-control p {
+  margin: 0;
+  color: var(--workhub-text-muted);
+}
+.workhub-theme-control [role="alert"] {
+  color: var(--workhub-danger);
+}
+
+/* #290 Slice A: prevent the new screen-only theme wrapper from creating a
+   phantom A4 page. The existing printable travel sheet stays authoritative. */
+@media print {
+  .workhub-theme-scope {
+    min-height: 0 !important;
+    height: auto !important;
+    background: #fff !important;
+    color-scheme: light;
+  }
+}
