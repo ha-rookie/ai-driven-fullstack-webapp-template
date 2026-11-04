@@ -348,3 +348,167 @@ test("#290 Slice D: A4 print policy is stable in light, dark and OS-system theme
   }
   expect(writes, "Theme previews must not persist the saved preference").toEqual([]);
 });
+
+
+test("#290 Slice F: theme transitions record DOM response, business remounts and API budget", async ({ page }, testInfo) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
+    .getByRole("button", { name: /Aoi Employee/u }).click();
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+
+  const panel = page.locator("#workhub-theme-reference");
+  const choice = panel.getByRole("combobox", { name: "表示テーマ" });
+  const surface = page.locator(".workhub-theme-scope");
+  const purpose = page.getByRole("textbox", { name: "目的", exact: true });
+  await expect(choice).toBeEnabled();
+  await choice.selectOption("light"); // Establish a deterministic unsaved starting point.
+  await expect(surface).toHaveAttribute("data-theme", "light");
+  await purpose.fill("theme-performance-draft-290");
+
+  // Arm after authentication and initial preference/business GETs have settled.
+  // Observe the existing DOM; do not add React instrumentation or application APIs.
+  await page.evaluate(() => {
+    type Sample = {
+      event: "select-change" | "os-change";
+      attributeMs: number | null;
+      twoRafMs: number | null;
+      businessChildListMutations: number;
+      businessAddedElements: number;
+      businessRemovedElements: number;
+      businessFormReplaced: boolean;
+      purposeReplaced: boolean;
+    };
+    type Probe = {
+      samples: Sample[];
+      pending: { startedAt: number; sample: Sample } | null;
+      originalForm: Element;
+      originalPurpose: Element;
+    };
+    const scope = document.querySelector(".workhub-theme-scope");
+    const form = document.querySelector("#workhub-travel-form");
+    const input = document.querySelector("#workhub-travel-form [name=purpose]") ??
+      [...document.querySelectorAll("#workhub-travel-form input, #workhub-travel-form textarea")]
+        .find(el => el.getAttribute("aria-label") === "目的");
+    const select = document.querySelector("#workhub-theme-choice");
+    if (!scope || !form || !input || !select) throw new Error("Theme performance probe targets missing");
+    const global = window as typeof window & { __themePerfProbe?: Probe };
+    const probe: Probe = { samples: [], pending: null, originalForm: form, originalPurpose: input };
+    global.__themePerfProbe = probe;
+    const start = (event: Sample["event"]) => {
+      if (probe.pending) throw new Error("Overlapping theme performance samples");
+      const sample: Sample = {
+        event, attributeMs: null, twoRafMs: null,
+        businessChildListMutations: 0, businessAddedElements: 0,
+        businessRemovedElements: 0, businessFormReplaced: false, purposeReplaced: false,
+      };
+      probe.pending = { startedAt: performance.now(), sample };
+      probe.samples.push(sample);
+    };
+    select.addEventListener("change", () => start("select-change"), { capture: true });
+    window.matchMedia("(prefers-color-scheme: dark)")
+      .addEventListener("change", () => start("os-change"), { capture: true });
+    new MutationObserver(records => {
+      const pending = probe.pending;
+      if (!pending) return;
+      if (pending.sample.attributeMs !== null) return;
+      if (!records.some(record => record.attributeName === "data-theme")) return;
+      pending.sample.attributeMs = performance.now() - pending.startedAt;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        pending.sample.twoRafMs = performance.now() - pending.startedAt;
+        pending.sample.businessFormReplaced =
+          document.querySelector("#workhub-travel-form") !== probe.originalForm;
+        pending.sample.purposeReplaced = !probe.originalPurpose.isConnected;
+        probe.pending = null;
+      }));
+    }).observe(scope, { attributes: true, attributeFilter: ["data-theme"] });
+    new MutationObserver(records => {
+      if (!probe.pending) return;
+      for (const record of records) {
+        if (record.type !== "childList") continue;
+        probe.pending.sample.businessChildListMutations++;
+        probe.pending.sample.businessAddedElements += [...record.addedNodes]
+          .filter(node => node.nodeType === Node.ELEMENT_NODE).length;
+        probe.pending.sample.businessRemovedElements += [...record.removedNodes]
+          .filter(node => node.nodeType === Node.ELEMENT_NODE).length;
+      }
+    }).observe(form, { childList: true, subtree: true });
+  });
+
+  const apiRequests: string[] = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.origin === new URL(page.url()).origin && url.pathname.startsWith("/api/")) {
+      apiRequests.push(request.method() + " " + url.pathname);
+    }
+  });
+
+  const scenarios = [
+    { label: "light-to-dark", kind: "select", mode: "dark", expected: "dark" },
+    { label: "dark-to-light", kind: "select", mode: "light", expected: "light" },
+    { label: "light-to-system-os-dark", kind: "select", mode: "system", expected: "dark" },
+    { label: "system-os-dark-to-light", kind: "os", os: "light", expected: "light" },
+    { label: "system-os-light-to-dark", kind: "os", os: "dark", expected: "dark" },
+  ] as const;
+  const evidence: Array<Record<string, unknown>> = [];
+  for (const scenario of scenarios) {
+    if (scenario.label === "light-to-system-os-dark") {
+      await page.emulateMedia({ colorScheme: "dark" });
+      // In explicit light mode, an OS change must not alter data-theme.
+      await expect(surface).toHaveAttribute("data-theme", "light");
+      // This OS event is deliberately outside the measured System transition.
+      await page.evaluate(() => {
+        const probe = (window as typeof window & { __themePerfProbe?: { samples: unknown[]; pending: unknown } })
+          .__themePerfProbe;
+        if (!probe) throw new Error("Theme probe missing");
+        probe.samples.length = 0;
+        probe.pending = null;
+      });
+    }
+    const before = await page.evaluate(() =>
+      (window as typeof window & { __themePerfProbe?: { samples: unknown[] } })
+        .__themePerfProbe?.samples.length ?? -1);
+    const requestStart = apiRequests.length;
+    if (scenario.kind === "select") await choice.selectOption(scenario.mode);
+    else await page.emulateMedia({ colorScheme: scenario.os });
+    await expect(surface).toHaveAttribute("data-theme", scenario.expected);
+    await page.waitForFunction(index => {
+      const probe = (window as typeof window & {
+        __themePerfProbe?: { samples: Array<{ twoRafMs: number | null }> };
+      }).__themePerfProbe;
+      return probe?.samples[index]?.twoRafMs !== null &&
+        typeof probe?.samples[index]?.twoRafMs === "number";
+    }, before, { timeout: 8000 });
+    await expect(purpose).toHaveValue("theme-performance-draft-290");
+    const sample = await page.evaluate(index => {
+      const probe = (window as typeof window & {
+        __themePerfProbe?: { samples: Array<{
+          event: string; attributeMs: number | null; twoRafMs: number | null;
+          businessChildListMutations: number; businessAddedElements: number;
+          businessRemovedElements: number; businessFormReplaced: boolean;
+          purposeReplaced: boolean;
+        }> };
+      }).__themePerfProbe;
+      return probe?.samples[index] ?? null;
+    }, before);
+    expect(sample, scenario.label + ": missing performance sample").not.toBeNull();
+    expect(sample!.attributeMs, scenario.label + ": missing attribute timing").toBeGreaterThanOrEqual(0);
+    expect(sample!.twoRafMs, scenario.label + ": missing two-rAF timing").toBeGreaterThanOrEqual(0);
+    expect(sample!.businessFormReplaced, scenario.label + ": form remounted").toBe(false);
+    expect(sample!.purposeReplaced, scenario.label + ": purpose input remounted").toBe(false);
+    expect(sample!.businessRemovedElements, scenario.label + ": business nodes removed").toBe(0);
+    expect(sample!.businessAddedElements, scenario.label + ": business nodes added").toBe(0);
+    const requests = apiRequests.slice(requestStart);
+    expect(requests, scenario.label + ": theme preview/OS switch must not fetch APIs").toEqual([]);
+    evidence.push({ transition: scenario.label, ...sample, requests });
+  }
+  await testInfo.attach("theme-switch-performance.json", {
+    body: JSON.stringify({
+      environment: "local Playwright dev server; not a production SLO or React render count",
+      samples: evidence,
+    }, null, 2),
+    contentType: "application/json",
+  });
+  console.log("#290 Theme switch timing and DOM/API evidence:", JSON.stringify(evidence));
+});
