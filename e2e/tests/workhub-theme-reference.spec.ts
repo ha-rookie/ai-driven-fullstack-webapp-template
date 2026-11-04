@@ -362,6 +362,7 @@ type ThemeSwitchSample = {
   removedNodes: number;
   sameForm: boolean | null;
   sameInput: boolean | null;
+  sameScope: boolean | null;
   backgroundColor: string | null;
 };
 
@@ -407,23 +408,34 @@ test("#290 Slice F: theme switching records response, DOM and API impact", async
         current.startedAt = performance.now();
       }
     };
-    select.addEventListener("change", () => begin("select"), { capture: true });
+    // The React select/scope may be replaced during reconciliation; observe
+    // native input/change at the document capture boundary, not one old node.
+    const onChoice = (event: Event) => {
+      if (event.target instanceof HTMLSelectElement &&
+          event.target.id === "workhub-theme-choice") begin("select");
+    };
+    document.addEventListener("input", onChoice, { capture: true });
+    document.addEventListener("change", onChoice, { capture: true });
     window.matchMedia("(prefers-color-scheme: dark)").addEventListener(
       "change", () => begin("media"));
 
     new MutationObserver(() => {
       const current = probe.active;
-      if (!current || current.startedAt === null || current.attributeDelayMs !== null ||
-          scope.dataset.theme !== current.expected) return;
+      if (!current || current.startedAt === null || current.attributeDelayMs !== null) return;
+      const liveScope = document.querySelector<HTMLElement>(".workhub-theme-scope");
+      if (!liveScope || liveScope.dataset.theme !== current.expected) return;
       current.attributeDelayMs = performance.now() - current.startedAt;
       requestAnimationFrame(() => requestAnimationFrame(() => {
         current.settledDelayMs = performance.now() - current.startedAt!;
+        current.sameScope = document.querySelector(".workhub-theme-scope") === scope;
         current.sameForm = document.querySelector("#workhub-travel-form") === formNode;
         current.sameInput = input.isConnected && formNode.contains(input) &&
           input.value === draftValue;
-        current.backgroundColor = getComputedStyle(scope).backgroundColor;
+        current.backgroundColor = getComputedStyle(liveScope).backgroundColor;
       }));
-    }).observe(scope, { attributes: true, attributeFilter: ["data-theme"] });
+    }).observe(document.body, {
+      attributes: true, childList: true, subtree: true, attributeFilter: ["data-theme"],
+    });
     new MutationObserver(records => {
       const current = probe.active;
       if (!current || current.startedAt === null || current.settledDelayMs !== null) return;
@@ -458,17 +470,22 @@ test("#290 Slice F: theme switching records response, DOM and API impact", async
       probe.active = {
         ...meta, startedAt: null, attributeDelayMs: null, settledDelayMs: null,
         childListRecords: 0, addedNodes: 0, removedNodes: 0,
-        sameForm: null, sameInput: null, backgroundColor: null,
+        sameForm: null, sameInput: null, sameScope: null, backgroundColor: null,
       };
     }, { label, source, expected });
     await action();
     await expect(surface).toHaveAttribute("data-theme", expected);
-    await page.waitForFunction(() => {
+    await expect.poll(async () => page.evaluate(() => {
       const probe = (window as unknown as {
         __workhubThemeProbe?: { active: ThemeSwitchSample | null };
       }).__workhubThemeProbe;
-      return typeof probe?.active?.settledDelayMs === "number";
-    }, undefined, { timeout: 5_000 });
+      return {
+        started: typeof probe?.active?.startedAt === "number",
+        attribute: typeof probe?.active?.attributeDelayMs === "number",
+        settled: typeof probe?.active?.settledDelayMs === "number",
+      };
+    }), { timeout: 5_000, message: "Missing in-page Theme transition evidence for " + label })
+      .toEqual({ started: true, attribute: true, settled: true });
     const sample = await page.evaluate(() => (window as unknown as {
       __workhubThemeProbe: { active: ThemeSwitchSample | null };
     }).__workhubThemeProbe.active);
@@ -480,6 +497,7 @@ test("#290 Slice F: theme switching records response, DOM and API impact", async
     }
     expect(sample.attributeDelayMs, label).toBeGreaterThanOrEqual(0);
     expect(sample.settledDelayMs, label).toBeGreaterThanOrEqual(sample.attributeDelayMs);
+    expect(sample.sameScope, label).toBe(true);
     expect(sample.sameForm, label).toBe(true);
     expect(sample.sameInput, label).toBe(true);
     expect(sample.childListRecords, label).toBe(0);
