@@ -386,7 +386,8 @@ test("#290 Slice F: theme switching records response, DOM and API impact", async
   await expect(surface).toHaveAttribute("data-theme", "light");
   const draft = "theme-performance-unsaved-290";
   await purpose.fill(draft);
-  await page.waitForLoadState("networkidle");
+  // WORKHUB can keep requests active; DOM readiness is the E2E gate, not networkidle.
+  await expect(purpose).toHaveValue(draft);
   const originalUrl = page.url();
 
   // In-page event time excludes Playwright/CDP command latency. Attribute updates
