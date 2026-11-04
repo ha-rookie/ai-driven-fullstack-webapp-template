@@ -1741,3 +1741,80 @@ input:disabled {
     color-scheme: light;
   }
 }
+
+/* #290 Slice B: OS color is the unauthenticated source of truth until #288's
+   server preference resolves. The WORKHUB scope excludes public routes. */
+.workhub-theme-scope[data-theme="dark"] .workhub-login-shell {
+  background: var(--workhub-page);
+}
+.workhub-theme-scope[data-theme="dark"] .workhub-login-panel {
+  color: var(--workhub-text);
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope[data-theme="dark"] .workhub-login-card h2,
+.workhub-theme-scope[data-theme="dark"] .workhub-login-card .workhub-brand-name,
+.workhub-theme-scope[data-theme="dark"] .workhub-loading h1,
+.workhub-theme-scope[data-theme="dark"] .workhub-loading .workhub-brand-name {
+  color: var(--workhub-text);
+}
+.workhub-theme-scope[data-theme="dark"] .workhub-login-card .workhub-brand-subtitle,
+.workhub-theme-scope[data-theme="dark"] .workhub-login-card .workhub-muted,
+.workhub-theme-scope[data-theme="dark"] .workhub-login-form > label:not(.workhub-remember-row),
+.workhub-theme-scope[data-theme="dark"] .workhub-remember-row,
+.workhub-theme-scope[data-theme="dark"] .workhub-remember-row small,
+.workhub-theme-scope[data-theme="dark"] .workhub-login-footer,
+.workhub-theme-scope[data-theme="dark"] .workhub-loading .workhub-brand-subtitle {
+  color: var(--workhub-text-muted);
+}
+.workhub-theme-scope[data-theme="dark"] .workhub-login-form input:not([type="checkbox"]) {
+  border-color: var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope[data-theme="dark"] .workhub-demo-note {
+  border-color: var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope[data-theme="dark"] .workhub-demo-note strong,
+.workhub-theme-scope[data-theme="dark"] .workhub-login-card .workhub-eyebrow {
+  color: var(--workhub-primary);
+}
+.workhub-theme-scope[data-theme="dark"] .workhub-login-error {
+  border-color: var(--workhub-danger);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+/* Keep the loading shell neutral and readable while auth / preference GET
+   is pending; no authenticated workspace mounts before the saved theme. */
+.workhub-theme-scope .workhub-loading-bar {
+  background: var(--workhub-border);
+}
+.workhub-theme-scope .workhub-loading-bar::after {
+  background: var(--workhub-primary);
+}
+.workhub-preferences-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface-muted);
+  font-size: 13px;
+}
+.workhub-preferences-fallback .workhub-secondary-button {
+  flex-shrink: 0;
+  min-height: 40px;
+}
+@media (max-width: 600px) {
+  .workhub-preferences-fallback {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 12px 16px;
+  }
+}
+@media print {
+  .workhub-preferences-fallback { display: none !important; }
+}

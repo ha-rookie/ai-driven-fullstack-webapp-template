@@ -1111,17 +1111,33 @@ function TravelWorkspace() {
 
 export default function App() {
   const auth = useAuth();
-  const { resolved: themePreferences } = useUserPreferences();
+  const {
+    resolved: themePreferences,
+    loadStatus: preferenceLoadStatus,
+    reloadSaved: reloadPreferences,
+  } = useUserPreferences();
   useEffect(() => {
     if (auth.status !== "authenticated") return;
     const recheck = () => { void auth.synchronize(); };
     window.addEventListener("workhub:session-check", recheck);
     return () => window.removeEventListener("workhub:session-check", recheck);
   }, [auth.status, auth.synchronize]);
-  const screen = auth.status === "loading"
-    ? <main className="workhub-loading" aria-live="polite"><Brand /><span className="workhub-loading-bar" aria-hidden="true" /><p>ログイン状態を確認しています…</p></main>
+  // Wait for #288's server preference before mounting protected UI. This avoids
+  // rendering a user's WORKHUB with the device fallback before their saved theme.
+  // A preference read failure is not an authentication failure: show a
+  // non-blocking warning and use #288's existing device/project fallback.
+  const preferencePending = auth.status === "authenticated" && preferenceLoadStatus === "loading";
+  const preferenceUnavailable = auth.status === "authenticated" && preferenceLoadStatus === "error";
+  const screen = auth.status === "loading" || preferencePending
+    ? <main className="workhub-loading" aria-live="polite"><Brand /><span className="workhub-loading-bar" aria-hidden="true" /><p>{auth.status === "loading" ? "ログイン状態を確認しています…" : "表示設定を確認しています…"}</p></main>
     : auth.status === "authenticated"
-      ? window.location.pathname.startsWith("/admin") ? <AdminPortal /> : <TravelWorkspace />
+      ? <>
+          {preferenceUnavailable && <aside className="workhub-preferences-fallback" role="status" aria-live="polite">
+            <span>表示設定を取得できませんでした。端末の配色設定で続行しています。認証状態や業務データには影響しません。</span>
+            <button className="workhub-secondary-button" type="button" onClick={reloadPreferences}>表示設定を再読み込み</button>
+          </aside>}
+          {window.location.pathname.startsWith("/admin") ? <AdminPortal /> : <TravelWorkspace />}
+        </>
       : auth.status === "error"
         ? <main className="workhub-loading"><Brand /><h1>ログイン状態を確認できません</h1><p>通信状態を確認してから、もう一度お試しください。</p><button className="workhub-primary-button workhub-retry-button" type="button" onClick={() => void auth.synchronize()}>再試行</button></main>
         : <LoginScreen />;
