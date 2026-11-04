@@ -693,3 +693,95 @@
   border-radius: 6px;
   font: inherit;
 }
+
+/* #290 Slice C: shared semantic states on actual WORKHUB business components.
+   Branded travel cards intentionally use light inputs on a dark gradient. */
+.workhub-theme-scope .workhub-business-form label,
+.workhub-theme-scope .workhub-return-reason-input,
+.workhub-theme-scope .workhub-announcement-compose label {
+  color: var(--workhub-text);
+}
+.workhub-theme-scope .workhub-business-form :is(input, select, textarea),
+.workhub-theme-scope .workhub-announcement-compose :is(input, select, textarea),
+.workhub-theme-scope .workhub-return-reason-input textarea,
+.workhub-theme-scope .workhub-search-label input {
+  border-color: var(--workhub-border);
+  color: var(--workhub-field-text);
+  background: var(--workhub-field-surface);
+}
+.workhub-theme-scope .workhub-home-card-primary .workhub-business-form label {
+  color: #fff;
+}
+.workhub-theme-scope .workhub-home-card-primary .workhub-business-form :is(input, select, textarea) {
+  color: #173243;
+  background: #fff;
+  border-color: #cbd7dc;
+  color-scheme: light;
+}
+.workhub-theme-scope .workhub-home-card-primary .workhub-business-form :is(input, select, textarea):read-only {
+  background: #edf2f3;
+}
+.workhub-theme-scope .workhub-business-form :is(input, select, textarea)[readonly],
+.workhub-theme-scope .workhub-announcement-compose :is(input, select, textarea)[readonly],
+.workhub-theme-scope .workhub-return-reason-input textarea[readonly] {
+  background: var(--workhub-readonly-surface);
+  border-style: dashed;
+}
+.workhub-theme-scope .workhub-business-form :is(input, select, textarea):disabled,
+.workhub-theme-scope .workhub-announcement-compose :is(input, select, textarea):disabled {
+  background: var(--workhub-readonly-surface);
+  border-style: dashed;
+  opacity: .8;
+}
+.workhub-theme-scope :is(.workhub-task-item, .workhub-timeline-item, .workhub-notification-item,
+ .workhub-notification-center, .workhub-notification-center-item, .workhub-search-panel,
+ .workhub-search-result, .workhub-my-requests, .workhub-my-request-item,
+ .workhub-announcements, .workhub-announcement-compose, .workhub-announcement-item,
+ .workhub-social, .workhub-social-item) {
+  border-color: var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope :is(.workhub-task-item, .workhub-timeline-item, .workhub-notification-item,
+ .workhub-search-result, .workhub-my-request-item, .workhub-announcement-item) :is(small, time) {
+  color: var(--workhub-text-muted);
+}
+.workhub-theme-scope :is(.workhub-notification-item.is-read, .workhub-notification-center-item[aria-pressed="true"]) {
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope .workhub-my-request-item.is-returned,
+.workhub-theme-scope .workhub-return-reason,
+.workhub-theme-scope .workhub-announcement-importance {
+  border-color: var(--workhub-warning);
+  color: var(--workhub-warning);
+  background: var(--workhub-warning-surface);
+}
+.workhub-theme-scope .workhub-my-request-item.is-returned :is(.workhub-request-next-action, .workhub-request-return-comment),
+.workhub-theme-scope .workhub-return-reason p {
+  color: var(--workhub-warning);
+}
+.workhub-theme-scope .workhub-global-banner {
+  border-color: var(--workhub-danger);
+  color: var(--workhub-danger);
+  background: var(--workhub-danger-surface);
+}
+.workhub-theme-scope .workhub-global-banner :is(h2, p, small, .workhub-global-banner-kicker) {
+  color: var(--workhub-danger);
+}
+.workhub-theme-scope .workhub-announcement-compose,
+.workhub-theme-scope .workhub-search-panel {
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope :is(.workhub-business-form, .workhub-announcement-compose, .workhub-return-reason-input) :is(input, select, textarea):focus-visible {
+  outline: 3px solid var(--workhub-focus);
+  outline-offset: 2px;
+}
+/* Existing status text, headings, role and button labels carry the meaning;
+   colors reinforce those labels rather than encoding meaning alone. */
+@media print {
+  .workhub-theme-scope .workhub-business-form :is(input, select, textarea) {
+    color: #173243 !important;
+    background: #fff !important;
+    border-color: #cbd7dc !important;
+  }
+}

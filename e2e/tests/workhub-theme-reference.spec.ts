@@ -163,3 +163,127 @@ test("#290 unavailable preference GET retains authentication and safely recovers
   await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
   expect(methods).not.toContain("PATCH");
 });
+
+
+test("#290 Slice C: existing WORKHUB components follow semantic tokens and keyboard focus", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  // Existing login Persona dialog, not a synthetic application component.
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  const dialog = page.getByRole("dialog", { name: "デモユーザを選ぶ" });
+  await expect(dialog).toHaveCSS("background-color", "rgb(29, 44, 59)");
+  await expect(dialog.getByRole("heading", { name: "デモユーザを選ぶ" })).toBeVisible();
+  await dialog.getByRole("button", { name: /Aoi Employee/u }).click();
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+
+  const theme = page.locator("#workhub-theme-reference");
+  const choice = theme.getByRole("combobox", { name: "表示テーマ" });
+  await expect(choice).toBeEnabled();
+  const surface = page.locator(".workhub-theme-scope");
+  await choice.selectOption("dark"); // unsaved preview only
+  await expect(surface).toHaveAttribute("data-theme", "dark");
+  // Actual branded Travel Form intentionally retains readable light controls.
+  const form = page.locator("#workhub-travel-form");
+  const purpose = form.getByRole("textbox", { name: "目的" });
+  await expect(purpose).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(purpose).toHaveCSS("color", "rgb(23, 50, 67)");
+  await expect(form.getByRole("combobox", { name: "行先" })).toBeVisible();
+
+  // Project-side branding override is a CSS variable only; no persistence or API.
+  await surface.evaluate(el => el instanceof HTMLElement &&
+    el.style.setProperty("--workhub-project-brand-gradient",
+      "linear-gradient(90deg, rgb(16, 50, 85), rgb(33, 75, 117))"));
+  await expect(form).toHaveCSS("background-image", /rgb\(16, 50, 85\)/);
+
+  // Inert CSS-state fixtures complement real Form/Dialog: no app or API mutation.
+  await page.evaluate(() => {
+    const host = document.querySelector(".workhub-home-shell");
+    if (!host) throw new Error("expected WORKHUB home shell");
+    const fixture = document.createElement("section");
+    fixture.id = "theme-state-smoke";
+    fixture.innerHTML = [
+      '<div class="workhub-announcement-compose">',
+      '<label>編集可<input id="theme-editable" value="編集可能"></label>',
+      '<label>参照専用<input id="theme-readonly" readonly value="参照専用"></label>',
+      '<label>操作不可<input id="theme-disabled" disabled value="操作不可"></label>',
+      '</div>',
+      '<div class="workhub-global-banner" role="alert">',
+      '<h2>重要なお知らせ</h2><p>確認が必要です</p></div>',
+      '<div class="workhub-return-reason" role="note"><strong>差戻し理由</strong><p>要修正</p></div>',
+    ].join("");
+    host.appendChild(fixture);
+  });
+  await expect(page.locator("#theme-editable")).toHaveCSS("background-color", "rgb(29, 44, 59)");
+  await expect(page.locator("#theme-readonly")).toHaveCSS("border-top-style", "dashed");
+  await expect(page.locator("#theme-disabled")).toBeDisabled();
+  await expect(page.locator("#theme-disabled")).toHaveCSS("border-top-style", "dashed");
+  const banner = page.locator("#theme-state-smoke [role=alert]");
+  await expect(banner).toContainText("重要なお知らせ");
+  await expect(banner).toHaveCSS("background-color", "rgb(67, 43, 50)");
+  await expect(page.locator("#theme-state-smoke [role=note]")).toContainText("差戻し理由");
+
+  // Reusing existing keyboard focus ring; no new accessibility framework.
+  await choice.focus();
+  await page.keyboard.press("Tab");
+  const save = theme.getByRole("button", { name: "表示設定を保存" });
+  await expect(save).toBeFocused();
+  await expect(save).toHaveCSS("outline-style", "solid");
+  await expect(save).toHaveCSS("outline-width", "3px");
+
+  await choice.selectOption("light");
+  await expect(surface).toHaveAttribute("data-theme", "light");
+  await expect(page.locator("#theme-editable")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(banner).toHaveCSS("background-color", "rgb(255, 240, 240)");
+  await expect(purpose).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  // Do not persist this preview; subsequent test/browser session starts at server truth.
+});
+
+test("#290 Slice C: Admin Audit Table and named outcomes remain legible in dark mode", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
+    .getByRole("button", { name: /Kai Admin/u }).click();
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await page.goto("/admin");
+  const shell = page.locator(".workhub-theme-scope");
+  await expect(shell).toHaveAttribute("data-theme", "dark");
+  const admin = page.locator(".admin-shell");
+  await expect(admin).toBeVisible();
+  await expect(admin).toHaveCSS("background-color", "rgb(16, 26, 37)");
+  await expect(page.locator(".admin-audit-panel").first()).toHaveCSS("background-color", "rgb(29, 44, 59)");
+
+  // Audit data can legitimately be empty. This fixture checks the existing CSS
+  // table / outcome classes without inserting audit records or touching D1.
+  await page.evaluate(() => {
+    const panel = document.querySelector(".admin-audit-panel");
+    if (!panel) throw new Error("expected audit panel");
+    const fixture = document.createElement("div");
+    fixture.id = "theme-audit-style-smoke";
+    fixture.innerHTML = '<table class="admin-audit-table"><thead><tr><th>結果</th></tr></thead>' +
+      '<tbody><tr><td><span class="admin-audit-outcome is-success">成功</span></td></tr>' +
+      '<tr><td><span class="admin-audit-outcome is-failure">失敗</span></td></tr></tbody></table>' +
+      '<div class="admin-audit-state is-error" role="alert"><strong>取得失敗</strong></div>';
+    panel.appendChild(fixture);
+  });
+  const table = page.locator("#theme-audit-style-smoke .admin-audit-table");
+  await expect(table.getByRole("columnheader", { name: "結果" })).toBeVisible();
+  await expect(table.locator("td").first()).toHaveCSS("color", "rgb(238, 244, 248)");
+  const ok = table.getByText("成功", { exact: true });
+  const failure = table.getByText("失敗", { exact: true });
+  await expect(ok).toHaveCSS("background-color", "rgb(32, 62, 47)");
+  await expect(failure).toHaveCSS("background-color", "rgb(67, 43, 50)");
+  await expect(page.locator("#theme-audit-style-smoke [role=alert]")).toContainText("取得失敗");
+
+  const contrast = await table.locator("td").first().evaluate(el => {
+    const style = getComputedStyle(el);
+    const bg = getComputedStyle(el.closest(".admin-audit-panel")!);
+    const parse = (color: string) => (color.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    const luminance = (color: number[]) =>
+      color.map(value => { const c = value / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; })
+        .reduce((acc, value, index) => acc + value * [0.2126, 0.7152, 0.0722][index], 0);
+    const a = luminance(parse(style.color)), b = luminance(parse(bg.backgroundColor));
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+});

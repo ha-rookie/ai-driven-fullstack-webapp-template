@@ -1608,7 +1608,15 @@ input:disabled {
   --workhub-primary: #176f74;
   --workhub-focus: #187278;
   --workhub-danger: #a43c3c;
-  --workhub-brand-gradient: linear-gradient(140deg, #173b54, #176d72);
+  --workhub-danger-surface: #fff0f0;
+  --workhub-warning: #805013;
+  --workhub-warning-surface: #fff4df;
+  --workhub-success: #216241;
+  --workhub-success-surface: #e7f5ed;
+  --workhub-field-surface: var(--workhub-surface);
+  --workhub-field-text: var(--workhub-text);
+  --workhub-readonly-surface: var(--workhub-surface-muted);
+  --workhub-brand-gradient: var(--workhub-project-brand-gradient, linear-gradient(140deg, #173b54, #176d72));
   min-height: 100vh;
   color: var(--workhub-text);
   background: var(--workhub-page);
@@ -1624,6 +1632,11 @@ input:disabled {
   --workhub-primary: #78d1ca;
   --workhub-focus: #a4ece2;
   --workhub-danger: #ffacac;
+  --workhub-danger-surface: #432b32;
+  --workhub-warning: #f4d08a;
+  --workhub-warning-surface: #42351f;
+  --workhub-success: #9ce0bc;
+  --workhub-success-surface: #203e2f;
   color-scheme: dark;
 }
 .workhub-theme-scope .workhub-home-shell,
@@ -1817,4 +1830,55 @@ input:disabled {
 }
 @media print {
   .workhub-preferences-fallback { display: none !important; }
+}
+
+/* #290 Slice C: project theming is an override on the WORKHUB scope:
+   --workhub-project-brand-gradient: linear-gradient(...);
+   The fallback stays WORKHUB-branded; public Showcase is not affected. */
+.workhub-theme-scope .workhub-home-card-primary,
+.workhub-theme-scope .workhub-logo {
+  background: var(--workhub-brand-gradient);
+}
+.workhub-theme-scope .workhub-dialog,
+.workhub-theme-scope .workhub-persona-card,
+.workhub-theme-scope .workhub-icon-button,
+.workhub-theme-scope .workhub-persona-id {
+  border-color: var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope .workhub-dialog h2,
+.workhub-theme-scope .workhub-persona-copy strong {
+  color: var(--workhub-text);
+}
+.workhub-theme-scope .workhub-persona-copy span,
+.workhub-theme-scope .workhub-persona-copy small,
+.workhub-theme-scope .workhub-persona-id {
+  color: var(--workhub-text-muted);
+}
+.workhub-theme-scope .workhub-persona-avatar {
+  color: var(--workhub-primary);
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope .workhub-persona-card:hover,
+.workhub-theme-scope .workhub-persona-card:focus-visible {
+  border-color: var(--workhub-focus);
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope :is(button, input, select, textarea):disabled {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.workhub-theme-scope :is(input, select, textarea):read-only,
+.workhub-theme-scope :is(input, select, textarea)[aria-readonly="true"] {
+  border-style: dashed;
+  background: var(--workhub-readonly-surface);
+}
+.workhub-theme-scope :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--workhub-focus);
+  outline-offset: 2px;
+}
+/* Project brand artwork is screen-only; preserve one-page A4 print baseline. */
+@media print {
+  .workhub-theme-scope .workhub-home-card-primary { background: #173b54 !important; }
 }

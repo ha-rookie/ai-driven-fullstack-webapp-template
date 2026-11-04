@@ -22,3 +22,72 @@
 .admin-overview-footnote{margin:12px 0 0;line-height:1.6;overflow-wrap:anywhere}
 @media(max-width:960px){.admin-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.admin-overview-grid{grid-template-columns:1fr}.admin-overview-refresh{align-items:flex-start}}
+
+/* #290 Slice C: WORKHUB-only Admin Portal uses the same semantic Theme
+   tokens as the employee workspace; permissions/data remain unchanged. */
+.workhub-theme-scope .admin-shell {
+  color: var(--workhub-text);
+  background: var(--workhub-page);
+}
+.workhub-theme-scope .admin-header {
+  color: #fff;
+  background: var(--workhub-brand-gradient);
+}
+.workhub-theme-scope .admin-nav,
+.workhub-theme-scope :is(.admin-intro > div:first-child, .admin-context-card, .admin-section-card,
+ .admin-foundation, .admin-state-card, .admin-audit-panel, .admin-overview-card,
+ .admin-retry-panel, .admin-correction-summary, .admin-audit-scope, .admin-audit-state) {
+  border-color: var(--workhub-border);
+  background: var(--workhub-surface);
+  color: var(--workhub-text);
+}
+.workhub-theme-scope .admin-nav a {
+  color: var(--workhub-text);
+}
+.workhub-theme-scope .admin-nav a :is(small) {
+  color: var(--workhub-text-muted);
+}
+.workhub-theme-scope .admin-nav a:is(:hover, :focus-visible, .is-active),
+.workhub-theme-scope .admin-overview-card {
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope :is(.admin-audit-heading p, .admin-overview-footnote, .admin-overview-card p,
+ .admin-audit-note, .admin-audit-table td small, .admin-audit-table th,
+ .admin-audit-state, .admin-section-card p, .admin-eyebrow, .admin-section-key) {
+  color: var(--workhub-text-muted);
+}
+.workhub-theme-scope .admin-audit-table :is(th, td) {
+  border-color: var(--workhub-border);
+}
+.workhub-theme-scope .admin-audit-table td {
+  color: var(--workhub-text);
+}
+.workhub-theme-scope :is(.admin-audit-filters select, .admin-audit-filters input,
+ .admin-action-demo textarea, .admin-retry-panel textarea) {
+  border-color: var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface);
+}
+.workhub-theme-scope .admin-audit-state.is-error,
+.workhub-theme-scope .admin-audit-outcome.is-failure {
+  border-color: var(--workhub-danger);
+  background: var(--workhub-danger-surface);
+  color: var(--workhub-danger);
+}
+.workhub-theme-scope .admin-audit-state.is-error :is(strong, span) {
+  color: var(--workhub-danger);
+}
+.workhub-theme-scope .admin-audit-outcome.is-success {
+  background: var(--workhub-success-surface);
+  color: var(--workhub-success);
+}
+.workhub-theme-scope :is(.admin-audit-filters button, .admin-inline-action,
+ .admin-overview-refresh button, .admin-retry-actions button[type="submit"]) {
+  border: 1px solid var(--workhub-border);
+  color: var(--workhub-text);
+  background: var(--workhub-surface-muted);
+}
+.workhub-theme-scope :is(.admin-audit-panel, .admin-nav) :is(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid var(--workhub-focus);
+  outline-offset: 2px;
+}
