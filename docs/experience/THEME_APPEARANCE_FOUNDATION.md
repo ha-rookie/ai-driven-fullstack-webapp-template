@@ -44,3 +44,7 @@ The focused desktop Playwright checks the **real** login Persona dialog, Employe
 These are **Slices A–C**, not full Issue #290 completion. Additional fixed colors remain in secondary WORKHUB business/admin/portal components beyond the covered primary forms, modal, alerts, notifications and audit table; pre-JS body first paint and every browser-specific flash are not guaranteed away; no device-local theme hint has been introduced; broader #49 contrast/keyboard assessment and secondary component semantics remain for final review; print policy and unverified #60 quantitative performance to Slice D. No claim is made that all screens satisfy WCAG, are flash-free or meet performance SLOs.
 
 Issue #290 original Completion 11 and Validation 14 remain untouched and Open until evidence of each is recorded. Formal ST belongs to #694. No Preview/Production deploy, remote D1/migrations, Secrets, Cloudflare resources, WBS stage/priority/milestone or application behavior unrelated to Theme is changed.
+
+## Slice D — Print evidence and performance boundary
+
+A new Theme E2E tests local A4 paper output for Light, Dark, and System. Same-environment #60 browser measurements remain pending. Build log comparison showed CSS 99.09 kB to 106.87 kB while JS stayed at 682.46 kB. Do not mark performance or print accepted until tests finish and code is merged.
