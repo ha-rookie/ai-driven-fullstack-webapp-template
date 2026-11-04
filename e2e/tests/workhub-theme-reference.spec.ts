@@ -371,7 +371,8 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
   // Observe the existing DOM; do not add React instrumentation or application APIs.
   await page.evaluate(() => {
     type Sample = {
-      event: "select-change" | "os-change";
+      event: "select-change" | "os-emulation-armed";
+      timingBasis: "browser-select-change" | "before-playwright-emulateMedia";
       attributeMs: number | null;
       twoRafMs: number | null;
       businessChildListMutations: number;
@@ -385,6 +386,7 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
       pending: { startedAt: number; sample: Sample } | null;
       originalForm: Element;
       originalPurpose: Element;
+      armOsTransition: () => void;
     };
     const scope = document.querySelector(".workhub-theme-scope");
     const form = document.querySelector("#workhub-travel-form");
@@ -392,12 +394,18 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
     const select = document.querySelector("#workhub-theme-choice");
     if (!scope || !form || !input || !select) throw new Error("Theme performance probe targets missing");
     const global = window as typeof window & { __themePerfProbe?: Probe };
-    const probe: Probe = { samples: [], pending: null, originalForm: form, originalPurpose: input };
+    const probe: Probe = {
+      samples: [], pending: null, originalForm: form, originalPurpose: input,
+      armOsTransition: () => start("os-emulation-armed"),
+    };
     global.__themePerfProbe = probe;
     const start = (event: Sample["event"]) => {
       if (probe.pending) throw new Error("Overlapping theme performance samples");
       const sample: Sample = {
-        event, attributeMs: null, twoRafMs: null,
+        event,
+        timingBasis: event === "select-change"
+          ? "browser-select-change" : "before-playwright-emulateMedia",
+        attributeMs: null, twoRafMs: null,
         businessChildListMutations: 0, businessAddedElements: 0,
         businessRemovedElements: 0, businessFormReplaced: false, purposeReplaced: false,
       };
@@ -405,8 +413,10 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
       probe.samples.push(sample);
     };
     select.addEventListener("change", () => start("select-change"), { capture: true });
-    window.matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener("change", () => start("os-change"), { capture: true });
+    // Different MediaQueryList instances may dispatch separately. In an OS emulation,
+    // React can commit data-theme before this test's own MQL change event fires.
+    // Arm explicitly before Playwright's emulation so the DOM mutation is never lost.
+    // Unlike select-change timing, OS timing includes Playwright command dispatch.
     new MutationObserver(records => {
       const pending = probe.pending;
       if (!pending) return;
@@ -455,21 +465,24 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
       await page.emulateMedia({ colorScheme: "dark" });
       // In explicit light mode, an OS change must not alter data-theme.
       await expect(surface).toHaveAttribute("data-theme", "light");
-      // This OS event is deliberately outside the measured System transition.
-      await page.evaluate(() => {
-        const probe = (window as typeof window & { __themePerfProbe?: { samples: unknown[]; pending: unknown } })
-          .__themePerfProbe;
-        if (!probe) throw new Error("Theme probe missing");
-        probe.samples.length = 0;
-        probe.pending = null;
-      });
+      // No active measurement: the explicit light preference must ignore OS changes.
     }
     const before = await page.evaluate(() =>
       (window as typeof window & { __themePerfProbe?: { samples: unknown[] } })
         .__themePerfProbe?.samples.length ?? -1);
     const requestStart = apiRequests.length;
-    if (scenario.kind === "select") await choice.selectOption(scenario.mode);
-    else await page.emulateMedia({ colorScheme: scenario.os });
+    if (scenario.kind === "select") {
+      await choice.selectOption(scenario.mode);
+    } else {
+      await page.evaluate(() => {
+        const probe = (window as typeof window & {
+          __themePerfProbe?: { armOsTransition: () => void };
+        }).__themePerfProbe;
+        if (!probe) throw new Error("Theme probe missing before OS emulation");
+        probe.armOsTransition();
+      });
+      await page.emulateMedia({ colorScheme: scenario.os });
+    }
     await expect(surface).toHaveAttribute("data-theme", scenario.expected);
     await page.waitForFunction(index => {
       const probe = (window as typeof window & {
@@ -482,7 +495,8 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
     const sample = await page.evaluate(index => {
       const probe = (window as typeof window & {
         __themePerfProbe?: { samples: Array<{
-          event: string; attributeMs: number | null; twoRafMs: number | null;
+          event: string; timingBasis: string;
+          attributeMs: number | null; twoRafMs: number | null;
           businessChildListMutations: number; businessAddedElements: number;
           businessRemovedElements: number; businessFormReplaced: boolean;
           purposeReplaced: boolean;
@@ -492,7 +506,7 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
     }, before);
     expect(sample, scenario.label + ": missing performance sample").not.toBeNull();
     expect(sample!.event, scenario.label + ": wrong event origin")
-      .toBe(scenario.kind === "select" ? "select-change" : "os-change");
+      .toBe(scenario.kind === "select" ? "select-change" : "os-emulation-armed");
     await expect(surface).toHaveAttribute("data-theme-mode",
       scenario.kind === "os" ? "system" : scenario.mode);
     expect(sample!.attributeMs, scenario.label + ": missing attribute timing").toBeGreaterThanOrEqual(0);
@@ -508,6 +522,7 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
   await testInfo.attach("theme-switch-performance.json", {
     body: JSON.stringify({
       environment: "local Playwright dev server; not a production SLO or React render count",
+      timingCaveat: "OS-emulation-armed latency includes Playwright command dispatch; select-change starts in browser",
       samples: evidence,
     }, null, 2),
     contentType: "application/json",
