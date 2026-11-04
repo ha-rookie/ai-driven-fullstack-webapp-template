@@ -366,10 +366,11 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
   await choice.selectOption("light"); // Establish a deterministic unsaved starting point.
   await expect(surface).toHaveAttribute("data-theme", "light");
   await purpose.fill("theme-performance-draft-290");
-  // Wait for the normal post-login business GETs (including duplicate dev StrictMode
-  // mounts) before opening the theme-only request budget. Do not suppress or
-  // exclude requests initiated during any of the measured transitions.
-  await page.waitForLoadState("networkidle");
+  // Finish the known post-login secondary-journeys GET before starting the
+  // theme-only request budget. Vite's dev server may never become networkidle;
+  // wait for this real component's ready state instead of masking API requests.
+  const journeys = page.locator("#workhub-secondary-journeys");
+  await expect(journeys.locator(".workhub-empty-state, .workhub-secondary-grid")).toBeVisible();
 
   // Arm after authentication and initial preference/business GETs have settled.
   // Observe the existing DOM; do not add React instrumentation or application APIs.
