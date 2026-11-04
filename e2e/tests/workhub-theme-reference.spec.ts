@@ -287,3 +287,64 @@ test("#290 Slice C: Admin Audit Table and named outcomes remain legible in dark 
   });
   expect(contrast).toBeGreaterThanOrEqual(4.5);
 });
+
+
+test("#290 Slice D: A4 print policy is stable in light, dark and OS-system themes", async ({ page }, info) => {
+  // Reuse the existing travel/mobile print contract against locally seeded D1.
+  // This single synthetic request is not allowed against shared Preview/Remote D1.
+  test.skip(info.project.name !== "desktop-chromium", "Chromium PDF only");
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "ユーザーID", exact: true }).fill("aoi");
+  await page.getByLabel("パスワード", { exact: true }).fill("Workhub-Demo-2026!");
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /おはようございます、Aoi Employeeさん/u })).toBeVisible();
+
+  const card = page.locator("#workhub-travel-form");
+  const purpose = "Theme A4 policy " + Date.now();
+  await card.getByRole("combobox", { name: "行先" }).selectOption({ label: "Tokyo Office (TOKYO)" });
+  await card.getByRole("textbox", { name: "開始日" }).fill("2026-10-20");
+  await card.getByRole("textbox", { name: "終了日" }).fill("2026-10-21");
+  await card.getByRole("textbox", { name: "目的", exact: true }).fill(purpose);
+  await card.getByRole("button", { name: "出張申請を提出" }).click();
+  await expect(page.getByText("出張申請を提出しました。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "申請内容を印刷・PDF保存" })).toBeVisible();
+
+  const choice = page.locator("#workhub-theme-reference")
+    .getByRole("combobox", { name: "表示テーマ" });
+  const surface = page.locator(".workhub-theme-scope");
+  const paper = page.locator(".workhub-travel-print-sheet");
+  // Unpersisted local previews avoid PATCH and preserve #288 server preferences.
+  const cases: ReadonlyArray<{ mode: "light" | "dark" | "system"; os: "light" | "dark"; expected: "light" | "dark" }> = [
+    { mode: "light", os: "dark", expected: "light" },
+    { mode: "dark", os: "light", expected: "dark" },
+    { mode: "system", os: "dark", expected: "dark" },
+    { mode: "system", os: "light", expected: "light" },
+  ];
+  const writes: string[] = [];
+  page.on("request", request => {
+    if (request.url().includes("/api/me/preferences") && request.method() === "PATCH")
+      writes.push(request.url());
+  });
+  for (const scenario of cases) {
+    await page.emulateMedia({ media: "screen", colorScheme: scenario.os });
+    await choice.selectOption(scenario.mode);
+    await expect(surface).toHaveAttribute("data-theme", scenario.expected);
+    await page.emulateMedia({ media: "print", colorScheme: scenario.os });
+
+    await expect(surface).toHaveCSS("min-height", "0px");
+    await expect(page.locator(".workhub-home-shell")).toHaveCSS("min-height", "0px");
+    await expect(page.locator(".workhub-home-header")).toBeHidden();
+    await expect(paper).toBeVisible();
+    await expect(paper).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await expect(paper).toHaveCSS("color", "rgb(23, 35, 45)");
+    await expect(paper.getByRole("heading", { name: "出張申請書（現在の申請内容）" })).toBeVisible();
+    await expect(paper).toContainText(purpose);
+    await expect(paper).toContainText("正式な承認証跡");
+    const pdf = await page.pdf({ format: "A4", printBackground: true });
+    const pageCount = (pdf.toString("latin1").match(/\/Type\s*\/Page\b/gu) ?? []).length;
+    expect(pageCount, scenario.mode + "/" + scenario.os + " must print exactly one A4 page").toBe(1);
+  }
+  expect(writes, "Theme previews must not persist the saved preference").toEqual([]);
+});
