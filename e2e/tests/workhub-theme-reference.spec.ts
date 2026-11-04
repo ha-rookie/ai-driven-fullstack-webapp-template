@@ -491,6 +491,10 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
       return probe?.samples[index] ?? null;
     }, before);
     expect(sample, scenario.label + ": missing performance sample").not.toBeNull();
+    expect(sample!.event, scenario.label + ": wrong event origin")
+      .toBe(scenario.kind === "select" ? "select-change" : "os-change");
+    await expect(surface).toHaveAttribute("data-theme-mode",
+      scenario.kind === "os" ? "system" : scenario.mode);
     expect(sample!.attributeMs, scenario.label + ": missing attribute timing").toBeGreaterThanOrEqual(0);
     expect(sample!.twoRafMs, scenario.label + ": missing two-rAF timing").toBeGreaterThanOrEqual(0);
     expect(sample!.businessFormReplaced, scenario.label + ": form remounted").toBe(false);
