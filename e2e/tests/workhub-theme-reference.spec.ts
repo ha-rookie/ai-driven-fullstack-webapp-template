@@ -474,6 +474,9 @@ test("#290 Slice F: theme switching records response, DOM and API impact", async
     if (!sample) throw new Error("Missing Theme measurement");
     samples.push(sample);
     expect(sample.startedAt, label).not.toBeNull();
+    if (typeof sample.attributeDelayMs !== "number" || typeof sample.settledDelayMs !== "number") {
+      throw new Error("Theme transition timing unavailable: " + label);
+    }
     expect(sample.attributeDelayMs, label).toBeGreaterThanOrEqual(0);
     expect(sample.settledDelayMs, label).toBeGreaterThanOrEqual(sample.attributeDelayMs);
     expect(sample.sameForm, label).toBe(true);
