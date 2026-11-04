@@ -388,9 +388,7 @@ test("#290 Slice F: theme transitions record DOM response, business remounts and
     };
     const scope = document.querySelector(".workhub-theme-scope");
     const form = document.querySelector("#workhub-travel-form");
-    const input = document.querySelector("#workhub-travel-form [name=purpose]") ??
-      [...document.querySelectorAll("#workhub-travel-form input, #workhub-travel-form textarea")]
-        .find(el => el.getAttribute("aria-label") === "目的");
+    const input = document.querySelector("#workhub-travel-purpose");
     const select = document.querySelector("#workhub-theme-choice");
     if (!scope || !form || !input || !select) throw new Error("Theme performance probe targets missing");
     const global = window as typeof window & { __themePerfProbe?: Probe };
