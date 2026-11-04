@@ -348,3 +348,190 @@ test("#290 Slice D: A4 print policy is stable in light, dark and OS-system theme
   }
   expect(writes, "Theme previews must not persist the saved preference").toEqual([]);
 });
+
+
+type ThemeSwitchSample = {
+  label: string;
+  source: "select" | "media";
+  expected: "light" | "dark";
+  startedAt: number | null;
+  attributeDelayMs: number | null;
+  settledDelayMs: number | null;
+  childListRecords: number;
+  addedNodes: number;
+  removedNodes: number;
+  sameForm: boolean | null;
+  sameInput: boolean | null;
+  sameScope: boolean | null;
+  backgroundColor: string | null;
+};
+
+test("#290 Slice F: theme switching records response, DOM and API impact", async ({ page }, info) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "デモユーザを選ぶ" }).click();
+  await page.getByRole("dialog", { name: "デモユーザを選ぶ" })
+    .getByRole("button", { name: /Aoi Employee/u }).click();
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+
+  const surface = page.locator(".workhub-theme-scope");
+  const choice = page.locator("#workhub-theme-reference")
+    .getByRole("combobox", { name: "表示テーマ" });
+  const form = page.locator("#workhub-travel-form");
+  const purpose = form.getByRole("textbox", { name: "目的", exact: true });
+  await expect(choice).toBeEnabled();
+  await expect(form).toBeVisible();
+
+  // Establish a stable local-only preview before starting the measurement window.
+  await choice.selectOption("light");
+  await expect(surface).toHaveAttribute("data-theme", "light");
+  const draft = "theme-performance-unsaved-290";
+  await purpose.fill(draft);
+  // WORKHUB can keep requests active; DOM readiness is the E2E gate, not networkidle.
+  await expect(purpose).toHaveValue(draft);
+  const originalUrl = page.url();
+
+  // In-page event time excludes Playwright/CDP command latency. Attribute updates
+  // and two requestAnimationFrame callbacks approximate visual settling, not paint/INP.
+  await page.evaluate(draftValue => {
+    const scope = document.querySelector<HTMLElement>(".workhub-theme-scope");
+    const formNode = document.querySelector<HTMLElement>("#workhub-travel-form");
+    const select = document.querySelector<HTMLSelectElement>("#workhub-theme-choice");
+    const input = Array.from(formNode?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+      "input, textarea") ?? []).find(element => element.value === draftValue);
+    if (!scope || !formNode || !select || !input) throw new Error("Theme perf targets missing");
+
+    const probe = { active: null as ThemeSwitchSample | null };
+    const begin = (source: "select" | "media") => {
+      const current = probe.active;
+      if (current?.source === source && current.startedAt === null) {
+        current.startedAt = performance.now();
+      }
+    };
+    // The React select/scope may be replaced during reconciliation; observe
+    // native input/change at the document capture boundary, not one old node.
+    const onChoice = (event: Event) => {
+      if (event.target instanceof HTMLSelectElement &&
+          event.target.id === "workhub-theme-choice") begin("select");
+    };
+    document.addEventListener("input", onChoice, { capture: true });
+    document.addEventListener("change", onChoice, { capture: true });
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener(
+      "change", () => begin("media"));
+
+    new MutationObserver(() => {
+      const current = probe.active;
+      if (!current || current.startedAt === null || current.attributeDelayMs !== null) return;
+      const liveScope = document.querySelector<HTMLElement>(".workhub-theme-scope");
+      if (!liveScope || liveScope.dataset.theme !== current.expected) return;
+      current.attributeDelayMs = performance.now() - current.startedAt;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        current.settledDelayMs = performance.now() - current.startedAt!;
+        current.sameScope = document.querySelector(".workhub-theme-scope") === scope;
+        current.sameForm = document.querySelector("#workhub-travel-form") === formNode;
+        current.sameInput = input.isConnected && formNode.contains(input) &&
+          input.value === draftValue;
+        current.backgroundColor = getComputedStyle(liveScope).backgroundColor;
+      }));
+    }).observe(document.body, {
+      attributes: true, childList: true, subtree: true, attributeFilter: ["data-theme"],
+    });
+    new MutationObserver(records => {
+      const current = probe.active;
+      if (!current || current.startedAt === null || current.settledDelayMs !== null) return;
+      current.childListRecords += records.length;
+      for (const record of records) {
+        current.addedNodes += record.addedNodes.length;
+        current.removedNodes += record.removedNodes.length;
+      }
+    }).observe(formNode, { childList: true, subtree: true });
+
+    (window as unknown as { __workhubThemeProbe: typeof probe }).__workhubThemeProbe = probe;
+  }, draft);
+
+  const origin = new URL(originalUrl).origin;
+  const apiRequests: string[] = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.origin === origin && url.pathname.startsWith("/api/")) {
+      apiRequests.push(request.method() + " " + url.pathname);
+    }
+  });
+
+  const samples: ThemeSwitchSample[] = [];
+  const measure = async (
+    label: string, source: "select" | "media", expected: "light" | "dark",
+    action: () => Promise<unknown>,
+  ) => {
+    await page.evaluate(meta => {
+      const probe = (window as unknown as {
+        __workhubThemeProbe: { active: ThemeSwitchSample | null };
+      }).__workhubThemeProbe;
+      probe.active = {
+        ...meta, startedAt: null, attributeDelayMs: null, settledDelayMs: null,
+        childListRecords: 0, addedNodes: 0, removedNodes: 0,
+        sameForm: null, sameInput: null, sameScope: null, backgroundColor: null,
+      };
+    }, { label, source, expected });
+    await action();
+    await expect(surface).toHaveAttribute("data-theme", expected);
+    await expect.poll(async () => page.evaluate(() => {
+      const probe = (window as unknown as {
+        __workhubThemeProbe?: { active: ThemeSwitchSample | null };
+      }).__workhubThemeProbe;
+      return {
+        started: typeof probe?.active?.startedAt === "number",
+        attribute: typeof probe?.active?.attributeDelayMs === "number",
+        settled: typeof probe?.active?.settledDelayMs === "number",
+      };
+    }), { timeout: 5_000, message: "Missing in-page Theme transition evidence for " + label })
+      .toEqual({ started: true, attribute: true, settled: true });
+    const sample = await page.evaluate(() => (window as unknown as {
+      __workhubThemeProbe: { active: ThemeSwitchSample | null };
+    }).__workhubThemeProbe.active);
+    if (!sample) throw new Error("Missing Theme measurement");
+    samples.push(sample);
+    expect(sample.startedAt, label).not.toBeNull();
+    if (typeof sample.attributeDelayMs !== "number" || typeof sample.settledDelayMs !== "number") {
+      throw new Error("Theme transition timing unavailable: " + label);
+    }
+    expect(sample.attributeDelayMs, label).toBeGreaterThanOrEqual(0);
+    expect(sample.settledDelayMs, label).toBeGreaterThanOrEqual(sample.attributeDelayMs);
+    expect(sample.sameScope, label).toBe(true);
+    expect(sample.sameForm, label).toBe(true);
+    expect(sample.sameInput, label).toBe(true);
+    expect(sample.childListRecords, label).toBe(0);
+    expect(sample.addedNodes, label).toBe(0);
+    expect(sample.removedNodes, label).toBe(0);
+    expect(sample.backgroundColor, label).toBe(
+      expected === "dark" ? "rgb(16, 26, 37)" : "rgb(242, 245, 246)");
+    await expect(purpose).toHaveValue(draft);
+  };
+
+  await measure("light-to-dark", "select", "dark", () => choice.selectOption("dark"));
+  await measure("dark-to-light", "select", "light", () => choice.selectOption("light"));
+  await measure("light-to-system-os-dark", "select", "dark", () => choice.selectOption("system"));
+  await expect(surface).toHaveAttribute("data-theme-mode", "system");
+  await measure("system-os-dark-to-light", "media", "light",
+    () => page.emulateMedia({ colorScheme: "light" }));
+  await measure("system-os-light-to-dark", "media", "dark",
+    () => page.emulateMedia({ colorScheme: "dark" }));
+
+  // Request observation is limited to post-bootstrap unsaved preview/OS changes.
+  await page.waitForTimeout(150);
+  const evidence = {
+    measurementKind: "development-browser-theme-switch-proxy",
+    notReactRenderCount: true, notProductionRUM: true, notAnSLO: true,
+    samples, apiRequests,
+  };
+  console.log("#290 THEME_SWITCH_EVIDENCE " + JSON.stringify(evidence));
+  await info.attach("theme-switch-performance.json", {
+    body: Buffer.from(JSON.stringify(evidence, null, 2)),
+    contentType: "application/json",
+  });
+  expect(samples).toHaveLength(5);
+  expect(apiRequests, "Unsaved Theme/OS switch must not amplify API traffic").toEqual([]);
+  expect(page.url()).toBe(originalUrl);
+  await expect(choice).toHaveValue("system");
+  await expect(purpose).toHaveValue(draft);
+});
