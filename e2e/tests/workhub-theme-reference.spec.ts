@@ -304,8 +304,8 @@ test("#290 Slice D: A4 print policy is stable in light, dark and OS-system theme
   const card = page.locator("#workhub-travel-form");
   const purpose = "Theme A4 policy " + Date.now();
   await card.getByRole("combobox", { name: "行先" }).selectOption({ label: "Tokyo Office (TOKYO)" });
-  await card.getByRole("textbox", { name: "開始日" }).fill("2026-10-20");
-  await card.getByRole("textbox", { name: "終了日" }).fill("2026-10-21");
+  await card.getByLabel("開始日", { exact: true }).fill("2026-10-20");
+  await card.getByLabel("終了日", { exact: true }).fill("2026-10-21");
   await card.getByRole("textbox", { name: "目的", exact: true }).fill(purpose);
   await card.getByRole("button", { name: "出張申請を提出" }).click();
   await expect(page.getByText("出張申請を提出しました。", { exact: true })).toBeVisible();
