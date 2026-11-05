@@ -1,0 +1,180 @@
+name: Frontend performance comparison (#290)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/frontend-performance-compare.yml
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASELINE_SHA: 14e05d4ade3bd716f040640ef7ac74ce517f852a
+      CURRENT_SHA: 7b801de809aae483864400bb9d39917dd8ea8587
+    steps:
+      - name: Checkout baseline main
+        uses: actions/checkout@v4
+        with:
+          ref: 14e05d4ade3bd716f040640ef7ac74ce517f852a
+          path: baseline
+          persist-credentials: false
+
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: 7b801de809aae483864400bb9d39917dd8ea8587
+          path: current
+          persist-credentials: false
+
+      - name: Fail closed on changed measurement inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C baseline rev-parse HEAD)" = "$BASELINE_SHA"
+          test "$(git -C current rev-parse HEAD)" = "$CURRENT_SHA"
+          for file in \
+            package.json package-lock.json \
+            scripts/frontend-performance-evidence.mjs \
+            scripts/workhub-demo-seed-local.mjs \
+            playwright.performance.config.ts \
+            e2e/performance/frontend-performance.spec.ts \
+            playwright.config.ts \
+            src/App.tsx \
+            src/reference/workhub/ThemeReferencePanel.tsx \
+            src/frontend/preferences/context.tsx \
+            src/shared/user-preferences.ts; do
+            cmp "baseline/$file" "current/$file"
+          done
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install identical dependencies and Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          for directory in baseline current; do
+            (
+              cd "$directory"
+              npm ci
+              npm install --no-save --package-lock=false @playwright/test@1.63.0
+            )
+          done
+          (cd baseline && npx playwright install --with-deps chromium)
+
+      # The existing #60 Playwright config starts only local D1 seed and
+      # vite preview on 127.0.0.1:4174; there are no remote bindings.
+      # Run sequentially on one runner, not after the full Browser E2E suite.
+      - name: Measure baseline and current production builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          for directory in baseline current; do
+            (
+              cd "$directory"
+              npm run build
+              npm run performance:frontend:bundle
+              npm run performance:frontend:browser
+            )
+          done
+
+      # The baseline already has the Theme UI but predates its Slice F probe.
+      # Copy the identical test only inside ephemeral CI checkout; never commit it.
+      - name: Compare existing Theme switch E2E on old and current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp current/e2e/tests/workhub-theme-reference.spec.ts \
+            baseline/e2e/tests/workhub-theme-reference.spec.ts
+          for directory in baseline current; do
+            (
+              cd "$directory"
+              set -o pipefail
+              npx playwright test --config=playwright.config.ts \
+                e2e/tests/workhub-theme-reference.spec.ts \
+                --project=desktop-chromium \
+                --grep 'Slice F: theme transitions record DOM response' \
+                --repeat-each=3 2>&1 | tee artifacts/performance/theme-switch-run.log
+            )
+          done
+
+      - name: Summarize evidence without assuming acceptance
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+
+          const read = (directory, name) => JSON.parse(
+            fs.readFileSync(directory + "/artifacts/performance/" + name, "utf8")
+          );
+          const baseline = read("baseline", "frontend-build.json");
+          const current = read("current", "frontend-build.json");
+          const number = value => typeof value === "number" && Number.isFinite(value)
+            ? value.toFixed(2) : "not-measured";
+          const delta = (before, after) =>
+            typeof before === "number" && typeof after === "number"
+              ? (after - before).toFixed(2) : "not-measured";
+          const row = (name, before, after) =>
+            "| " + name + " | " + number(before) + " | " + number(after) +
+            " | " + delta(before, after) + " |";
+
+          const rows = [
+            "# Frontend performance comparison — local evidence only",
+            "",
+            "- Baseline: " + process.env.BASELINE_SHA,
+            "- Current: " + process.env.CURRENT_SHA,
+            "- Measurement: same Ubuntu runner, Node 22, identical source scripts,",
+            "  pinned Playwright runner, Chromium and local production-build preview.",
+            "- No universal thresholds; missing values stay not-measured.",
+            "- Initial LCP/CLS is separate from the old/new local Theme-switch E2E run.",
+            "- Theme-switch timings: see both theme-switch-run.log files (three trials/ref).",
+            "- OS emulateMedia timings include Playwright dispatch; not true paint or INP.",
+            "- These numbers are not Production RUM or an acceptance PASS.",
+            "",
+            "| Metric | Baseline | Current | Delta |",
+            "| --- | ---: | ---: | ---: |",
+            row("JavaScript bytes", baseline.summary.js.totalBytes, current.summary.js.totalBytes),
+            row("CSS bytes", baseline.summary.css.totalBytes, current.summary.css.totalBytes),
+            row("Total asset bytes", baseline.summary.totalBytes, current.summary.totalBytes),
+            row("Asset file count", baseline.summary.fileCount, current.summary.fileCount),
+          ];
+          for (const project of ["desktop-chromium", "mobile-chromium"]) {
+            const oldBrowser = read("baseline", "frontend-browser-" + project + ".json");
+            const newBrowser = read("current", "frontend-browser-" + project + ".json");
+            const label = project + " ";
+            rows.push(
+              row(label + "LCP ms", oldBrowser.browser.lcpMs, newBrowser.browser.lcpMs),
+              row(label + "CLS", oldBrowser.browser.cls, newBrowser.browser.cls),
+              row(label + "Same-origin requests",
+                oldBrowser.sameOriginRequestCount, newBrowser.sameOriginRequestCount),
+              row(label + "DOMContentLoaded ms",
+                oldBrowser.browser.navigation?.domContentLoadedMs,
+                newBrowser.browser.navigation?.domContentLoadedMs),
+            );
+          }
+          rows.push("", "INP: not-measured; unconfigured budgets: not-configured.", "");
+          const report = rows.join("\n");
+          fs.writeFileSync("frontend-comparison.md", report, "utf8");
+          console.log(report);
+          NODE
+
+      - name: Upload raw old/new #60 evidence and comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-performance-compare
+          path: |
+            baseline/artifacts/performance/frontend-*
+            current/artifacts/performance/frontend-*
+            baseline/artifacts/performance/theme-switch-run.log
+            current/artifacts/performance/theme-switch-run.log
+            frontend-comparison.md
+          if-no-files-found: warn
+          retention-days: 30
