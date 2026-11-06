@@ -1,4 +1,5 @@
 -- #291: isolated user/table preferences and owned personal Saved Views.
+-- Do not apply remotely without a separate environment-specific Human Gate approval.
 PRAGMA foreign_keys = ON;
 CREATE TABLE workhub_table_preferences (
   environment TEXT NOT NULL CHECK(environment IN ('local','test','preview','production')),
