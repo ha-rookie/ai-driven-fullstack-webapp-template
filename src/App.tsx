@@ -15,6 +15,7 @@ import { listActionRequiredMyRequests } from "./reference/workhub/my-requests";
 import WorkhubAppLauncher from "./reference/workhub/WorkhubAppLauncher";
 import LocalizationReferencePanel, { createWorkhubReferenceLocalization } from "./reference/workhub/LocalizationReferencePanel";
 import ThemeReferencePanel, { WorkhubThemeSurface } from "./reference/workhub/ThemeReferencePanel";
+import DataTableReferencePanel from "./reference/workhub/DataTableReferencePanel";
 import { useUserPreferences } from "./frontend/preferences/context";
 import "./workhub.css";
 
@@ -1001,6 +1002,7 @@ function TravelWorkspace() {
                   </article>
                 )}</div>}
         </section>
+        {isAoi && <DataTableReferencePanel />}
         {isAoi && <section className="workhub-my-requests" id="workhub-my-requests" aria-labelledby="workhub-my-requests-title">
           <div className="workhub-section-heading">
             <div><span className="workhub-card-label">MY REQUESTS</span><h2 id="workhub-my-requests-title">自分の申請一覧</h2></div>
