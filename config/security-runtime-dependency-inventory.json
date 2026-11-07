@@ -22,6 +22,30 @@
       "name": "@pdf-lib/upng"
     },
     {
+      "ref": "pkg_13",
+      "path": "node_modules/@tanstack/react-store",
+      "version": "0.11.2",
+      "name": "@tanstack/react-store"
+    },
+    {
+      "ref": "pkg_14",
+      "path": "node_modules/@tanstack/react-table",
+      "version": "9.3.1",
+      "name": "@tanstack/react-table"
+    },
+    {
+      "ref": "pkg_15",
+      "path": "node_modules/@tanstack/store",
+      "version": "0.11.2",
+      "name": "@tanstack/store"
+    },
+    {
+      "ref": "pkg_16",
+      "path": "node_modules/@tanstack/table-core",
+      "version": "9.3.1",
+      "name": "@tanstack/table-core"
+    },
+    {
       "ref": "pkg_04",
       "path": "node_modules/fflate",
       "version": "0.8.3",
@@ -68,6 +92,12 @@
       "path": "node_modules/tslib",
       "version": "2.8.1",
       "name": "tslib"
+    },
+    {
+      "ref": "pkg_17",
+      "path": "node_modules/use-sync-external-store",
+      "version": "1.6.0",
+      "name": "use-sync-external-store"
     },
     {
       "ref": "pkg_12",
