@@ -72,12 +72,16 @@ export default function DataTableReferencePanel(){
   if(typeof window==="undefined")return;
   const u=new URL(window.location.href);
   for(const key of ["sort","direction","filter.status","cursor"])u.searchParams.delete(key);
-  u.searchParams.set("sort",sort);
-  u.searchParams.set("direction",direction);
+  // Preserve the plain WORKHUB URL for default settings so /#workhub-* links
+  // remain in-page navigation instead of reloading a query-mutated document.
+  if(sort!==def.defaultSort.key)u.searchParams.set("sort",sort);
+  if(direction!==def.defaultSort.direction)u.searchParams.set("direction",direction);
   if(status)u.searchParams.set("filter.status",status);
   if(cursor)u.searchParams.set("cursor",cursor);
   // #152: intra-page filter/sort is replaceState, not an extra Back entry.
-  window.history.replaceState(window.history.state,"",u.pathname+u.search+u.hash);
+  const target=u.pathname+u.search+u.hash;
+  if(target!==window.location.pathname+window.location.search+window.location.hash)
+   window.history.replaceState(window.history.state,"",target);
  },[sort,direction,status,cursor]);
  const refresh=()=>{setCursor(null);setMessage("");setLoad("loading");
   // force a GET even when state has not changed by refreshing the page's source.
