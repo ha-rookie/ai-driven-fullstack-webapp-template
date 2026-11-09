@@ -187,7 +187,7 @@ export default function DataTableReferencePanel(){
    <div className="workhub-table-scroll"><table className={pref.density==="compact"?"is-compact":""}>
     <thead>{table.getHeaderGroups().map(g=><tr key={g.id}>{g.headers.map(h=><th key={h.id} scope="col" style={{width:pref.columnWidths[h.column.id]??def.columns.find(c=>c.key===h.column.id)?.width}}>
      {labels[h.column.id]??h.column.id}</th>)}</tr>)}</thead>
-    <tbody>{table.getRowModel().rows.map(row=><tr key={row.id}>{row.getVisibleCells().map(cell=><td key={cell.id}>{String(cell.getValue()??"")}</td>)}</tr>)}</tbody>
+    <tbody>{table.getRowModel().rows.map(row=><tr key={row.id}>{row.getAllCells().map(cell=><td key={cell.id}>{String(cell.getValue()??"")}</td>)}</tr>)}</tbody>
    </table></div>}
   <div className="workhub-table-pagination">
    <button type="button" disabled={!cursor||load!=="ready"} onClick={()=>setCursor(null)}>先頭へ戻る</button>
