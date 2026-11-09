@@ -7,11 +7,22 @@ test("#291 personal travel Saved View survives separate browser context and reje
  const panel=page.locator("#workhub-data-table");
  await expect(panel).toBeVisible();
  await expect(panel.getByRole("combobox",{name:"出張テーブル状態"})).toBeEnabled();
+ // Wait until the saved preference GET has resolved before editing its fields.
+ await expect(panel.getByRole("combobox",{name:"出張テーブル表示密度"})).toBeEnabled();
  await panel.getByRole("combobox",{name:"出張テーブル状態"}).selectOption("draft");
  await panel.getByRole("combobox",{name:"出張テーブル表示密度"}).selectOption("compact");
+ await expect(panel.getByRole("combobox",{name:"出張テーブル表示密度"})).toHaveValue("compact");
  await panel.getByRole("textbox",{name:"保存ビュー名"}).fill("Aoi-#291-cross-device");
  await panel.getByRole("button",{name:"新規保存"}).click();
  await expect(panel.getByRole("status").last()).toContainText("保存ビューを登録しました");
+ const persisted=await page.evaluate(async()=>{
+  const response=await fetch("/api/workhub/saved-views",{credentials:"same-origin"});
+  if(!response.ok)return {status:response.status,views:[] as {name:string;density:string}[]};
+  const body=await response.json() as {views:{name:string;density:string}[]};
+  return {status:response.status,views:body.views};
+ });
+ expect(persisted.status).toBe(200);
+ expect(persisted.views.find(v=>v.name==="Aoi-#291-cross-device")?.density).toBe("compact");
  const second=await browser.newContext({viewport:{width:390,height:844}});
  try{
   const other=await second.newPage();
@@ -40,6 +51,8 @@ test("#291 unsupported table query fails closed; Ren cannot read Aoi table",asyn
  await page.getByRole("button",{name:"デモユーザを選ぶ"}).click();
  await page.getByRole("dialog",{name:"デモユーザを選ぶ"}).getByRole("button",{name:/Ren Manager/u}).click();
  await page.getByRole("button",{name:"ログイン",exact:true}).click();
+ // A 401 before login completes is not the authenticated role-denial under test.
+ await expect(page.getByRole("heading",{name:/Ren Managerさん/u})).toBeVisible();
  const response=await page.evaluate(async()=>fetch("/api/workhub/table/travel",{credentials:"same-origin"}).then(r=>r.status));
  expect(response).toBe(403);
  await expect(page.locator("#workhub-data-table")).toHaveCount(0);

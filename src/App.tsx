@@ -1002,7 +1002,6 @@ function TravelWorkspace() {
                   </article>
                 )}</div>}
         </section>
-        {isAoi && <DataTableReferencePanel />}
         {isAoi && <section className="workhub-my-requests" id="workhub-my-requests" aria-labelledby="workhub-my-requests-title">
           <div className="workhub-section-heading">
             <div><span className="workhub-card-label">MY REQUESTS</span><h2 id="workhub-my-requests-title">自分の申請一覧</h2></div>
@@ -1093,6 +1092,7 @@ function TravelWorkspace() {
           <div><span className="workhub-card-label">COMPONENT SHOWCASE</span><h2>共通部品を、実際の業務画面で検証する</h2><p>Authentication / Authorization / Workflow / Search / Notificationを、WORKHUBの一連の業務Scenarioで組み合わせています。</p></div>
           <div className="workhub-capability-chips" aria-label="利用中のTemplate capability"><span>Authentication</span><span>Authorization</span><span>Workflow</span><span>Search</span><span>Notification</span></div>
         </section>
+        {isAoi && <DataTableReferencePanel />}
       </main>
     </div>
     {isAoi && selectedRequest?.status === "submitted" && <section className="workhub-travel-print-sheet" aria-label="出張申請内容（印刷用）">

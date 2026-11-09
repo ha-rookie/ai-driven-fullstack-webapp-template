@@ -7,6 +7,8 @@ import type {WorkhubTableRow} from "./travel-request/table-query";
 import "./data-table.css";
 const features=tableFeatures({});
 const labels:Record<string,string>={purpose:"申請内容",status:"状態",startDate:"開始日",updatedAt:"更新日",id:"識別番号"};
+// Keep column-editor labels distinct from the existing travel-form accessible names.
+const editorLabels:Record<string,string>={...labels,startDate:"出張の初日"};
 const readInitial=()=>{
  if(typeof window==="undefined")return{sort:"updatedAt",direction:"desc" as SortDirection,status:""};
  try{return normalizeTableUrl(def,new URLSearchParams(window.location.search))}
@@ -166,18 +168,18 @@ export default function DataTableReferencePanel(){
     <option value="updatedAt">更新日時</option><option value="id">識別番号</option></select></label>
    <label>方向<select aria-label="出張テーブルソート方向" value={direction} onChange={e=>{setDirection(e.target.value as SortDirection);setCursor(null)}}>
     <option value="desc">降順</option><option value="asc">昇順</option></select></label>
-   <label>ページ件数<select aria-label="出張テーブルページ件数" value={pref.pageSize} onChange={e=>{setPref(p=>({...p,pageSize:Number(e.target.value)}));setCursor(null)}}>
+   <label>ページ件数<select aria-label="出張テーブルページ件数" value={pref.pageSize} disabled={savedLoad!=="ready"} onChange={e=>{setPref(p=>({...p,pageSize:Number(e.target.value)}));setCursor(null)}}>
     {def.allowedPageSizes.map(n=><option key={n} value={n}>{n}件</option>)}</select></label>
-   <label>表示密度<select aria-label="出張テーブル表示密度" value={pref.density} onChange={e=>setPref(p=>({...p,density:e.target.value as TablePreference["density"]}))}>
+   <label>表示密度<select aria-label="出張テーブル表示密度" value={pref.density} disabled={savedLoad!=="ready"} onChange={e=>setPref(p=>({...p,density:e.target.value as TablePreference["density"]}))}>
     <option value="comfortable">ゆったり</option><option value="compact">コンパクト</option></select></label>
   </div>
   <details><summary>列の表示・順序・幅</summary>
    <div className="workhub-table-columns">{def.columns.map(col=><div key={col.key}>
-    <label><input type="checkbox" checked={pref.visibleColumns.includes(col.key)} onChange={e=>setVisible(col.key,e.target.checked)}/>{labels[col.key]}</label>
-    <button type="button" onClick={()=>move(col.key,-1)} aria-label={labels[col.key]+"を左へ"}>←</button>
-    <button type="button" onClick={()=>move(col.key,1)} aria-label={labels[col.key]+"を右へ"}>→</button>
-    <label>幅<input type="number" min={col.minWidth??64} max={col.maxWidth??960} value={pref.columnWidths[col.key]??col.width??140}
-     aria-label={labels[col.key]+"の幅"} onChange={e=>setPref(p=>({...p,columnWidths:{...p.columnWidths,[col.key]:Number(e.target.value)}}))}/></label>
+    <label><input type="checkbox" disabled={savedLoad!=="ready"} checked={pref.visibleColumns.includes(col.key)} onChange={e=>setVisible(col.key,e.target.checked)}/>{editorLabels[col.key]}</label>
+    <button type="button" disabled={savedLoad!=="ready"} onClick={()=>move(col.key,-1)} aria-label={editorLabels[col.key]+"を左へ"}>←</button>
+    <button type="button" disabled={savedLoad!=="ready"} onClick={()=>move(col.key,1)} aria-label={editorLabels[col.key]+"を右へ"}>→</button>
+    <label>幅<input type="number" disabled={savedLoad!=="ready"} min={col.minWidth??64} max={col.maxWidth??960} value={pref.columnWidths[col.key]??col.width??140}
+     aria-label={editorLabels[col.key]+"の幅"} onChange={e=>setPref(p=>({...p,columnWidths:{...p.columnWidths,[col.key]:Number(e.target.value)}}))}/></label>
    </div>)}</div>
   </details>
   <button type="button" disabled={busy||savedLoad!=="ready"} onClick={()=>void savePref()}>表示設定を保存</button>
