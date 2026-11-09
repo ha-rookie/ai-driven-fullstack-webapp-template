@@ -1,7 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import runtimeInventory from "../../config/security-runtime-dependency-inventory.json";
+import { readFileSync } from "node:fs";
 
-const reviewedRuntimePackageCount = runtimeInventory.packages.length;
+const reviewedRuntimePackageCount = (
+  JSON.parse(readFileSync(new URL("../../config/security-runtime-dependency-inventory.json", import.meta.url), "utf8")) as { packages: unknown[] }
+).packages.length;
 
 const login = async (page: Page, user: "kai" | "aoi") => {
   await page.goto("/");
