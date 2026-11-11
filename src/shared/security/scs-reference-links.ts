@@ -1,3 +1,5 @@
+import runtimeInventory from "../../../config/security-runtime-dependency-inventory.json";
+
 /**
  * #420: browse source-reference paths from the reviewed SCS mapping, not SCS evidence.
  * Paths are untrusted strings at the UI boundary; never accept a host, query, hash,
@@ -218,7 +220,7 @@ export interface ScsOsvTraceObservation {
 export interface ScsOsvTechnicalTrace {
   readonly kind: "scoped-osv-technical-observation";
   readonly sourceId: "dependency_audit";
-  readonly checkedPackages: 12;
+  readonly checkedPackages: number;
   readonly checkedAt: string;
   readonly validUntil: string;
   readonly freshness: "current" | "stale";
@@ -229,7 +231,9 @@ export interface ScsOsvTechnicalTrace {
   readonly auditCorrelationVerified: false;
 }
 const OSV_ID = /^(?:GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}|CVE-[0-9]{4}-[0-9]{4,}|OSV-[0-9]{4}-[0-9]+)$/u;
-const PACKAGE_REF = /^pkg_(?:0[1-9]|1[0-2])$/u;
+// Only entries in the reviewed runtime-lock inventory can be traced.
+const PACKAGE_REF = /^pkg_[0-9]{2}$/u;
+const REVIEWED_RUNTIME_REFS = new Set(runtimeInventory.packages.map(item => item.ref));
 const SCS_OSV_REQUIREMENTS = ["4-4-4", "3-2-1"] as const;
 const canonicalTime = (value: unknown): value is string => {
   if (typeof value !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(value)) return false;
@@ -250,7 +254,9 @@ export const scsOsvTechnicalEvidenceTrace = (
     || !requirement.evidenceReference?.split(";").map(entry => entry.trim()).includes("Dependency vulnerability scan")
     || !source || source.sourceId !== "dependency_audit"
     || source.coverageState !== "checked" || source.sourceHealth !== "ready"
-    || observation.state !== "verified" || observation.checkedPackages !== 12
+    || observation.state !== "verified"
+    || REVIEWED_RUNTIME_REFS.size !== runtimeInventory.packages.length
+    || observation.checkedPackages !== runtimeInventory.packages.length
     || !canonicalTime(observation.checkedAt) || !canonicalTime(source.lastSuccessfulCheckAt)
     || !canonicalTime(source.evidenceValidUntil)
     || !canonicalTime(snapshotAt) || !canonicalTime(now)
@@ -265,7 +271,8 @@ export const scsOsvTechnicalEvidenceTrace = (
     || source.checkedFindingCount !== observation.advisoryCount) return null;
   const seen = new Set<string>();
   for (const advisory of observation.advisories) {
-    if (!advisory || !PACKAGE_REF.test(advisory.packageRef) || !OSV_ID.test(advisory.advisoryId)) return null;
+    if (!advisory || !PACKAGE_REF.test(advisory.packageRef)
+      || !REVIEWED_RUNTIME_REFS.has(advisory.packageRef) || !OSV_ID.test(advisory.advisoryId)) return null;
     const key = advisory.packageRef + ":" + advisory.advisoryId;
     if (seen.has(key)) return null;
     seen.add(key);
@@ -273,7 +280,7 @@ export const scsOsvTechnicalEvidenceTrace = (
   return Object.freeze({
     kind: "scoped-osv-technical-observation" as const,
     sourceId: "dependency_audit" as const,
-    checkedPackages: 12 as const,
+    checkedPackages: runtimeInventory.packages.length,
     checkedAt: observation.checkedAt,
     validUntil: source.evidenceValidUntil,
     freshness: Date.parse(now) >= Date.parse(source.evidenceValidUntil) ? "stale" as const : "current" as const,

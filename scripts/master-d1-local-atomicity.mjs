@@ -34,6 +34,8 @@ try {
   mkdirSync(join(scratch, "config"), { recursive: true });
   copyFileSync(resolve("config/scs-control-mapping.json"),
     join(scratch, "config/scs-control-mapping.json"));
+  copyFileSync(resolve("config/security-runtime-dependency-inventory.json"),
+    join(scratch, "config/security-runtime-dependency-inventory.json"));
   // Compiled Worker imports shared reporting dependencies. Node resolves them
   // relative to /tmp/.../compiled, not from this harness in the repo root.
   // Reuse npm ci dependencies; keep the local D1 test isolated and offline.

@@ -19,6 +19,7 @@ import {
 import { D1WorkhubAnnouncementStore, WorkhubAnnouncementError, canPublishWorkhubReferenceAnnouncement } from "../reference/workhub/announcements";
 import { D1WorkhubExpenseStore, WorkhubExpenseError } from "../reference/workhub/expenses";
 import { WORKHUB_EXPENSE_EMPLOYEE_ID } from "../reference/workhub/expenses";
+import { handleWorkhubTableApi } from "./workhub-table-api";
 import { projectWorkhubMyRequests } from "../reference/workhub/my-requests";
 import { WorkhubSecondaryJourneyService } from "../reference/workhub/secondary-journeys";
 import { WorkhubTravelDelegation } from "../reference/workhub/approval-delegation";
@@ -440,6 +441,9 @@ export const handleWorkhubBusinessApi = async (
       }
       return error(405, "method_not_allowed", "Method is not supported");
     }
+
+    const tableResponse = await handleWorkhubTableApi(request, env.DB, environment, principalId, rid);
+    if (tableResponse) return tableResponse;
 
     if (pathname === "/api/workhub/my-requests" && request.method === "GET") {
       // Reference MVP: Aoi owns both request types. Check this before accessing

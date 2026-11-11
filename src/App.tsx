@@ -15,6 +15,7 @@ import { listActionRequiredMyRequests } from "./reference/workhub/my-requests";
 import WorkhubAppLauncher from "./reference/workhub/WorkhubAppLauncher";
 import LocalizationReferencePanel, { createWorkhubReferenceLocalization } from "./reference/workhub/LocalizationReferencePanel";
 import ThemeReferencePanel, { WorkhubThemeSurface } from "./reference/workhub/ThemeReferencePanel";
+import DataTableReferencePanel from "./reference/workhub/DataTableReferencePanel";
 import { useUserPreferences } from "./frontend/preferences/context";
 import "./workhub.css";
 
@@ -1091,6 +1092,7 @@ function TravelWorkspace() {
           <div><span className="workhub-card-label">COMPONENT SHOWCASE</span><h2>共通部品を、実際の業務画面で検証する</h2><p>Authentication / Authorization / Workflow / Search / Notificationを、WORKHUBの一連の業務Scenarioで組み合わせています。</p></div>
           <div className="workhub-capability-chips" aria-label="利用中のTemplate capability"><span>Authentication</span><span>Authorization</span><span>Workflow</span><span>Search</span><span>Notification</span></div>
         </section>
+        {isAoi && <DataTableReferencePanel />}
       </main>
     </div>
     {isAoi && selectedRequest?.status === "submitted" && <section className="workhub-travel-print-sheet" aria-label="出張申請内容（印刷用）">
