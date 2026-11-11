@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useMemo,useState} from "react";
+import {useEffect,useMemo,useState} from "react";
 import {tableFeatures,useTable} from "@tanstack/react-table";
 import {defaultTablePreference,normalizeTableUrl,resolveSavedView,travelTableDefinition as def,
  type SavedView,type TablePreference,type SortDirection} from "../../shared/data-table";
@@ -46,16 +46,21 @@ export default function DataTableReferencePanel(){
  const [name,setName]=useState("未処理の申請");
  const [selected,setSelected]=useState("");
  const [savedLoad,setSavedLoad]=useState<"loading"|"ready"|"error">("loading");
- const reloadSaved=useCallback(async()=>{
-  const [p,v]=await Promise.all([
+ // StrictMode can start overlapping bootstrap reads. An obsolete response must
+ // never overwrite the user's edits after the current read has made them editable.
+ useEffect(()=>{
+  let active=true;
+  void Promise.all([
    api<{preference:TablePreference}>("/api/workhub/table-preferences"),
    api<{views:SavedView[]}>("/api/workhub/saved-views"),
-  ]);
-  setPref(p.preference);setViews(v.views);setSavedLoad("ready");
+  ]).then(([p,v])=>{
+   if(!active)return;
+   setPref(p.preference);setViews(v.views);setSavedLoad("ready");
+  }).catch(()=>{
+   if(active){setSavedLoad("error");setMessage("保存済み設定を取得できません。0件とは限りません。")}
+  });
+  return()=>{active=false};
  },[]);
- useEffect(()=>{let alive=true;void reloadSaved().catch(()=>{
-  if(alive){setSavedLoad("error");setMessage("保存済み設定を取得できません。0件とは限りません。")}
- });return()=>{alive=false}},[reloadSaved]);
  useEffect(()=>{
   const search=new URLSearchParams({sort,direction,limit:String(pref.pageSize)});
   if(status)search.set("filter.status",status);
