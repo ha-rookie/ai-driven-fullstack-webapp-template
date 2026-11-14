@@ -91,3 +91,11 @@
   outline: 3px solid var(--workhub-focus);
   outline-offset: 2px;
 }
+
+/* On narrow viewports, avoid the sticky admin header covering touch targets
+   when Playwright or users scroll controls into view. Desktop remains sticky. */
+@media (max-width: 760px) {
+  .admin-header {
+    position: static;
+  }
+}
