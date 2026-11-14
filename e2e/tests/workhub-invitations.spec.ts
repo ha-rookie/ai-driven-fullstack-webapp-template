@@ -94,7 +94,20 @@ test("#99 invitation revoke confirms target and re-reads list without shared D1 
   const button = form.getByRole("button", { name: "この招待を取り消す" });
   await expect(button).toBeDisabled();
   await form.getByRole("textbox", { name: "取消理由", exact: true }).fill("予定変更");
-  await form.getByRole("checkbox").check();
+  const checkbox = form.getByRole("checkbox");
+  await checkbox.scrollIntoViewIfNeeded();
+  const hitTest = await checkbox.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return { viewport: [innerWidth, innerHeight], scroll: [scrollX, scrollY],
+      document: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+      target: [rect.x, rect.y, rect.width, rect.height],
+      hit: hit?.outerHTML.slice(0, 250), matches: hit === element || element.contains(hit) };
+  });
+  console.log("#291 revoke checkbox hit-test", JSON.stringify(hitTest));
+  await checkbox.check();
   await button.click();
   await expect(panel.locator("tr").filter({ hasText: invite.id })).toContainText("revoked");
   await expect(panel.getByRole("status").filter({ hasText: "取り消し" })).toBeVisible();
