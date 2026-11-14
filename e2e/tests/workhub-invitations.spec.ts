@@ -58,7 +58,7 @@ test("#99 one-time invite issuance requires confirmation and expires from browse
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
     const hit = document.elementFromPoint(x, y);
-    return { viewport: [innerWidth, innerHeight], scroll: [scrollX, scrollY],
+    return { viewport: [innerWidth, innerHeight], visualViewport: [visualViewport?.width, visualViewport?.height, visualViewport?.scale], metaViewport: document.querySelector('meta[name="viewport"]')?.getAttribute("content"), media960: matchMedia("(max-width: 960px)").matches, media760: matchMedia("(max-width: 760px)").matches, shell: (() => { const node = document.querySelector(".admin-layout"); const main = document.querySelector(".admin-main"); return { layoutWidth: node?.getBoundingClientRect().width, mainWidth: main?.getBoundingClientRect().width, mainScrollWidth: main?.scrollWidth, grid: node ? getComputedStyle(node).gridTemplateColumns : null }; })(), scroll: [scrollX, scrollY],
       document: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
       target: [rect.x, rect.y, rect.width, rect.height],
       hit: hit?.outerHTML.slice(0, 250), matches: hit === element || element.contains(hit) };
@@ -101,7 +101,7 @@ test("#99 invitation revoke confirms target and re-reads list without shared D1 
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
     const hit = document.elementFromPoint(x, y);
-    return { viewport: [innerWidth, innerHeight], scroll: [scrollX, scrollY],
+    return { viewport: [innerWidth, innerHeight], visualViewport: [visualViewport?.width, visualViewport?.height, visualViewport?.scale], metaViewport: document.querySelector('meta[name="viewport"]')?.getAttribute("content"), media960: matchMedia("(max-width: 960px)").matches, media760: matchMedia("(max-width: 760px)").matches, shell: (() => { const node = document.querySelector(".admin-layout"); const main = document.querySelector(".admin-main"); return { layoutWidth: node?.getBoundingClientRect().width, mainWidth: main?.getBoundingClientRect().width, mainScrollWidth: main?.scrollWidth, grid: node ? getComputedStyle(node).gridTemplateColumns : null }; })(), scroll: [scrollX, scrollY],
       document: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
       target: [rect.x, rect.y, rect.width, rect.height],
       hit: hit?.outerHTML.slice(0, 250), matches: hit === element || element.contains(hit) };
