@@ -23,3 +23,21 @@ const result = await provider.generateText({ model: "fake-local", prompt: "demo"
 ```
 
 **Status:** First contract/fake slice only; #277 acceptance is **not complete**. Real adapters, provider-specific timeout/retry/error mapping, configuration wiring, and contract tests remain outstanding. No tests were added or deliberately run in this slice at the user's request; mandatory repository checks remain unchanged.
+
+## Server-side configuration and operational behavior
+
+```ts
+import { configureAIProvider, createFakeAIProvider } from "../src/server/ai/provider";
+
+const provider = configureAIProvider(
+  { fake: () => createFakeAIProvider("sample", { ok: true }) },
+  { providerId: "fake", model: "fake-local", timeoutMs: 10_000, maxRetries: 0 },
+);
+// undefined when providerId is absent: business features remain available.
+```
+
+Provider IDs are matched against a server-owned factory allowlist; unknown IDs fail closed. Timeouts default to 30 seconds and are capped at 300 seconds. Retries default to zero, are capped at two, and apply only to rate-limited/unavailable errors on the **same provider**. There is no automatic cross-provider fallback. Cancellation is passed via AbortSignal; adapters must honor it to stop network work. The local timeout stops waiting but cannot guarantee termination of an adapter that ignores AbortSignal.
+
+`mapAIProviderError(status, aborted)` maps HTTP status categories to safe errors. SDK adapters must translate their own transport failures without exposing upstream messages, prompts, headers, or credentials. Fake Provider uses the same interface and requires no external connection.
+
+Remaining: real SDK adapters, integration into server routes, contract verification, and operational acceptance. Production credentials, routing and egress approval are not part of this PR.
