@@ -41,3 +41,22 @@ Provider IDs are matched against a server-owned factory allowlist; unknown IDs f
 `mapAIProviderError(status, aborted)` maps HTTP status categories to safe errors. SDK adapters must translate their own transport failures without exposing upstream messages, prompts, headers, or credentials. Fake Provider uses the same interface and requires no external connection.
 
 Remaining: real SDK adapters, integration into server routes, contract verification, and operational acceptance. Production credentials, routing and egress approval are not part of this PR.
+
+## Configuration and error handling (second slice)
+
+Use `createConfiguredAIProvider(registry, { provider, model, timeoutMs, retries })` in **server-only** integration code. `provider` must match an explicitly registered adapter; no default or automatic provider fallback is selected. `retries` defaults to zero and is limited to 0–2; only `rate_limited`, `unavailable`, and `timeout` are retried on the **same** adapter. Retry is suitable only when the caller has assessed idempotency and duplicate billing/request effects. Do not use it for side-effecting provider calls without safeguards.
+
+`mapAIProviderHttpStatus(status)` maps known HTTP statuses into safe public codes. Adapters must never pass raw SDK errors, request bodies, provider responses, or credentials to application logs or client messages. Unknown thrown errors are mapped to `unavailable`.
+
+`timeoutMs` is a bounded promise deadline (1–300000 ms). This does **not** abort an in-flight network request. Real HTTP adapters must implement transport cancellation/AbortSignal and enforce their own request deadline. Because timed-out requests may continue, automatic retries can duplicate calls and charges; configure `retries: 0` until a real adapter's cancellation/idempotency contract is verified.
+
+Example:
+
+```ts
+const provider = createConfiguredAIProvider(
+  { fake: () => createFakeAIProvider("demo response", { status: "demo" }) },
+  { provider: "fake", model: "fake-local", timeoutMs: 3000, retries: 0 },
+);
+```
+
+This is a contract and Fake Provider integration only. No live OpenAI/Anthropic/Google adapter, secret, deployment setting, or real provider connectivity has been configured. New tests and optional E2E were not added/run at user request; required CI is unchanged.
