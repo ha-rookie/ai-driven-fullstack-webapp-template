@@ -1,37 +1,18 @@
 /**
- * Server-side AI boundary. Do not import this module into client bundles with
- * provider credentials; adapters must remain in trusted server-side code.
- * Issue #277: deliberately excludes orchestration and automatic fallback.
+ * Optional server-side AI boundary. Provider SDKs and credentials belong only
+ * in trusted adapters; no implicit provider or cross-provider fallback.
  */
-export type AITextRequest = Readonly<{
-  model: string;
-  prompt: string;
-  timeoutMs?: number;
-  signal?: AbortSignal;
-}>;
-
-export type AIStructuredRequest = AITextRequest & Readonly<{
-  jsonSchema: Readonly<Record<string, unknown>>;
-}>;
-
-export type AIResponse<T> = Readonly<{
-  model: string;
-  output: T;
-}>;
-
+export type AITextRequest = Readonly<{ model: string; prompt: string; timeoutMs?: number }>;
+export type AIStructuredRequest = AITextRequest & Readonly<{ jsonSchema: Readonly<Record<string, unknown>> }>;
+export type AIResponse<T> = Readonly<{ model: string; output: T }>;
 export type AIProviderErrorCode =
-  | "not_configured"
-  | "invalid_request"
-  | "unauthorized"
-  | "rate_limited"
-  | "timeout"
-  | "unavailable"
-  | "invalid_response";
+  | "not_configured" | "invalid_request" | "unauthorized" | "rate_limited"
+  | "timeout" | "unavailable" | "invalid_response";
 
 export class AIProviderError extends Error {
   readonly code: AIProviderErrorCode;
   constructor(code: AIProviderErrorCode) {
-    // Do not propagate SDK messages: they may include credentials or prompts.
+    // Never include raw SDK errors, prompts, or credentials in messages.
     super(`AI provider error: ${code}`);
     this.name = "AIProviderError";
     this.code = code;
@@ -40,153 +21,137 @@ export class AIProviderError extends Error {
 
 export interface AIProvider {
   generateText(request: AITextRequest): Promise<AIResponse<string>>;
-  generateStructured(
-    request: AIStructuredRequest,
-  ): Promise<AIResponse<unknown>>;
+  generateStructured(request: AIStructuredRequest): Promise<AIResponse<unknown>>;
 }
+export type AIProviderFactory = (config: Readonly<{ model: string; timeoutMs: number }>) => AIProvider;
+export type AIProviderRegistry = Readonly<Record<string, AIProviderFactory>>;
+export type AIProviderConfig = Readonly<{
+  provider?: string;
+  model?: string;
+  timeoutMs?: number;
+  /** Retries only explicit transient failures, on the same selected provider. */
+  retries?: number;
+}>;
 
-export type AIProviderFactory = (config: Readonly<{
-  model: string;
-  timeoutMs: number;
-}>) => AIProvider;
-
-/**
- * No implicit provider, network call, secret lookup, or cross-provider retry.
- * Callers must explicitly select an adapter and model in server configuration.
- */
-export function createAIProvider(
-  factory: AIProviderFactory | undefined,
-  config: Readonly<{ model?: string; timeoutMs?: number }>,
-): AIProvider {
-  const model = config.model?.trim();
-  if (!factory || !model) throw new AIProviderError("not_configured");
-  const timeoutMs = config.timeoutMs ?? 30_000;
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300_000) {
+function validTimeout(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 1 && value <= 300_000;
+}
+function validateRequest(request: AITextRequest): void {
+  if (!request.model?.trim() || !request.prompt?.trim() ||
+    (request.timeoutMs !== undefined && !validTimeout(request.timeoutMs))) {
     throw new AIProviderError("invalid_request");
   }
-  return factory({ model, timeoutMs });
+}
+function safeError(error: unknown): AIProviderError {
+  return error instanceof AIProviderError ? error : new AIProviderError("unavailable");
+}
+function isRetryable(error: AIProviderError): boolean {
+  return error.code === "rate_limited" || error.code === "unavailable" || error.code === "timeout";
 }
 
-/** Deterministic fake adapter for development; never contacts a real provider. */
-export function createFakeAIProvider(
-  text: string,
-  structured: unknown,
+/** Normalize a known provider status without propagating potentially sensitive error text. */
+export function mapAIProviderHttpStatus(status: number): AIProviderError {
+  if (status === 400 || status === 422) return new AIProviderError("invalid_request");
+  if (status === 401 || status === 403) return new AIProviderError("unauthorized");
+  if (status === 408 || status === 504) return new AIProviderError("timeout");
+  if (status === 429) return new AIProviderError("rate_limited");
+  if (status >= 500 && status <= 599) return new AIProviderError("unavailable");
+  return new AIProviderError("invalid_response");
+}
+
+/**
+ * Bounded timeout. Promise.race cannot cancel an underlying provider request:
+ * adapters should additionally implement transport-level AbortSignal/timeout.
+ */
+async function withTimeout<T>(operation: () => Promise<T>, timeoutMs: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new AIProviderError("timeout")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+/**
+ * Explicitly select an adapter via server configuration. Never read env vars
+ * or automatically route data to another provider.
+ */
+export function createConfiguredAIProvider(
+  registry: AIProviderRegistry,
+  config: AIProviderConfig,
 ): AIProvider {
+  const providerName = config.provider?.trim();
+  const model = config.model?.trim();
+  if (!providerName || !model || !Object.prototype.hasOwnProperty.call(registry, providerName)) {
+    throw new AIProviderError("not_configured");
+  }
+  const timeoutMs = config.timeoutMs ?? 30_000;
+  const retries = config.retries ?? 0;
+  if (!validTimeout(timeoutMs) || !Number.isSafeInteger(retries) || retries < 0 || retries > 2) {
+    throw new AIProviderError("invalid_request");
+  }
+  const adapter = registry[providerName]({ model, timeoutMs });
+  async function invoke<T>(request: AITextRequest, operation: () => Promise<AIResponse<T>>): Promise<AIResponse<T>> {
+    validateRequest(request);
+    if (request.model !== model) throw new AIProviderError("invalid_request");
+    const effectiveTimeout = request.timeoutMs ?? timeoutMs;
+    let lastError: AIProviderError = new AIProviderError("unavailable");
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        const result = await withTimeout(operation, effectiveTimeout);
+        if (!result || result.model !== model) throw new AIProviderError("invalid_response");
+        return result;
+      } catch (error) {
+        lastError = safeError(error);
+        if (!isRetryable(lastError) || attempt === retries) throw lastError;
+      }
+    }
+    throw lastError;
+  }
   return {
-    async generateText(request) {
-      if (!request.model.trim() || !request.prompt.trim()) {
-        throw new AIProviderError("invalid_request");
-      }
-      return { model: request.model, output: text };
+    generateText(request) {
+      return invoke(request, async () => {
+        const response = await adapter.generateText(request);
+        if (typeof response?.output !== "string") throw new AIProviderError("invalid_response");
+        return response;
+      });
     },
-    async generateStructured(request) {
-      if (!request.model.trim() || !request.prompt.trim() || !request.jsonSchema) {
+    generateStructured(request) {
+      if (!request.jsonSchema || typeof request.jsonSchema !== "object" || Array.isArray(request.jsonSchema)) {
         throw new AIProviderError("invalid_request");
       }
-      return { model: request.model, output: structured };
+      return invoke(request, () => adapter.generateStructured(request));
     },
   };
 }
 
-/** Safe classification without including upstream messages, bodies or headers. */
-export function mapAIProviderError(status: number | undefined, aborted = false): AIProviderError {
-  if (aborted) return new AIProviderError("timeout");
-  if (status === 400 || status === 422) return new AIProviderError("invalid_request");
-  if (status === 401 || status === 403) return new AIProviderError("unauthorized");
-  if (status === 429) return new AIProviderError("rate_limited");
-  if (status === 408 || status === 504) return new AIProviderError("timeout");
-  if (status !== undefined && status >= 500) return new AIProviderError("unavailable");
-  return new AIProviderError("invalid_response");
-}
-
-export type AIProviderSettings = Readonly<{
-  providerId?: string;
-  model?: string;
-  timeoutMs?: number;
-  /** Explicit retries only; zero by default. Never retry authorization failures. */
-  maxRetries?: number;
-}>;
-
-/** Choose a provider only from a server-owned allowlist. Never accept a client factory. */
-export function configureAIProvider(
-  factories: Readonly<Record<string, AIProviderFactory>>,
-  settings: AIProviderSettings,
-): AIProvider | undefined {
-  const providerId = settings.providerId?.trim();
-  if (!providerId) return undefined; // AI is optional; ordinary operations remain available.
-  if (!Object.hasOwn(factories, providerId)) throw new AIProviderError("not_configured");
-  const factory = factories[providerId];
-  if (!factory) throw new AIProviderError("not_configured");
-  const base = createAIProvider(factory, settings);
-  return withAIProviderPolicy(base, settings);
-}
-
-/**
- * Local timeout and bounded retries; no implicit fallback to another provider.
- * Only explicitly retryable failures are retried. Default is no retries.
- * A provider adapter must respect AbortSignal to stop upstream work on timeout.
- */
-export function withAIProviderPolicy(
-  provider: AIProvider,
-  settings: Pick<AIProviderSettings, "timeoutMs" | "maxRetries">,
+/** Backward-compatible single-adapter factory, with identical safe defaults. */
+export function createAIProvider(
+  factory: AIProviderFactory | undefined,
+  config: Readonly<{ model?: string; timeoutMs?: number }>,
 ): AIProvider {
-  const timeoutMs = settings.timeoutMs ?? 30_000;
-  const maxRetries = settings.maxRetries ?? 0;
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300_000 ||
-      !Number.isSafeInteger(maxRetries) || maxRetries < 0 || maxRetries > 2) {
-    throw new AIProviderError("invalid_request");
-  }
-  async function execute<T>(
-    request: AITextRequest,
-    invoke: (r: AITextRequest) => Promise<AIResponse<T>>,
-  ): Promise<AIResponse<T>> {
-    if (!request.model?.trim() || !request.prompt?.trim()) {
-      throw new AIProviderError("invalid_request");
-    }
-    const effectiveTimeout = request.timeoutMs ?? timeoutMs;
-    if (!Number.isSafeInteger(effectiveTimeout) || effectiveTimeout < 1 ||
-        effectiveTimeout > 300_000) throw new AIProviderError("invalid_request");
-    for (let attempt = 0; ; attempt++) {
-      if (request.signal?.aborted) throw new AIProviderError("timeout");
-      const controller = new AbortController();
-      const onAbort = () => controller.abort();
-      request.signal?.addEventListener("abort", onAbort, { once: true });
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const timeout = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => {
-            controller.abort();
-            reject(new AIProviderError("timeout"));
-          }, effectiveTimeout);
-        });
-        const result = await Promise.race([
-          invoke({ ...request, timeoutMs: effectiveTimeout, signal: controller.signal }),
-          timeout,
-        ]);
-        if (controller.signal.aborted) throw new AIProviderError("timeout");
-        if (!result || typeof result.model !== "string") {
-          throw new AIProviderError("invalid_response");
-        }
-        return result;
-      } catch (error: unknown) {
-        const safe = error instanceof AIProviderError ? error : mapAIProviderError(undefined);
-        if (attempt >= maxRetries || (safe.code !== "rate_limited" && safe.code !== "unavailable")) {
-          throw safe;
-        }
-        // No exponential retry loops; bounded and same-provider only.
-      } finally {
-        if (timer !== undefined) clearTimeout(timer);
-        request.signal?.removeEventListener("abort", onAbort);
-      }
-    }
-  }
+  if (!factory) throw new AIProviderError("not_configured");
+  return createConfiguredAIProvider({ selected: factory }, { ...config, provider: "selected" });
+}
+
+/** Deterministic, network-free fake adapter for local development. */
+export function createFakeAIProvider(text: string, structured: unknown): AIProvider {
   return {
-    generateText(request) {
-      return execute(request, (r) => provider.generateText(r));
+    async generateText(request) {
+      validateRequest(request);
+      return { model: request.model, output: text };
     },
-    generateStructured(request) {
-      return execute(request, (r) =>
-        provider.generateStructured({ ...r, jsonSchema: request.jsonSchema }));
+    async generateStructured(request) {
+      validateRequest(request);
+      if (!request.jsonSchema || typeof request.jsonSchema !== "object" || Array.isArray(request.jsonSchema)) {
+        throw new AIProviderError("invalid_request");
+      }
+      return { model: request.model, output: structured };
     },
   };
 }
