@@ -1,0 +1,16 @@
+.workhub-table-foundation{margin:24px 0;padding:20px;border:1px solid var(--workhub-border,#cad6df);border-radius:16px;background:var(--workhub-surface,#fff);color:var(--workhub-text,inherit)}
+.workhub-table-controls,.workhub-table-actions,.workhub-table-pagination{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:12px 0}
+.workhub-table-controls label,.workhub-table-saved label{display:grid;gap:4px}
+.workhub-table-foundation input,.workhub-table-foundation select,.workhub-table-foundation button{font:inherit;color:inherit}
+.workhub-table-foundation button,.workhub-table-foundation select,.workhub-table-foundation input{min-height:40px}
+.workhub-table-foundation button:focus-visible,.workhub-table-foundation select:focus-visible,.workhub-table-foundation input:focus-visible{outline:3px solid var(--workhub-focus,#2c92a0);outline-offset:2px}
+.workhub-table-columns{display:grid;gap:10px;padding:12px}
+.workhub-table-columns>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.workhub-table-columns input[type=number]{width:85px}
+.workhub-table-scroll{max-width:100%;overflow-x:auto;margin:15px 0;outline-offset:3px}
+.workhub-table-scroll table{width:100%;border-collapse:collapse;min-width:520px}
+.workhub-table-scroll th,.workhub-table-scroll td{padding:13px 10px;border-bottom:1px solid var(--workhub-border,#ccd7df);text-align:left;overflow-wrap:anywhere}
+.workhub-table-scroll .is-compact th,.workhub-table-scroll .is-compact td{padding:8px 10px}
+.workhub-table-scroll th{background:var(--workhub-muted,#f2f6f8);font-weight:700}
+.workhub-table-saved{margin-top:18px;padding:12px;border:1px solid var(--workhub-border,#ccd7df);border-radius:12px}
+@media(max-width:480px){.workhub-table-foundation{padding:12px}.workhub-table-controls>*{flex:1 1 135px}.workhub-table-scroll table{min-width:520px}}

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import runtimeInventory from "../config/security-runtime-dependency-inventory.json";
 import { assessScsEvidenceCandidateFreshness, scsTestSourceLinks, scsOsvTechnicalEvidenceTrace, scsRequirementEvidencePath, scsReviewedCiStepSource, scsFullCiEvidenceEligible } from "../src/shared/security/scs-reference-links";
 
 const REPO = "https://github.com/ha-rookie/ai-driven-fullstack-webapp-template/blob/main/";
+const reviewedPackageCount = runtimeInventory.packages.length;
+const reviewedPackageRefs = new Set(runtimeInventory.packages.map(item => item.ref));
 
 test("#420 SCS requirement's registered tests resolve to bounded source links, never execution evidence", () => {
   const links = scsTestSourceLinks("scripts/generate-sbom.mjs; scripts/validate-lockfile-integrity.mjs");
@@ -59,7 +62,7 @@ test("#420 verified OSV observation traces only two reviewed partial SCS require
     checkedFindingCount: 2, lastSuccessfulCheckAt: checkedAt,
     evidenceValidUntil: "2026-10-17T00:05:00.000Z",
   };
-  const observation = { state: "verified" as const, checkedAt, checkedPackages: 12,
+  const observation = { state: "verified" as const, checkedAt, checkedPackages: reviewedPackageCount,
     advisoryCount: 2, advisories: [
       { packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" },
       { packageRef: "pkg_01", advisoryId: "CVE-2026-12345" },
@@ -72,7 +75,7 @@ test("#420 verified OSV observation traces only two reviewed partial SCS require
   assert.deepEqual(traced.map(row => row.requirementId).sort(), ["3-2-1", "4-4-4"]);
   assert.ok(traced.every(row => row.freshness === "current"
     && row.scsEvidenceState === "unknown" && row.remediationVerified === false
-    && row.auditCorrelationVerified === false && row.checkedPackages === 12
+    && row.auditCorrelationVerified === false && row.checkedPackages === reviewedPackageCount
     && row.advisoryCount === 2 && row.checkedAt === checkedAt));
   // At the exact TTL the technical evidence is stale; SCS compliance stays unknown.
   const stale = scsOsvTechnicalEvidenceTrace(
@@ -98,10 +101,19 @@ test("#420 OSV SCS linkage fails closed on unverified sources, unrelated mapping
   const source = { sourceId: "dependency_audit", coverageState: "checked", sourceHealth: "ready",
     checkedFindingCount: 1, lastSuccessfulCheckAt: checkedAt,
     evidenceValidUntil: "2026-10-17T00:05:00.000Z" };
-  const observation = { state: "verified" as const, checkedAt, checkedPackages: 12,
+  const observation = { state: "verified" as const, checkedAt, checkedPackages: reviewedPackageCount,
     advisoryCount: 1, advisories: [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }] };
   const valid = scsOsvTechnicalEvidenceTrace(req, source, observation, snapshotAt, snapshotAt);
   assert.ok(valid);
+  // A new reviewed entry must be traced, whereas unknown entries remain untrusted.
+  assert.equal(reviewedPackageCount, 17);
+  assert.equal(reviewedPackageRefs.size, reviewedPackageCount);
+  assert.ok(reviewedPackageRefs.has("pkg_17"));
+  assert.equal(valid.checkedPackages, reviewedPackageCount);
+  assert.ok(scsOsvTechnicalEvidenceTrace(req, source, {
+    ...observation,
+    advisories: [{ packageRef: "pkg_17", advisoryId: "GHSA-aaaa-bbbb-cccc" }],
+  }, snapshotAt, snapshotAt));
   const deny = (r = req, s = source, o = observation, asOf = snapshotAt) =>
     scsOsvTechnicalEvidenceTrace(r, s, o, asOf, snapshotAt);
   assert.equal(deny({ ...req, id: "4-1-1" }), null);
@@ -113,7 +125,11 @@ test("#420 OSV SCS linkage fails closed on unverified sources, unrelated mapping
   assert.equal(deny(req, { ...source, lastSuccessfulCheckAt: "2026-10-17T00:01:00.000Z" }), null);
   assert.equal(deny(req, { ...source, evidenceValidUntil: "2026-10-17T00:10:00.000Z" }), null);
   assert.equal(deny(req, { ...source, checkedFindingCount: 0 }), null);
-  assert.equal(deny(req, source, { ...observation, checkedPackages: 11 }), null);
+  assert.equal(deny(req, source, { ...observation, checkedPackages: reviewedPackageCount - 1 }), null);
+  assert.equal(deny(req, source, { ...observation, checkedPackages: reviewedPackageCount + 1 }), null);
+  assert.equal(deny(req, source, { ...observation, advisories: [
+    { packageRef: "pkg_99", advisoryId: "GHSA-aaaa-bbbb-cccc" },
+  ] }), null);
   assert.equal(deny(req, source, { ...observation, advisoryCount: 0 }), null);
   assert.equal(deny(req, source, { ...observation, advisories: [
     { packageRef: "pkg_01", advisoryId: "javascript:alert(1)" },
@@ -145,7 +161,7 @@ test("#420 every one of 43 SCS requirements has an explicit fail-closed Evidence
     lastSuccessfulCheckAt: "2026-10-17T00:00:00.000Z",
     evidenceValidUntil: "2026-10-17T00:05:00.000Z" };
   const observed = { state: "verified" as const, checkedAt: "2026-10-17T00:00:00.000Z",
-    checkedPackages: 12, advisoryCount: 1,
+    checkedPackages: reviewedPackageCount, advisoryCount: 1,
     advisories: [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }] };
   const traced = mapping.requirements.map(r => {
     const requirement = { id: r.id, responsibility: r.status,
@@ -167,7 +183,7 @@ test("#420 forged/unsafe technical paths never become SCS evidence", () => {
   const technical = {
     kind: "scoped-osv-technical-observation" as const,
     sourceId: "dependency_audit" as const,
-    checkedPackages: 12 as const,
+    checkedPackages: reviewedPackageCount,
     checkedAt: "2026-10-17T00:00:00.000Z",
     validUntil: "2026-10-17T00:05:00.000Z",
     freshness: "current" as const, advisoryCount: 0, advisories: [],

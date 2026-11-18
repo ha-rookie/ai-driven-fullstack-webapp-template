@@ -77,7 +77,7 @@ const controlledJson = async (response: Response): Promise<unknown> => {
 
 const validateInventory = (): void => {
   if (inventory.schemaVersion !== 1 || inventory.scope !== "runtime-lock-only"
-    || inventory.lockfileVersion !== 3 || inventory.packages.length !== 12) {
+    || inventory.lockfileVersion !== 3 || inventory.packages.length !== 17) {
     throw new TypeError("Unreviewed OSV runtime inventory");
   }
   const paths = new Set<string>();
