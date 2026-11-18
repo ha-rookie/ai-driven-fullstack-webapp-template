@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Production code deploy requires explicit authorization and the existing protected environment gate. The user is not responsible for operating GitHub Actions. The assistant owns release execution, verification, and reporting within the approved scope. A pull request, push, or schedule must never deploy Production automatically.
+Production code deploy requires explicit authorization and the existing protected environment gate. The user is not responsible for operating GitHub Actions or supplying a manual workflow launch. The assistant owns release execution, verification, and reporting within the approved scope. A pull request, push, or schedule must never deploy Production automatically.
 
 ## Required setup
 
