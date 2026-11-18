@@ -14,6 +14,10 @@
     {
       "issue": 277,
       "reason": "2026-11-15 user explicitly approved prioritizing AI Provider abstraction #277 over the current #291 focus, limited to PR #825 and required CI/review/Human Gates; #291 remains the normal focus."
+    },
+    {
+      "issue": 547,
+      "reason": "2026-11-19 user-authorized G1 temporary exception for Issue #547 Phase A READ-ONLY dev-loop decision/plan only, in a separate #597 governance PR. A1 is limited to scripts/dev-loop-decision.mjs, scripts/dev-loop-plan.mjs, scripts/dev-loop-state.mjs and docs/operations/DEVELOPMENT_LOOP_RESUME.md; no autonomous code execution, merges, Actions dispatch, remote D1/migrations, secrets/vars or deployments. Focus #291 remains unchanged; remove #547 in G2 after A1. Phase scope is documented, not technically enforced by the current selection gate."
     }
   ],
   "governanceChangeIssues": [
