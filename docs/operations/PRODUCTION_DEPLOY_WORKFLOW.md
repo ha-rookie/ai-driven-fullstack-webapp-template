@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Production code deploy is an explicit, human-triggered operation. A pull request, push, or schedule must never deploy Production automatically.
+Production code deploy requires explicit authorization and the existing protected environment gate. The user is not responsible for operating GitHub Actions. The assistant owns release execution, verification, and reporting within the approved scope. A pull request, push, or schedule must never deploy Production automatically.
 
 ## Required setup
 
@@ -15,11 +15,11 @@ GitHub Actions must provide these values:
 
 `PRODUCTION_WRANGLER_CONFIG_JSON` is written only to a temporary file during the deploy job and is not uploaded as Evidence. Production resource identifiers and secrets must not be committed to the repository.
 
-Configure the GitHub Environment named `production` with required reviewers before real Production use. The workflow's typed confirmation is not a substitute for Environment protection.
+Configure the GitHub Environment named `production` with required reviewers before real Production use. Required independent environment approval is distinct from asking the user to launch a workflow; never bypass it. The workflow's typed confirmation is not a substitute for Environment protection.
 
 ## Execution order
 
-1. An operator starts `Production deploy` manually with a full 40-character commit SHA
+1. After explicit user authorization, the assistant arranges execution of `Production deploy` with a full 40-character commit SHA using an authorized execution interface. If no authorized trigger interface is available, report the release as blocked; do not ask the user to click Run workflow or weaken environment protection.
 2. Confirmation must exactly equal `DEPLOY PRODUCTION`
 3. The preflight job checks out that exact SHA
 4. Lockfile integrity is validated
