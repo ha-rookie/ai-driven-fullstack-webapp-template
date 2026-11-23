@@ -14,6 +14,10 @@
     {
       "issue": 277,
       "reason": "2026-11-15 user explicitly approved prioritizing AI Provider abstraction #277 over the current #291 focus, limited to PR #825 and required CI/review/Human Gates; #291 remains the normal focus."
+    },
+    {
+      "issue": 828,
+      "reason": "2026-11-19 user explicitly requested a separate Issue/PR for an agent-owned Preview/Production deploy initiation gateway, with immutable SHA, explicit authorization, independent review, protected environments and no actual remote deploy; #291 remains the default focus."
     }
   ],
   "governanceChangeIssues": [
