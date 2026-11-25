@@ -18,6 +18,10 @@
     {
       "issue": 828,
       "reason": "2026-11-19 user explicitly requested a separate Issue/PR for an agent-owned Preview/Production deploy initiation gateway, with immutable SHA, explicit authorization, independent review, protected environments and no actual remote deploy; #291 remains the default focus."
+    },
+    {
+      "issue": 547,
+      "reason": "2026-11-19 user-authorized G1 temporary exception for Issue #547 Phase A READ-ONLY dev-loop decision/plan only, in a separate #597 governance PR. A1 is limited to scripts/dev-loop-decision.mjs, scripts/dev-loop-plan.mjs, scripts/dev-loop-state.mjs and docs/operations/DEVELOPMENT_LOOP_RESUME.md; no autonomous code execution, merges, Actions dispatch, remote D1/migrations, secrets/vars or deployments. Focus #291 remains unchanged; remove #547 in G2 after A1. Phase scope is documented, not technically enforced by the current selection gate."
     }
   ],
   "governanceChangeIssues": [
