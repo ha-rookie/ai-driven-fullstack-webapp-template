@@ -24,16 +24,16 @@ test("#420 OSV inventory lists precisely all non-dev/non-optional locked product
     .filter(([path, item]) => path.startsWith("node_modules/")
       && !item.dev && !item.devOptional && !item.optional)
     .map(([path, item]) => ({ path, version: item.version }));
-  assert.equal(expected.length, 12);
+  assert.equal(expected.length, 17);
   assert.deepEqual(inventory.packages.map(({ path, version }) => ({ path, version })), expected);
-  assert.equal(new Set(inventory.packages.map(item => item.ref)).size, 12);
+  assert.equal(new Set(inventory.packages.map(item => item.ref)).size, 17);
   for (const item of inventory.packages) {
     const name = item.path.split("/node_modules/").at(-1)?.replace(/^node_modules\//u, "");
     assert.equal(item.name, name);
   }
 });
 
-test("#420 OSV querybatch uses one fixed public endpoint and all 12 reviewed versions", async () => {
+test("#420 OSV querybatch uses one fixed public endpoint and all 17 reviewed versions", async () => {
   let called = 0;
   const reader = createRuntimeOsvReader(fetcher(sample(), (url, init) => {
     called++;
@@ -51,7 +51,7 @@ test("#420 OSV querybatch uses one fixed public endpoint and all 12 reviewed ver
   const result = await reader("preview", AS_OF);
   assert.deepEqual(result, {
     schemaVersion: 1, scope: "runtime-lock-only", source: "OSV",
-    state: "verified", checkedAt: AS_OF, checkedPackages: 12,
+    state: "verified", checkedAt: AS_OF, checkedPackages: 17,
     advisoryCount: 0, advisories: [],
   });
   assert.equal(called, 1);
@@ -64,13 +64,13 @@ test("#420 only matched real OSV identifiers and reviewed package refs survive p
   data.results[0] = { vulns: [
     { id: "GHSA-vqj2-4v8m-8vrq", modified: "2026-10-16T21:00:00Z" },
   ] } as never;
-  data.results[6] = { vulns: [
+  data.results[inventory.packages.findIndex(item => item.ref === "pkg_07")] = { vulns: [
     { id: "CVE-2026-12345", modified: "2026-10-16T21:00:00Z" },
   ] } as never;
   const result = await createRuntimeOsvReader(fetcher(data))("preview", AS_OF);
   assert.equal(result.state, "verified");
   if (result.state !== "verified") throw Error("expected synthetic verified scan");
-  assert.equal(result.checkedPackages, 12);
+  assert.equal(result.checkedPackages, 17);
   assert.deepEqual(result.advisories, [
     { packageRef: "pkg_01", advisoryId: "GHSA-vqj2-4v8m-8vrq" },
     { packageRef: "pkg_07", advisoryId: "CVE-2026-12345" },
@@ -81,18 +81,18 @@ test("#420 fail closed for malformed, partial, paginated, duplicate, or injected
   const base = sample();
   const cases: unknown[] = [
     { results: [{}] },
-    { results: Array.from({length: 13}, () => ({})) },
-    { results: Array.from({length: 12}, (_, i) => i === 0 ? { next_page_token: "next" } : {}) },
-    { results: Array.from({length: 12}, (_, i) => i === 0 ? { vulns: [
+    { results: Array.from({length: 18}, () => ({})) },
+    { results: Array.from({length: 17}, (_, i) => i === 0 ? { next_page_token: "next" } : {}) },
+    { results: Array.from({length: 17}, (_, i) => i === 0 ? { vulns: [
       {id:"GHSA-vqj2-4v8m-8vrq",modified:"2026-10-16T21:00:00Z"},
       {id:"GHSA-vqj2-4v8m-8vrq",modified:"2026-10-16T21:00:00Z"}] } : {}) },
-    { results: Array.from({length: 12}, (_, i) => i === 0
+    { results: Array.from({length: 17}, (_, i) => i === 0
       ? { vulns: [{ id: "https://evil.test/token", modified: "2026-10-16T21:00:00Z" }] } : {}) },
-    { results: Array.from({length: 12}, (_, i) => i === 0 ? { vulns: [
+    { results: Array.from({length: 17}, (_, i) => i === 0 ? { vulns: [
       { id: "GHSA-vqj2-4v8m-8vrq", modified: "not-a-time" }] } : {}) },
-    { ...base, results: Array.from({length: 12}, (_, i) => i === 0
+    { ...base, results: Array.from({length: 17}, (_, i) => i === 0
       ? { vulns: [], extra: "provider raw content" } : {}) },
-    { results: Array.from({length: 12}, (_, i) => i === 0 ? { vulns:
+    { results: Array.from({length: 17}, (_, i) => i === 0 ? { vulns:
       Array.from({length: 65}, () => ({id:"GHSA-vqj2-4v8m-8vrq",modified:"2026-10-16T21:00:00Z"})) } : {}) },
   ];
   for (const value of cases) {
@@ -118,7 +118,7 @@ test("#420 provider failure, non-JSON, oversized bodies or offline runtime never
   for (const response of [
     new Response("not-json", { status: 200, headers: { "content-type": "text/plain" } }),
     Response.json({ raw: "private upstream data" }, { status: 503 }),
-    Response.json({ results: Array.from({length: 12}, () => ({raw:"x".repeat(15000)})) }),
+    Response.json({ results: Array.from({length: 17}, () => ({raw:"x".repeat(15000)})) }),
   ]) {
     const reader = createRuntimeOsvReader((async () => response.clone()) as typeof fetch);
     const outcome = await reader("preview", AS_OF);

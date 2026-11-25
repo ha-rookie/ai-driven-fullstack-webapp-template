@@ -1,4 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+const reviewedRuntimePackageCount = (
+  JSON.parse(readFileSync(new URL("../../config/security-runtime-dependency-inventory.json", import.meta.url), "utf8")) as { packages: unknown[] }
+).packages.length;
 
 const login = async (page: Page, user: "kai" | "aoi") => {
   await page.goto("/");
@@ -522,7 +527,7 @@ test("#420 admin checks OSV runtime advisories without changing global Finding p
     await route.fulfill({ json: {
       schemaVersion: 1, scope: "runtime-lock-only", source: "OSV", state: "verified",
       checkedAt: new Date(Date.now()-1500).toISOString(),
-      checkedPackages: 12, advisoryCount: 2,
+      checkedPackages: reviewedRuntimePackageCount, advisoryCount: 2,
       advisories: [
         { packageRef: "pkg_08", advisoryId: "GHSA-vqj2-4v8m-8vrq" },
         { packageRef: "pkg_07", advisoryId: "CVE-2026-12345" },
@@ -533,7 +538,7 @@ test("#420 admin checks OSV runtime advisories without changing global Finding p
   const panel = page.getByTestId("security-osv-runtime-panel");
   await expect(panel).toContainText("未照会");
   expect(calls).toBe(0);
-  await panel.getByRole("button", { name: "本番依存12件の脆弱性情報を照会" }).click();
+  await panel.getByRole("button", { name: `本番依存${reviewedRuntimePackageCount}件の脆弱性情報を照会` }).click();
   await expect(panel.getByTestId("security-osv-verified")).toContainText("アドバイザリ 2 件");
   await expect(panel.getByText("react / 19.3.0")).toBeVisible();
   await expect(panel.getByText("tslib / 1.14.1")).toBeVisible();
@@ -553,13 +558,13 @@ test("#420 malicious OSV advisory ID fails closed and cannot become a positive r
     await route.fulfill({ json: {
       schemaVersion: 1, source: "OSV", scope: "runtime-lock-only",
       state: "verified", checkedAt: new Date().toISOString(),
-      checkedPackages: 12, advisoryCount: 1,
+      checkedPackages: reviewedRuntimePackageCount, advisoryCount: 1,
       advisories: [{ packageRef: "pkg_08", advisoryId: "https://untrusted.test/secret" }],
     } });
   });
   await page.goto("/admin");
   const panel = page.getByTestId("security-osv-runtime-panel");
-  await panel.getByRole("button", { name: "本番依存12件の脆弱性情報を照会" }).click();
+  await panel.getByRole("button", { name: `本番依存${reviewedRuntimePackageCount}件の脆弱性情報を照会` }).click();
   await expect(panel.getByRole("alert")).toContainText("OSV照会不可（Gray）");
   await expect(panel.getByTestId("security-osv-verified")).toHaveCount(0);
   await expect(panel).not.toContainText("untrusted.test");
@@ -740,7 +745,7 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
     evidence: [{ kind: "dependency", code: "dependency_alert" }],
     remediationCode: "update_dependency",
   }] };
-  baseline.dependencyScope = { state: "verified", checkedPackages: 12, checkedAt: at,
+  baseline.dependencyScope = { state: "verified", checkedPackages: reviewedRuntimePackageCount, checkedAt: at,
     advisoryCount: 1, advisories: [{ packageRef: "pkg_01", advisoryId: "GHSA-aaaa-bbbb-cccc" }] };
   await page.route("**/api/admin/security/center?**", async route => {
     if (new URL(route.request().url()).searchParams.get("dependencyFindings") === "runtime") {
@@ -779,7 +784,7 @@ test("#420 real OSV advisory fixture appears as scoped Finding with evidence and
   for (const id of ["4-4-4", "3-2-1"]) {
     const requirement = panel.getByTestId(`scs-requirement-${id}`);
     await expect(requirement.getByTestId(`scs-osv-trace-${id}`)).toContainText("GHSA-aaaa-bbbb-cccc");
-    await expect(requirement.getByTestId(`scs-osv-trace-${id}`)).toContainText("runtime lock 12件のみ");
+    await expect(requirement.getByTestId(`scs-osv-trace-${id}`)).toContainText(`runtime lock ${reviewedRuntimePackageCount}件のみ`);
     await expect(requirement.getByTestId(`scs-osv-freshness-${id}`))
       .toContainText("SCSは未検証");
     await expect(requirement).toContainText("Audit correlation: 未確認");

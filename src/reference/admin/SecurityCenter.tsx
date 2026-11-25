@@ -137,7 +137,7 @@ const isOsvFindingSnapshot = (value: Snapshot): value is OsvSnapshot => {
   const scope = (value as Snapshot & {dependencyScope?: OsvSnapshot["dependencyScope"]}).dependencyScope;
   if (!scope) return false;
   if (scope.state === "unavailable") return value.findings.state === "not-connected";
-  if (scope.state !== "verified" || scope.checkedPackages !== 12
+  if (scope.state !== "verified" || scope.checkedPackages !== runtimeInventory.packages.length
     || !isTime(scope.checkedAt) || scope.checkedAt > value.observedAt
     || Date.parse(value.observedAt) - Date.parse(scope.checkedAt) >= 300_000
     || !Array.isArray(scope.advisories) || scope.advisories.length !== scope.advisoryCount
@@ -505,10 +505,10 @@ const OsvRuntimeAdvisories = () => {
   };
   return <div data-testid="security-osv-runtime-panel">
     <h3>本番依存ライブラリの脆弱性アドバイザリ（OSV）</h3>
-    <p>現在のpackage-lockに記録された本番用12エントリを個別に照会します。
+    <p>現在のpackage-lockに記録された本番用{runtimeInventory.packages.length}エントリを個別に照会します。
       重大度・修復状態・本番稼働環境との一致・アプリ全体の安全性・SCS適合は判定しません。</p>
     <button type="button" disabled={result.state === "loading"}
-      onClick={() => { void load(); }}>本番依存12件の脆弱性情報を照会</button>
+      onClick={() => { void load(); }}>本番依存{runtimeInventory.packages.length}件の脆弱性情報を照会</button>
     {result.state === "idle" && <p>未照会。アドバイザリの有無は不明です。</p>}
     {result.state === "loading" && <p role="status">OSVへ照会中…</p>}
     {result.state === "unavailable" && <p role="alert">OSV照会不可（Gray）。0件や安全とは判定しません。</p>}
@@ -516,7 +516,7 @@ const OsvRuntimeAdvisories = () => {
       <p role="status">OSV照会時刻 {result.report.checkedAt}・対象 {result.report.checkedPackages} エントリ・
         アドバイザリ {result.report.advisoryCount} 件（照会範囲のみ）</p>
       {result.report.advisories?.length === 0
-        ? <p>対象のロック済み12エントリについてアドバイザリIDの返却はありませんでした。
+        ? <p>対象のロック済み{runtimeInventory.packages.length}エントリについてアドバイザリIDの返却はありませんでした。
           他の脆弱性・未監視領域まで0件とは判定しません。</p>
         : <div className="admin-audit-table-wrap"><table className="admin-audit-table">
           <thead><tr><th>ロック済みパッケージ</th><th>OSVアドバイザリID</th><th>重大度／対応状況</th></tr></thead>
@@ -683,11 +683,11 @@ export default function SecurityCenter() {
       </table></div>
       <OsvRuntimeAdvisories />
       <h3>Security Finding（検査済みソース限定）</h3>
-      <p>OSVの実アドバイザリIDを、レビュー済み本番依存12ロックエントリに限定して照合します。重大度infoは未評価の仮置き、状態openは照会時点の要対応表示で、修復済みかどうかの確認結果ではありません。</p>
+      <p>OSVの実アドバイザリIDを、レビュー済み本番依存{runtimeInventory.packages.length}ロックエントリに限定して照合します。重大度infoは未評価の仮置き、状態openは照会時点の要対応表示で、修復済みかどうかの確認結果ではありません。</p>
       <button type="button" disabled={osvFindingLookup === "loading"} onClick={() => { void loadOsvFindings(); }}>OSV実アドバイザリFindingを照合</button>
       {osvFindingLookup === "loading" && <p role="status">OSVの限定照会中…</p>}
       {osvFindingLookup === "unknown" && <p role="alert" data-testid="osv-finding-unknown">OSV照会結果を確認できません（Gray／件数不明）。</p>}
-      {osvFindingLookup === "verified" && <div data-testid="osv-finding-verified"><p>OSV照会範囲：本番依存12ロックエントリ。アドバイザリ {osvAdvisories.length} 件。全体の脆弱性0件やSCS適合は意味しません。</p>
+      {osvFindingLookup === "verified" && <div data-testid="osv-finding-verified"><p>OSV照会範囲：本番依存{runtimeInventory.packages.length}ロックエントリ。アドバイザリ {osvAdvisories.length} 件。全体の脆弱性0件やSCS適合は意味しません。</p>
         {osvAdvisories.map((a, i) => <p key={a.packageRef + a.advisoryId + i}>{a.packageRef}：{a.advisoryId}（OSV ID、個別Severity未検証）</p>)}
       </div>}
       <p>既存のGitHub CIに対して、最後のRunで失敗した既知の検査ステップのみを実際に照合し、
@@ -825,7 +825,7 @@ export default function SecurityCenter() {
                         href={"https://osv.dev/vulnerability/" + encodeURIComponent(advisory.advisoryId)}>
                         {advisory.advisoryId}</a>
                     </span>)
-                    : "確認済み12エントリでは0件（他ソースは未評価）"}</div>
+                    : `確認済み${runtimeInventory.packages.length}エントリでは0件（他ソースは未評価）`}</div>
               </div>}
             </td>
             <td>未検証（SCS証跡 {r.evidenceFreshness}）
