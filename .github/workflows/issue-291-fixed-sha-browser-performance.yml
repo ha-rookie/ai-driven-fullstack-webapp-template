@@ -1,0 +1,119 @@
+name: "#291 Fixed-SHA Desktop Mobile and Frontend Performance Evidence"
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/issue-291-fixed-sha-browser-performance.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-291-browser-perf-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  full-browser:
+    name: Full desktop and mobile Chromium
+    if: github.event.pull_request.head.ref == 'ci/291-fixed-sha-browser-performance-20261114'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout reviewed #822 HEAD, not this workflow PR
+        uses: actions/checkout@v4
+        with:
+          ref: f684081a1c1a8acc7af7d5c588e9fb625be213ef
+          persist-credentials: false
+
+      - name: Assert exact reviewed commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "f684081a1c1a8acc7af7d5c588e9fb625be213ef"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies and pinned test runner
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false @playwright/test@1.63.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Execute full desktop and mobile Chromium E2E
+        run: npx playwright test --project=desktop-chromium --project=mobile-chromium
+
+      - name: Upload failure-only browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-291-browser-failure-${{ github.run_id }}
+          path: test-results/browser-e2e/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  frontend-performance:
+    name: Frontend bundle and desktop/mobile #60 evidence
+    if: github.event.pull_request.head.ref == 'ci/291-fixed-sha-browser-performance-20261114'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout reviewed #822 HEAD, not this workflow PR
+        uses: actions/checkout@v4
+        with:
+          ref: f684081a1c1a8acc7af7d5c588e9fb625be213ef
+          persist-credentials: false
+
+      - name: Assert exact reviewed commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "f684081a1c1a8acc7af7d5c588e9fb625be213ef"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies and pinned test runner
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false @playwright/test@1.63.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build reviewed #822 production bundle locally
+        run: npm run build
+
+      - name: Capture #60 frontend bundle evidence
+        run: npm run performance:frontend:bundle
+
+      - name: Capture #60 browser evidence in desktop/mobile Chromium
+        run: npm run performance:frontend:browser
+
+      - name: Upload #60 performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-291-frontend-performance-${{ github.run_id }}
+          path: artifacts/performance/frontend-*
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload failure-only performance browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-291-performance-failure-${{ github.run_id }}
+          path: test-results/frontend-performance/
+          if-no-files-found: ignore
+          retention-days: 7
