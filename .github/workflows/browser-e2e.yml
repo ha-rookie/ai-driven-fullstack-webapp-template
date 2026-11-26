@@ -65,6 +65,10 @@ jobs:
         if: github.event_name == 'pull_request'
         run: npx playwright test --project=desktop-chromium
 
+      - name: Run full mobile Chromium for Issue 291 candidate PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'fix/mobile-admin-header-pointer-20261114'
+        run: npx playwright test --project=mobile-chromium
+
       - name: Run complete desktop/mobile browser scenarios
         if: github.event_name != 'pull_request'
         run: npx playwright test
